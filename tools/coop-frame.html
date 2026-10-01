@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<!--
+  協力プレイのテスト用：ゲーム1人分(tools/coop-test.html の iframe の中で動かす)
+  PeerJS の代わりに tools/fake-peer.js を使い、通信は親ページが中継する。
+  iframe の中では requestAnimationFrame が動かないので、setInterval で1コマずつ進める。
+-->
+<html lang="ja"><head><meta charset="UTF-8"><base href="../"><title>coop frame</title><style>body{margin:0}</style></head>
+<body><div id="Bigbox"><canvas id="Canvas"></canvas></div>
+<script>
+var errors = [];
+window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.filename || "").split("/").pop() + ":" + e.lineno); });
+window.requestAnimationFrame = function(){};   //ループはこのページで回す
+</script>
+<script src="scripts/drone/common.js"></script>
+<script src="scripts/drone/sound.js"></script>
+<script src="scripts/drone/equipment.js"></script>
+<script src="scripts/drone/bosses.js"></script>
+<script src="scripts/drone/startScreen.js"></script>
+<script src="scripts/drone/mainScreen.js"></script>
+<script src="scripts/drone/dragons.js"></script>
+<script src="scripts/drone/forces.js"></script>
+<script src="scripts/drone/upgradeScreen.js"></script>
+<script src="scripts/drone/gameoverScreen.js"></script>
+<script src="scripts/drone/story.js"></script>
+<script src="tools/fake-peer.js"></script>
+<script src="scripts/drone/coop.js"></script>
+<script src="scripts/drone/draw.js"></script>
+<script>
+var auto = false, unarmed = false, geared = -1, frames = 0, ticks = 0;
+function bot(){
+    frames++; MouseIn = true;
+    MouseX = 480 + 300*Math.cos(frames/60); MouseY = 270 + 170*Math.sin(frames/45);
+    var tx = 0, ty = 0, list = enemyShots.concat(enemies.filter(function(e){ return !e.harmless; }));
+    for(var i=0; i<list.length; i++){ var o = list[i], dx = drone.X - o.x, dy = drone.Y - o.y, d = Math.hypot(dx,dy) || 1, R = (o.r || 5) + 90; if(d < R){ tx += dx/d*(R-d); ty += dy/d*(R-d); } }
+    if(tx || ty){ MouseX = drone.X + tx*2; MouseY = drone.Y + ty*2; }
+    MouseX = Math.max(30, Math.min(CW-30, MouseX)); MouseY = Math.max(30, Math.min(CH-30, MouseY));
+}
+//自動で遊ぶ：ストーリーは送る・強化画面では装備して準備完了・戦闘はよけながら撃つ
+function autoPlay(){
+    if(page.number == 4){ MouseX = 480; MouseY = 270; if(time % 10 == 0) Click = 1; }
+    else if(page.number == 2 && coop.active){
+        if(geared != game.wave){
+            geared = game.wave;
+            if(unarmed){ game.owned = {}; game.slots = [null,null,null]; }
+            else { game.owned = { gun:3, missile:3, tesla:3 }; game.slots = ["gun","missile","tesla"]; }
+            game.slotCount = 3;
+            for(var k in game.level) game.level[k] = 5;
+        }
+        if(!coop.localReady) coop.localReady = true;
+    }
+    else if(page.number == 1){ bot(); mainScreen.hp = Math.max(mainScreen.hp, 1); if(!unarmed && frames % 300 == 0) Click = 1; }
+}
+function step(){
+    if(Click == 1 && sound.handleClick()) Click = 0;
+    coop.update();
+    screens[page.number].update();
+    coop.send();
+    Click = 0;
+    time++;
+    if(time >= MAXTIME) time = 0;
+}
+//ホストが反映した、ゲストからのダメージの回数(合計)
+var partnerHits = 0, hitEnemy0 = mainScreen.hitEnemy;
+mainScreen.hitEnemy = function(_e,_d,_src){ if(_src == "partner") partnerHits++; return hitEnemy0.apply(this, arguments); };
+var loop = setInterval(function(){
+    try{
+        for(var i=0; i<4; i++){ if(auto) autoPlay(); step(); }
+        if(++ticks % 4 == 0){ ctx.fillStyle = "white"; ctx.fillRect(0,0,CW,CH); screens[page.number].draw(); }
+    }catch(e){ errors.push(String(e)); }
+}, 16);
+
+//親ページへ状態を知らせる
+setInterval(function(){
+    top.postMessage({ st:true, name:window.name, page:page.number, active:coop.active, role:coop.role, inRoom:coop.inRoom,
+        waiting:coop.waiting, code:coop.code, wave:game.wave, msg:coop.msg, notice:startScreen.notice || "",
+        partner:!!coop.partner, partnerHits:partnerHits, enemies:enemies.length, story:page.number == 4 ? storyScreen.id : "", errors:errors.slice(0,5) }, "*");
+}, 100);
+
+//親ページからの指示
+window.addEventListener("message", function(ev){
+    var m = ev.data;
+    if(!m || !m.cmd) return;
+    if(m.cmd == "create"){ coop.init(); page.change(6); coop.createRoom(); }
+    if(m.cmd == "join"){ coop.init(); page.change(6); coop.joinRoom(m.code); }
+    if(m.cmd == "auto"){ auto = true; unarmed = !!m.unarmed; }
+    if(m.cmd == "leave"){ coop.leave(); page.change(0); }
+    if(m.cmd == "stop"){ clearInterval(loop); auto = false; }
+});
+</script>
+</body></html>

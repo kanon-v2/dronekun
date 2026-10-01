@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<!--
+  協力プレイの動作確認
+  ゲームを2つ(ホスト・ゲスト)iframe で開き、偽のPeerJS(tools/fake-peer.js)の通信をこのページが中継する。
+  部屋を作る → コード違いで入れない → コードで入る → プロローグ → 強化 → 出撃 → WAVEクリアがそろう → 切断 を確かめる。
+  tools/run-smoke.ps1 からヘッドレスで開き、結果を <pre id="result"> に書き出す。
+-->
+<html lang="ja"><head><meta charset="UTF-8"><title>ドローン君 協力プレイのテスト</title>
+<style>body{margin:0} iframe{width:480px;height:270px;border:1px solid #888}</style></head>
+<body>
+<iframe id="host" name="host" src="coop-frame.html"></iframe><iframe id="guest" name="guest" src="coop-frame.html"></iframe>
+<pre id="result">running...</pre>
+<script>
+var frames = { host:document.getElementById("host").contentWindow, guest:document.getElementById("guest").contentWindow };
+var st = { host:null, guest:null };
+var out = [], fails = 0;
+function L(s){ out.push(s); }
+function check(name, ok, detail){ if(!ok) fails++; L((ok ? "OK   " : "NG   ") + name + (detail ? "  (" + detail + ")" : "")); }
+function cmd(who, m){ frames[who].postMessage(m, "*"); }
+
+//------------------------------------------------ 偽PeerJSの中継(仲介サーバーと通信路の代わり)
+var ids = {};   //PeerのID → そのPeerがいる画面
+function toFrame(win, m){ m.fp = true; m.toFrame = true; win.postMessage(m, "*"); }
+window.addEventListener("message", function(ev){
+    var m = ev.data;
+    if(!m) return;
+    if(m.st){ st[m.name] = m; return; }
+    if(!m.fp || m.toFrame) return;
+    var src = ev.source;
+    switch(m.type){
+        case "register":
+            if(ids[m.id] && ids[m.id] != src) toFrame(src, { type:"error", peer:m.id, etype:"unavailable-id" });
+            else { ids[m.id] = src; toFrame(src, { type:"open", peer:m.id }); }
+            break;
+        case "connect":
+            if(!ids[m.to]){ toFrame(src, { type:"error", peer:m.id, etype:"peer-unavailable" }); break; }
+            toFrame(ids[m.to], { type:"incoming", peer:m.to, from:m.id, cid:m.cid });
+            setTimeout(function(){ toFrame(src, { type:"connopen", cid:m.cid }); }, 5);
+            break;
+        case "data":
+        case "close":
+            if(ids[m.to]) toFrame(ids[m.to], { type:m.type, cid:m.cid, d:m.d });
+            break;
+        case "destroy":
+            delete ids[m.id];
+            break;
+    }
+});
+
+//------------------------------------------------ 手順
+//cond が成り立つまで待つ(最大 ms ミリ秒)
+function waitFor(cond, ms, then){
+    var t0 = Date.now();
+    var iv = setInterval(function(){
+        var ok = false;
+        try{ ok = st.host && st.guest && cond(); }catch(e){}
+        if(ok || Date.now() - t0 > ms){ clearInterval(iv); then(ok, Date.now() - t0); }
+    }, 50);
+}
+function both(f){ return f(st.host) && f(st.guest); }
+function desc(){ return ["host","guest"].map(function(k){ var s = st[k]; return s ? k + ":p" + s.page + " w" + s.wave + (s.active ? " active" : "") + (s.msg ? " 「" + s.msg + "」" : "") : k + ":-"; }).join(" / "); }
+
+var steps = [
+    function(next){
+        waitFor(function(){ return true; }, 5000, function(){ cmd("host", { cmd:"create" }); next(); });
+    },
+    function(next){
+        waitFor(function(){ return st.host.waiting && st.host.code; }, 5000, function(ok){
+            check("部屋を作る(コードが出る)", ok, st.host.code); next();
+        });
+    },
+    function(next){
+        //ありえないコード(i・l は使わない文字なので、作られた部屋とぶつからない)
+        cmd("guest", { cmd:"join", code:"iill" });
+        waitFor(function(){ return st.guest.msg.indexOf("見つかりません") >= 0 && !st.guest.inRoom; }, 5000, function(ok){
+            check("違うコードでは入れない", ok, st.guest.msg); next();
+        });
+    },
+    function(next){
+        cmd("guest", { cmd:"join", code:st.host.code.toUpperCase() });
+        waitFor(function(){ return both(function(s){ return s.active && s.page == 4; }); }, 8000, function(ok){
+            check("コードで入る → ふたりともプロローグ", ok, desc()); next();
+        });
+    },
+    function(next){
+        cmd("host", { cmd:"auto", unarmed:true });   //ホストは武器なし：敵を倒せるのはゲストの攻撃だけにする
+         cmd("guest", { cmd:"auto" });
+        waitFor(function(){ return both(function(s){ return s.page == 1 && s.wave == 1; }); }, 20000, function(ok){
+            check("強化画面 → ふたりとも準備完了で出撃", ok, desc()); next();
+        });
+    },
+    function(next){
+        waitFor(function(){ return st.guest.partner && st.host.partner && st.guest.enemies > 0; }, 10000, function(ok){
+            check("戦闘中に相手と敵が見える", ok, "ゲスト側の敵" + st.guest.enemies); next();
+        });
+    },
+    function(next){
+        waitFor(function(){ return both(function(s){ return s.wave >= 2; }); }, 150000, function(ok, ms){
+            check("WAVE1クリアがそろう", ok, desc() + " " + Math.round(ms/1000) + "秒");
+            check("ゲストの攻撃がホストの敵に当たる", st.host.partnerHits > 0, st.host.partnerHits + "回");
+            next();
+        });
+    },
+    function(next){
+        waitFor(function(){ return both(function(s){ return s.page == 1 && s.wave == 2; }); }, 30000, function(ok){
+            check("WAVE2へ一緒に出撃", ok, desc()); next();
+        });
+    },
+    function(next){
+        cmd("guest", { cmd:"leave" });
+        waitFor(function(){ return !st.host.partner && st.host.active && st.host.msg.indexOf("退出") >= 0; }, 12000, function(ok){
+            check("ゲストが抜けるとホストはひとりで続ける", ok, st.host.msg + " partner=" + st.host.partner); next();
+        });
+    },
+    function(next){
+        //もう一度、部屋を作り直してつなぐ
+        cmd("host", { cmd:"leave" });
+        setTimeout(function(){ cmd("host", { cmd:"create" }); }, 300);
+        waitFor(function(){ return st.host.waiting && st.host.code; }, 5000, function(){
+            cmd("guest", { cmd:"join", code:st.host.code });
+            waitFor(function(){ return both(function(s){ return s.active; }); }, 8000, function(ok){
+                check("作り直した部屋に入れる", ok, desc()); next();
+            });
+        });
+    },
+    function(next){
+        cmd("host", { cmd:"leave" });
+        waitFor(function(){ return st.guest.page == 0 && !st.guest.active && st.guest.notice; }, 12000, function(ok){
+            check("ホストが抜けるとゲストはタイトルへ", ok, st.guest.notice || desc()); next();
+        });
+    },
+    function(next){
+        var errs = st.host.errors.concat(st.guest.errors);
+        check("スクリプトエラーなし", errs.length == 0, errs.join(" | "));
+        next();
+    }
+];
+function run(i){
+    if(i < steps.length){ steps[i](function(){ run(i + 1); }); return; }
+    cmd("host", { cmd:"stop" }); cmd("guest", { cmd:"stop" });
+    L(fails ? "RESULT: NG " + fails : "RESULT: OK");
+    document.getElementById("result").textContent = out.join("\n");
+}
+window.addEventListener("load", function(){ run(0); });
+</script>
+</body></html>

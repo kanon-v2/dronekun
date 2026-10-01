@@ -7,14 +7,16 @@
 
 ## 動作確認
 
-変更したら必ず実行する(約2秒):
+変更したら必ず実行する(数秒):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 ```
 
-- ヘッドレスのEdgeで `tools/smoke-test.html` を開き、ストーリーの流れ・各WAVEの戦闘・全シナジー・強化画面・ストーリー確認モードを自動で確かめる。`RESULT: OK` なら成功(終了コード0)。
-- 新しい機能を足したら、`tools/smoke-test.html` にも確認項目を足す。
+- ヘッドレスのEdgeで次の2つを開き、すべて `RESULT: OK` なら成功(終了コード0)。
+  - `tools/smoke-test.html`: ストーリーの流れ・各WAVEの戦闘・全シナジー・強化画面・ストーリー確認モード
+  - `tools/coop-test.html`: 協力プレイ。ゲーム2つ(`tools/coop-frame.html`)を iframe で開き、偽のPeerJS(`tools/fake-peer.js`)の通信を親ページが中継する。部屋作り・コード違い・参加・出撃・WAVEクリアの同期・ゲストの攻撃の反映・退出を確かめる(インターネット不要)
+- 新しい機能を足したら、`tools/smoke-test.html`(協力プレイに関わるものは `tools/coop-test.html`)にも確認項目を足す。
 - 見た目の確認はヘッドレスEdgeのスクリーンショットで行う:
   `msedge --headless=new --disable-gpu --allow-file-access-from-files --virtual-time-budget=3000 --window-size=960,540 --screenshot=<出力.png> <file:///...html>`
   特定の画面を撮りたいときは、`<base href="../">` を入れたテスト用HTMLで状態を作ってから撮る(`tools/smoke-test.html` の書き方を参照)。
@@ -42,6 +44,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | `upgradeScreen.js` | 強化画面(報酬カード・能力強化・装備・能力リセット) |
 | `gameoverScreen.js` | ゲームオーバー画面 |
 | `story.js` | ストーリー(`STORIES`)・ストーリー画面・エンディング・ストーリー確認モード |
+| `lib/peerjs.min.js` | PeerJS 1.5.5(外部ライブラリ。MITライセンス、`lib/PEERJS-LICENSE`)。協力プレイの通信に使う。手を加えない |
 | `coop.js` | ふたりで協力プレイ(下記「協力プレイ」参照) |
 | `draw.js` | 1/60秒刻みの更新ループと描画。最後に読み込む |
 
@@ -68,7 +71,8 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 してはいけないこと・注意:
 - **`getImageData` を使わない**。ローカルの file:// で開くとキャンバスが汚染扱いになり動かない。色違いの絵は `tintedImage()`(合成モード `source-atop` で色を重ねる)で作る。
 - **グローバル変数 `parent` がある**(`common.js` で `Bigbox` 要素を入れている)。`window.parent` を上書きしているので、iframe から親ページへ送るテストコードでは `top.postMessage` を使う。
-- `index.html` を直接開いて動くこと(外部サーバーやビルドに依存しない)を保つ。外部から読み込んでよいのは Google Fonts だけ。
+- `index.html` を直接開いて動くこと(外部サーバーやビルドに依存しない)を保つ。外部から読み込んでよいのは Google Fonts だけ。ライブラリが必要なときは `lib/` に置く(PeerJS がその例)。
+- 例外は協力プレイの通信で、最初のつなぎ合わせに PeerJS の公開サーバー(0.peerjs.com)を使う。1人用はインターネットなしで動くこと。
 - 敵が「自分のドローン君」を狙う処理は `drone` ではなく `aimAt`(または `nearestPlayer()`)を使う。被弾の判定だけは `drone`(自分)を使う。協力プレイで相方も狙われるため。
 
 ## 主な調整値の場所
@@ -95,9 +99,17 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 ## 協力プレイ(coop.js)
 
 - ホストが敵・弾・アイテムを動かし、状態を約30回/秒でゲストへ送る。ゲストは自分のドローン君と武器を自分の画面で動かし、与えたダメージ・拾ったアイテム・衝撃波を「合計値」で送り返す。被弾判定はそれぞれが自分について行う。
-- 送る量は1回 `COOP_LIMIT`(3600バイト)以内。超えるときはゲストから遠いものから削る。
+- 送る量は1回 `COOP_LIMIT`(12000バイト)以内。超えるときはゲストから遠いものから削る。
 - 協力プレイ中は敵の体力2倍(`COOP_HP_MUL`)、強化・装備は各自、セーブしない。
-- **現状の通信は claude.ai の Artifact の room 機能(presence)を使っているが、実環境では2つ目の画面が room につながらず、使えなかった。** GitHub Pages 版では PeerJS(WebRTC)でつなぐ形に作り替える予定。作り替えるときは通信部分(`init`・`createRoom`・`joinRoom`・`update` の相方の読み取り・`send`)だけを差し替え、状態の作り方(`buildHost`/`buildGuest`/`readHost`/`readGuest`/`guestSync`)はそのまま使う。
+- 通信は PeerJS(WebRTC)。ブラウザ同士が直接つながり、アカウントは不要。
+  - ホストは4文字の部屋コードを作り、`COOP_ID_PREFIX` + コードを PeerJS の ID にして待つ。ゲストはその ID へつなぐ。
+  - 招待リンクは `…#join=コード`。開くと自動で部屋に入る(`coop.js` の末尾)。
+  - つなぎ方は `reliable:false`(再送しない)。状態は毎回まるごと送り、ゲストからは合計値を送るので、途中が抜けても困らない。
+  - 始まった後に `COOP_TIMEOUT` の間なにも届かなければ切断とみなす。始まる前は数えない(ホストが招待リンクを送るために別のアプリへ切り替えている間は、画面が止まるため)。
+  - ゲストが抜けたら、ホストはひとりで続ける。ホストが抜けたら、ゲストはタイトルへ戻る。始まった後の途中参加はできない。
+- 通信部分(`createRoom`・`joinRoom`・`setupConn`・`update` の相方の読み取り・`send`)と、状態の作り方(`buildHost`/`buildGuest`/`readHost`/`readGuest`/`guestSync`)は分けてある。
+- 本物の通信の確認は、ヘッドレスEdgeを `--remote-debugging-port` で起動し、DevTools プロトコルで2つのウィンドウを操作して行った。ヘッドレスでは、裏に回ったタブの `requestAnimationFrame` が止まる。2つ目は `Target.createTarget`(`newWindow:true`)で別ウィンドウとして開く。
+- 協力プレイは GitHub Pages 版だけ。Artifact の中では外部との通信も WebRTC も止められているため、PeerJS は使えない(Artifact 版に載っている協力プレイは古い room 方式のままで、実際にはつながらない)。
 
 ## Git の運用
 

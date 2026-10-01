@@ -1,7 +1,8 @@
 //------------------------------------------------------------------------------
 //  ふたりで協力プレイ
-//  Artifactのroom機能の「presence(自分の状態を部屋の全員に共有する)」だけで通信する
-//  (presenceは閲覧権限の人でも送れるので、相手は共有された人なら誰でも参加できる)
+//  PeerJS(lib/peerjs.min.js)でブラウザ同士を直接つなぐ(WebRTC)。
+//  最初のつなぎ合わせだけPeerJSの公開サーバー(0.peerjs.com)が仲介する。インターネット接続が必要。
+//  部屋はホストが作る4文字のコードで指定する(招待リンク「…#join=コード」を開いても参加できる)
 //
 //  ・ホスト(部屋を作った人)の画面で敵・敵の弾・アイテムを動かし、状態をゲストへ送る
 //  ・ゲストは自分のドローン君と武器を自分の画面で動かし、敵に与えたダメージ・
@@ -14,8 +15,11 @@ const COOP_SHOTS  = ["normal","small","big","water","missile","dragon"];
 const COOP_PICKS  = ["part","fuel","capsule"];
 const COOP_MODES  = ["enter","idle","aim","dash","spiral","triple","laserAim","laser"];
 const COOP_STATES = ["start","play","clear","over"];
-const COOP_LIMIT  = 3600;   //1回に送る状態の大きさの上限(presenceは4KBまで)
+const COOP_LIMIT  = 12000;  //1回に送る状態の大きさの上限(バイト)。超えるときはゲストから遠いものから削る
 const COOP_HP_MUL = 2;      //協力プレイでの敵の体力の倍率
+const COOP_ID_PREFIX = "dronekun-room-";  //PeerJSのIDの頭に付ける(ほかのアプリのIDとぶつからないように)
+const COOP_CODE_CHARS = "abcdefghjkmnpqrstuvwxyz23456789";  //部屋コードに使う文字(見間違えやすい i l o 0 1 は使わない)
+const COOP_TIMEOUT = 8000;  //相方から何も届かないまま、この時間(ミリ秒)たったら切断とみなす
 const P2_COLOR    = "40,130,230";
 
 var enemySeq = 0;           //敵の通し番号(ホストとゲストで同じ敵を指すため)
@@ -33,12 +37,16 @@ function nearestPlayer(_x,_y){
 var aimAt = null;   //いま動かしている敵が狙っている相手(bosses.js・forces.jsから使う)
 
 var coop = {
-    room:null,          //roomの機能(使えない画面ではnull)
-    checked:false,
+    available:false,    //この環境で協力プレイを使えるか(PeerJSとWebRTCがあるか)
+    peer:null,          //自分のPeerJSの窓口
+    conn:null,          //相方とのつながり
+    connOpen:false,
+    inRoom:false,       //部屋を作った・部屋に入ろうとしている
+    remote:null,        //相方から最後に届いた状態
+    lastRecv:0,
     active:false,       //協力プレイ中か
     role:null,          //"host" か "guest"
     code:null,
-    named:null,         //参加している部屋
     waiting:false,      //ホストが相方を待っている
     partner:null,       //相方の状態
     look:new DroneLook(),
@@ -68,121 +76,130 @@ var coop = {
 
     //------------------------------------------------------------ 準備・部屋
     init:function(){
-        if(this.checked) return;
-        this.checked = true;
-        var self = this;
-        if(!window.claude || !window.claude.use){ this.room = null; this.ready = true; this.perm = "claudeなし"; return; }
-        //roomの許可の状態を調べる(roomが使えなかったときだけ。なぜ使えないかの手がかりとして表示する)
-        var checkPerm = function(){
-            window.claude.use("permissions").then(function(p){
-                self.permApi = p;
-                if(!p){ self.perm = "確認できない"; return; }
-                p.state("room").then(function(s){ self.perm = s; });
-            }).catch(function(){ self.perm = "確認できない"; });
-        };
-        window.claude.use("room").then(function(r){
-            self.room = r;
-            self.ready = true;
-            if(!r){ checkPerm(); return; }
-            //ロビーに自分の在席を知らせ、参加者の変化を受け取る登録をしておく
-            //(読むだけだと、ほかの画面の状態が届かない場合があるため)
-            try{
-                r.onConnection(function(c){ self.connected = c; }, function(e){ self.lastError = "接続:" + e.code; });
-                r.onPeers(function(ch){ self.lobbyCount = ch.peers.length; }, function(e){ self.lastError = "参加者:" + e.code; });
-                r.presence({ here:true }).catch(function(e){ self.lastError = "在席:" + (e && e.code); });
-            }catch(e){ self.lastError = "登録:" + e.message; }
-        }).catch(function(){ self.room = null; self.ready = true; checkPerm(); });
-    },
-
-    //roomの許可を求める(許可待ちのとき)。許可されたらページを開き直してもらう
-    askPermission:function(){
-        var self = this;
-        if(!this.permApi) return;
-        this.permApi.request(["room"]).then(function(res){
-            self.perm = res.room || "unavailable";
-            if(self.perm == "granted") self.say("許可されました。ページを開き直すと協力プレイを使えます");
-        });
-    },
-
-    //部屋選びの画面に出す診断情報(うまくつながらないときの手がかり)
-    diagnosis:function(){
-        if(!this.room) return "";
-        var ps = [];
-        try{ ps = this.room.peers(); }catch(e){}
-        var others = 0, hosting = 0;
-        for(var i=0; i<ps.length; i++){
-            if(ps[i].sameTab) continue;
-            others++;
-            if(ps[i].presence && ps[i].presence.coop) hosting++;
-        }
-        return "診断：接続" + (this.connected ? "○" : "×") + "　このページを開いているほかの画面 " + others +
-               "（うち部屋を作っている画面 " + hosting + "）" + (this.lastError ? "　エラー " + this.lastError : "");
+        this.available = typeof Peer != "undefined" && typeof RTCPeerConnection != "undefined";
     },
     isHost:function(){ return this.active && this.role == "host"; },
     isGuest:function(){ return this.active && this.role == "guest"; },
     hpMul:function(){ return this.active ? COOP_HP_MUL : 1; },
 
-    //ロビーで募集中の部屋(自分以外)
-    openRooms:function(){
-        if(!this.room) return [];
-        var list = [];
-        var ps = this.room.peers();
-        for(var i=0; i<ps.length; i++){
-            var c = ps[i].presence && ps[i].presence.coop;
-            //自分のアカウントでも、別の端末・別のタブで作った部屋は表示する(ひとりで動作確認できるように)
-            if(c && c.open && !ps[i].sameTab && typeof c.code == "string") list.push(c.code);
-        }
-        return list;
+    //招待リンク(このページのアドレスに #join=コード を付けたもの)
+    inviteLink:function(){
+        return location.href.split("#")[0] + "#join=" + this.code;
     },
 
+    //部屋を作る：コードをPeerJSのIDにして、相方からつないでくるのを待つ
     createRoom:function(){
-        if(!this.room) return;
-        var chars = "abcdefghjkmnpqrstuvwxyz23456789", code = "";
-        for(var i=0; i<4; i++) code += chars.charAt(Math.floor(Math.random()*chars.length));
+        if(!this.available || this.inRoom) return;
+        var code = "";
+        for(var i=0; i<4; i++) code += COOP_CODE_CHARS.charAt(Math.floor(Math.random()*COOP_CODE_CHARS.length));
         var self = this;
+        this.inRoom = true;
+        this.role = "host";
+        this.code = code;
         this.msg = "部屋を作っています…";
-        this.room.join("dk-" + code).then(function(n){
-            self.named = n;
-            self.code = code;
-            self.role = "host";
+        var peer = new Peer(COOP_ID_PREFIX + code, { debug:0 });
+        this.peer = peer;
+        peer.on("open",function(){
+            if(self.peer != peer) return;
             self.waiting = true;
-            n.presence({ role:"host" }).catch(function(e){ self.lastError = "部屋の在席:" + (e && e.code); });
-            self.room.presence({ here:true, coop:{ code:code, open:true } }).catch(function(e){ self.lastError = "募集:" + (e && e.code); });
-            self.watchPeers();
             self.msg = "";
-        }).catch(function(e){ self.msg = "部屋を作れませんでした（" + (e && e.code) + "）"; });
-    },
-
-    joinRoom:function(_code){
-        if(!this.room) return;
-        var self = this;
-        this.msg = "部屋に入っています…";
-        this.room.join("dk-" + _code).then(function(n){
-            //満員(もうゲストがいる)なら出る
-            var ps = n.peers(), guests = 0;
-            for(var i=0; i<ps.length; i++) if(!ps[i].sameTab && ps[i].presence && ps[i].presence.role == "guest") guests++;
-            if(guests > 0){ n.leave(); self.msg = "その部屋は満員でした"; return; }
-            self.named = n;
-            self.code = _code;
-            self.role = "guest";
-            n.presence({ role:"guest" }).catch(function(){});
-            self.watchPeers();
-            self.msg = "ホストの応答を待っています…";
-        }).catch(function(e){ self.msg = "部屋に入れませんでした（" + (e && e.code) + "）"; });
-    },
-
-    watchPeers:function(){
-        var self = this;
-        this.named.onPeers(function(ch){
-            for(var i=0; i<ch.left.length; i++){
-                var p = ch.left[i];
-                if(p.sameTab || !p.presence) continue;
-                if(p.presence.role == (self.role == "host" ? "guest" : "host")) self.partnerLeft();
-            }
+        });
+        peer.on("connection",function(c){
+            //すでに相方がいる・もう始まっているときは断る(ふたりまで。途中からの参加はできない)
+            if(self.conn || self.active){ c.on("open",function(){ c.close(); }); return; }
+            self.setupConn(c);
+        });
+        peer.on("error",function(e){
+            if(self.peer != peer) return;
+            //同じコードの部屋がもうあった：作り直す
+            if(e.type == "unavailable-id"){ self.closePeer(); self.inRoom = false; self.createRoom(); return; }
+            self.fail("部屋を作れませんでした（" + self.errorText(e) + "）");
+        });
+        peer.on("disconnected",function(){
+            //仲介サーバーとの接続が切れた(相方とのつながりは続くことがある)。待っている間だけつなぎ直す
+            if(self.peer == peer && self.waiting && !peer.destroyed) peer.reconnect();
         });
     },
 
-    //ゲーム開始(ホストは相方が来たとき、ゲストはホストの状態が届いたとき)
+    //部屋に入る：ホストのIDへつなぐ
+    joinRoom:function(_code){
+        if(!this.available || this.inRoom) return;
+        var code = String(_code || "").toLowerCase().replace(/[^a-z0-9]/g,"");
+        if(code.length != 4){ this.say("部屋コードは4文字です"); return; }
+        var self = this;
+        this.inRoom = true;
+        this.role = "guest";
+        this.code = code;
+        this.msg = "部屋「" + code.toUpperCase() + "」につないでいます…";
+        var peer = new Peer({ debug:0 });
+        this.peer = peer;
+        peer.on("open",function(){
+            if(self.peer != peer) return;
+            //状態は毎回まるごと送るので、途中が抜けても困らない「再送しない」つなぎ方にする(遅れがたまらない)
+            self.setupConn(peer.connect(COOP_ID_PREFIX + code, { reliable:false, serialization:"json" }));
+        });
+        peer.on("error",function(e){
+            if(self.peer != peer) return;
+            if(e.type == "peer-unavailable") self.fail("部屋「" + code.toUpperCase() + "」が見つかりませんでした。コードを確かめてください");
+            else self.fail("つなげませんでした（" + self.errorText(e) + "）");
+        });
+    },
+
+    setupConn:function(_c){
+        var self = this;
+        this.conn = _c;
+        _c.on("open",function(){
+            if(self.conn != _c) return;
+            self.connOpen = true;
+            self.lastRecv = Date.now();
+            if(self.role == "guest") self.msg = "ホストの応答を待っています…";
+        });
+        _c.on("data",function(d){
+            if(self.conn != _c || !d || typeof d != "object") return;
+            self.remote = d;
+            self.lastRecv = Date.now();
+        });
+        _c.on("close",function(){
+            if(self.conn != _c) return;
+            self.conn = null;
+            self.connOpen = false;
+            self.partnerLeft();
+        });
+        _c.on("error",function(){});
+    },
+
+    errorText:function(_e){
+        switch(_e && _e.type){
+            case "network":
+            case "server-error":
+            case "socket-error":
+            case "socket-closed": return "インターネットまたは仲介サーバーにつながりません";
+            case "browser-incompatible": return "このブラウザは対応していません";
+            case "webrtc": return "通信の確立に失敗しました";
+        }
+        return (_e && _e.type) || "不明なエラー";
+    },
+
+    //つなげなかった：部屋を閉じて、部屋選びの画面にメッセージを出す
+    fail:function(_m){
+        this.closePeer();
+        this.inRoom = false;
+        this.waiting = false;
+        this.role = null;
+        this.say(_m);
+    },
+
+    closePeer:function(){
+        var c = this.conn, p = this.peer;
+        this.conn = null;
+        this.peer = null;
+        this.connOpen = false;
+        this.remote = null;
+        if(c){ try{ c.close(); }catch(e){} }
+        if(p){ try{ p.destroy(); }catch(e){} }
+    },
+
+    //ゲーム開始(ホストは相方がつないできたとき、ゲストはホストの状態が届いたとき)
     startGame:function(){
         this.active = true;
         this.waiting = false;
@@ -192,7 +209,6 @@ var coop = {
         this.resetExchange();
         this.localReady = false;
         this.msg = "";
-        if(this.role == "host") this.room.presence({ coop:{ code:this.code, open:false } }).catch(function(){});
         storyScreen.start("prologue",function(){ page.change(2); });
     },
 
@@ -207,19 +223,25 @@ var coop = {
 
     partnerLeft:function(){
         if(this.role == "guest"){
+            var playing = this.active;
             this.leave();
-            startScreen.notice = "ホストとの接続が切れたので、タイトルに戻りました";
-            page.change(0);
-        }else{
+            if(playing){
+                startScreen.notice = "ホストとの接続が切れたので、タイトルに戻りました";
+                page.change(0);
+            }else{
+                this.say("ホストとの接続が切れました");
+            }
+        }else if(this.active){
+            //最後に届いた状態を読み直して相方が残らないよう、届いたものも消す
+            this.remote = null;
             this.partner = null;
             this.say("相方が退出しました。ひとりで続けます");
         }
     },
 
     leave:function(){
-        if(this.named){ try{ this.named.leave(); }catch(e){} }
-        if(this.room) this.room.presence({ coop:null }).catch(function(){});
-        this.named = null;
+        this.closePeer();
+        this.inRoom = false;
         this.active = false;
         this.role = null;
         this.waiting = false;
@@ -239,20 +261,22 @@ var coop = {
     //------------------------------------------------------------ 毎フレーム
     update:function(){
         if(this.msgTime > 0 && --this.msgTime == 0) this.msg = "";
-        if(!this.named) return;
+        if(!this.inRoom) return;
         if(this.grazeCd > 0) this.grazeCd--;
         this.framesSinceSnap++;
-
-        //相方のpresenceを読む
-        var ps = this.named.peers(), other = null;
-        for(var i=0; i<ps.length; i++){
-            var p = ps[i];
-            if(p.sameTab || !p.presence) continue;
-            if(p.presence.role == (this.role == "host" ? "guest" : "host")) other = p.presence;
+        //しばらく何も届かなければ切断とみなす(相方がタブを閉じた・回線が切れた)。
+        //始まる前は数えない(ホストが招待リンクを送るため別のアプリに切り替えている間は、ホストの画面が止まっているため)
+        if(this.active && this.connOpen && Date.now() - this.lastRecv > COOP_TIMEOUT){
+            this.closePeer();
+            this.partnerLeft();
+            return;
         }
 
+        //相方から最後に届いた状態
+        var other = this.remote && this.remote.role == (this.role == "host" ? "guest" : "host") ? this.remote : null;
+
         if(this.role == "host"){
-            if(this.waiting && other){ this.startGame(); }
+            if(this.waiting && this.connOpen && other){ this.startGame(); }
             if(other && other.g) this.readGuest(other.g);
             if(!this.active) return;
             //両方の準備ができたら出撃
@@ -272,13 +296,13 @@ var coop = {
         this.readEvents(other);
     },
 
-    //presenceで送る(2フレームに1回＝秒間30回)
+    //相方へ送る(2フレームに1回＝秒間30回)
     send:function(){
-        if(!this.named) return;
+        if(!this.conn || !this.connOpen) return;
         if(++this.step % 2) return;
         try{
-            if(this.role == "host") this.named.presence({ role:"host", s:this.buildHost() }).catch(function(){});
-            else this.named.presence({ role:"guest", g:this.buildGuest() }).catch(function(){});
+            if(this.role == "host") this.conn.send({ role:"host", s:this.buildHost() });
+            else this.conn.send({ role:"guest", g:this.buildGuest() });
         }catch(e){}
     },
 
@@ -306,7 +330,7 @@ var coop = {
         var shs = enemyShots.slice().sort(byDist);
         var pks = pickups.slice().sort(byDist);
         var arm = this.armsSummary();
-        var caps = [60,110,30,1];   //敵・弾・アイテム・武器
+        var caps = [90,220,45,1];   //敵・弾・アイテム・武器
         for(var tries=0; tries<30; tries++){
             s.e = []; s.b = null; s.bm = null; s.bk = null;
             for(var i=0; i<Math.min(caps[0],ens.length); i++) this.packEnemy(ens[i], s);
@@ -780,16 +804,16 @@ var coop = {
 //------------------------------------------------------------------------------
 //  協力プレイの部屋選び(page 6)
 //------------------------------------------------------------------------------
-var coopCreateButton = new drawRect(CW/2 , GS*5.5 , GS*12 , GS*2.2);
-var coopBackButton = new drawRect(CW/2 , GS*15.3 , GS*8 , GS*1.6);
-var coopPermButton = new drawRect(CW/2 , GS*12.3 , GS*16 , GS*1.4);
-var coopRoomButtons = [];
-for(var i=0; i<4; i++) coopRoomButtons.push(new drawRect(CW/2 , GS*9.4 + i*GS*1.4 , GS*12 , GS*1.2));
+var coopCreateButton = new drawRect(CW/2 , GS*5.6 , GS*12 , GS*2.2);
+var coopJoinButton   = new drawRect(CW/2 , GS*8.6 , GS*12 , GS*2.2);
+var coopCopyButton   = new drawRect(CW/2 - GS*4.2 , GS*11.6 , GS*7.6 , GS*1.5);
+var coopShareButton  = new drawRect(CW/2 + GS*4.2 , GS*11.6 , GS*7.6 , GS*1.5);
+var coopBackButton   = new drawRect(CW/2 , GS*15.3 , GS*8 , GS*1.6);
 
 var coopScreen = {
     enter:function(){
         coop.init();
-        coop.msg = "";
+        if(!coop.inRoom) coop.msg = "";
     },
     update:function(){
         if(coopBackButton.clicked()){
@@ -798,26 +822,46 @@ var coopScreen = {
             page.change(0);
             return;
         }
-        if(!coop.room && coop.perm == "prompt" && coopPermButton.clicked()){
-            sound.play("click");
-            coop.askPermission();
-            return;
-        }
-        if(!coop.room || coop.named) return;
-        if(coopCreateButton.clicked()){
-            sound.play("click");
-            coop.createRoom();
-            return;
-        }
-        var rooms = coop.openRooms();
-        for(var i=0; i<Math.min(4,rooms.length); i++){
-            if(coopRoomButtons[i].clicked()){
+        if(!coop.available) return;
+        if(!coop.inRoom){
+            if(coopCreateButton.clicked()){
                 sound.play("click");
-                coop.joinRoom(rooms[i]);
+                coop.createRoom();
+                return;
+            }
+            if(coopJoinButton.clicked()){
+                sound.play("click");
+                //コードの入力はブラウザの入力欄で(スマホでもキーボードが出る)
+                var code = window.prompt("ホストの画面に出ている部屋コード（4文字）を入力してください", "");
+                Click = 0;
+                if(code) coop.joinRoom(code);
+                return;
+            }
+        }else if(coop.role == "host" && coop.waiting){
+            if(coopCopyButton.clicked()){
+                sound.play("click");
+                this.copyInvite();
+                return;
+            }
+            if(navigator.share && coopShareButton.clicked()){
+                sound.play("click");
+                navigator.share({ title:"ドローン君 ふたりで協力プレイ", text:"部屋コード " + coop.code.toUpperCase(), url:coop.inviteLink() }).catch(function(){});
                 return;
             }
         }
     },
+
+    //招待リンクをコピー。できないブラウザでは、選んでコピーできる入力欄に出す
+    copyInvite:function(){
+        var link = coop.inviteLink();
+        var fallback = function(){ window.prompt("このリンクをコピーして相方に送ってください", link); };
+        if(navigator.clipboard && navigator.clipboard.writeText){
+            navigator.clipboard.writeText(link).then(function(){ coop.say("招待リンクをコピーしました"); }, fallback);
+        }else{
+            fallback();
+        }
+    },
+
     draw:function(){
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
@@ -826,66 +870,75 @@ var coopScreen = {
         ctx.fillText("ふたりで協力プレイ",CW/2,GS*2.2);
         ctx.font = "14px sans-serif";
         ctx.fillStyle = "#555";
-        ctx.fillText("ストーリーモードをふたりで。敵の体力は2倍、強化・装備はそれぞれ別です",CW/2,GS*3.8);
+        ctx.fillText("ストーリーモードをふたりで。敵の体力は2倍、強化・装備はそれぞれ別です（インターネット接続が必要）",CW/2,GS*3.8);
 
-        if(!coop.ready){
-            ctx.fillText("準備中…",CW/2,GS*8);
-        }else if(!coop.room){
+        if(!coop.available){
             ctx.fillStyle = "#c33";
             ctx.font = "bold 15px sans-serif";
             ctx.fillText("この画面では協力プレイを使えません。",CW/2,GS*7.5);
             ctx.font = "14px sans-serif";
             ctx.fillStyle = "#555";
-            ctx.fillText("協力プレイは、このページの作成者から個別に招待されたアカウント（または同じ組織のメンバー）だけが使えます。",CW/2,GS*8.6);
-            ctx.fillText("リンクだけで開いている場合は、作成者に Share メニューから招待してもらい、招待から開き直してください。",CW/2,GS*9.5);
-            ctx.fillText("（ログインしていない場合や、パソコンに保存したファイルで開いた場合も使えません）",CW/2,GS*10.4);
-            //診断：roomの許可の状態(granted/prompt/denied/unavailable)
-            ctx.font = "12px sans-serif";
-            ctx.fillStyle = "#888";
-            ctx.fillText("診断：通信機能の許可の状態 = " + (coop.perm || "確認中…"),CW/2,GS*11.6);
-            if(coop.perm == "prompt" || coop.perm == "denied"){
-                ctx.font = "bold 16px sans-serif";
-                coopPermButton.button(coop.perm == "prompt" ? "通信機能の利用を許可する" : "許可が拒否されています（Permissionsメニューで解除）", coop.perm == "prompt");
+            ctx.fillText("ブラウザ同士を直接つなぐ機能（WebRTC）が使えない環境です。",CW/2,GS*8.6);
+            ctx.fillText("Chrome・Edge・Safari・Firefox などの最新のブラウザで開いてください。",CW/2,GS*9.5);
+        }else if(coop.inRoom && coop.role == "host"){
+            if(coop.waiting){
+                ctx.font = "15px sans-serif";
+                ctx.fillStyle = "#555";
+                ctx.fillText("相方に部屋コードか招待リンクを送ってください。相方がつなぐと始まります",CW/2,GS*5.4);
+                //部屋コードを大きく
+                ctx.font = "bold 64px monospace";
+                ctx.fillStyle = "#000";
+                ctx.fillText(coop.code.toUpperCase().split("").join(" "),CW/2,GS*7.8);
+                ctx.font = "12px sans-serif";
+                ctx.fillStyle = "#777";
+                //長いアドレスは画面に収まるよう先頭を省く(コードの入った末尾を残す)
+                var link = coop.inviteLink();
+                while(link.length > 10 && ctx.measureText(link).width > CW - GS*2) link = "…" + link.slice(2);
+                ctx.fillText(link,CW/2,GS*9.9);
+                ctx.font = "bold 15px sans-serif";
+                coopCopyButton.button("招待リンクをコピー");
+                if(navigator.share) coopShareButton.button("リンクを送る（共有）");
+                else coopShareButton.button("リンクを送る（共有）",false);
+            }else{
+                ctx.font = "bold 20px sans-serif";
+                ctx.fillStyle = "#000";
+                ctx.fillText(coop.msg || "部屋を作っています…",CW/2,GS*7.5);
             }
-        }else if(coop.named && coop.role == "host"){
-            ctx.font = "bold 22px sans-serif";
-            ctx.fillStyle = "#000";
-            ctx.fillText("部屋「" + coop.code + "」で相方を待っています…",CW/2,GS*7.5);
-            ctx.font = "14px sans-serif";
-            ctx.fillStyle = "#555";
-            ctx.fillText("相方がこのページを開いて「ふたりで協力プレイ」からこの部屋を選ぶと始まります",CW/2,GS*8.8);
-        }else if(coop.named){
+        }else if(coop.inRoom){
             ctx.font = "bold 20px sans-serif";
             ctx.fillStyle = "#000";
-            ctx.fillText("部屋「" + coop.code + "」に参加しました。ホストを待っています…",CW/2,GS*7.5);
+            ctx.fillText(coop.msg || "つないでいます…",CW/2,GS*7.5);
         }else{
             ctx.font = "bold 22px serif";
             coopCreateButton.button("部屋を作る（ホスト）");
+            coopJoinButton.button("部屋に入る（コードを入力）");
             ctx.font = "13px sans-serif";
-            ctx.fillStyle = "#555";
-            ctx.fillText("募集中の部屋（選ぶと参加します）",CW/2,GS*8.8);
-            var rooms = coop.openRooms();
-            ctx.font = "bold 16px sans-serif";
-            for(var i=0; i<Math.min(4,rooms.length); i++) coopRoomButtons[i].button("部屋「" + rooms[i] + "」に参加");
-            if(rooms.length == 0){
-                ctx.fillStyle = "#999";
-                ctx.font = "13px sans-serif";
-                ctx.fillText("いまは募集中の部屋がありません",CW/2,GS*10);
-            }
+            ctx.fillStyle = "#777";
+            ctx.fillText("招待リンクを開いた場合は、自動で部屋に入ります",CW/2,GS*11.6);
         }
-        if(coop.msg){
+        //エラーなどのお知らせ
+        if(coop.msg && !(coop.inRoom && !coop.waiting)){
             ctx.fillStyle = "#c33";
             ctx.font = "bold 14px sans-serif";
-            ctx.fillText(coop.msg,CW/2,GS*14.3);
-        }
-        //診断情報
-        if(coop.room){
-            ctx.font = "12px sans-serif";
-            ctx.fillStyle = "#888";
-            ctx.fillText(coop.diagnosis(),CW/2,GS*17.5);
+            ctx.fillText(coop.msg,CW/2,GS*14.1);
         }
         ctx.font = "14px sans-serif";
-        coopBackButton.button(coop.named ? "やめてタイトルへ" : "タイトルへ");
+        coopBackButton.button(coop.inRoom ? "やめてタイトルへ" : "タイトルへ");
         ctx.fillStyle = "#000";
     }
 };
+
+//招待リンク(…#join=コード)で開かれたら、少し待ってから自動で部屋に入る
+(function(){
+    var m = location.hash.match(/join=([a-z0-9]{4})/i);
+    if(!m) return;
+    var code = m[1].toLowerCase();
+    //リンクを開き直したときに二重に入らないよう、アドレスから外しておく
+    try{ history.replaceState(null, "", location.href.split("#")[0]); }catch(e){}
+    setTimeout(function(){
+        coop.init();
+        if(!coop.available) return;
+        page.change(6);
+        coop.joinRoom(code);
+    }, 300);
+})();
