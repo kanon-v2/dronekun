@@ -49,6 +49,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | `draw.js` | 1/60秒刻みの更新ループと描画。最後に読み込む |
 
 画像は `images/game/` 以下(ドローン君の6方向とポインタ)。それ以外の見た目はすべてキャンバスに図形で描いている。
+`images/ogp.png`(1200×630)は、リンクを貼ったときのプレビュー画像(`index.html` の OGP タグ)。WAVE5の女王蜂戦をヘッドレスEdgeで撮ったもの。ページの紹介文やプレビューには、ストーリーのネタバレ(同胞・人間の兵器・真実)を出さない。
 
 ## 仕組み
 
