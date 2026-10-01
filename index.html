@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="人間のためにモンスターと戦うドローン君が、やがて真実に気付く。全20WAVEのストーリー付きシューティング。">
+<title>ドローン君</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Zen+Kaku+Gothic+New:wght@400;700&display=swap">
+<style>
+  /* ゲーム画面(白地)に合わせた単一テーマ */
+  :root{
+    --ground:#eceeea;
+    --ink:#1b1d1f;
+    --muted:#6a6f6c;
+    --line:#c9ccc7;
+    --paper:#ffffff;
+    --accent:#d23a32;
+    color-scheme:light;
+  }
+  body{
+    background:var(--ground);
+    color:var(--ink);
+    font-family:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
+    font-size:15px;
+    line-height:1.7;
+  }
+  .wrap{
+    max-width:992px;
+    margin:0 auto;
+    padding-inline:16px;
+    padding-block:28px 40px;
+    display:grid;
+    /* キャンバス本来の幅(960px)に引っぱられて横にはみ出さないように */
+    grid-template-columns:minmax(0,1fr);
+    gap:20px;
+  }
+  header{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:baseline;
+    justify-content:space-between;
+    gap:4px 24px;
+  }
+  h1{
+    margin:0;
+    font-family:"DotGothic16","Zen Kaku Gothic New",monospace;
+    font-weight:400;
+    font-size:clamp(34px,6vw,52px);
+    line-height:1.1;
+    letter-spacing:0.04em;
+    text-wrap:balance;
+  }
+  h1 span{ color:var(--accent); }
+  .lead{
+    margin:0;
+    color:var(--muted);
+    max-width:36em;
+  }
+
+  /* ゲーム画面：960x540を保ったまま画面幅に合わせて縮む */
+  #Bigbox{
+    border:3px solid var(--ink);
+    background:var(--paper);
+    box-shadow:6px 6px 0 var(--ink);
+    line-height:0;
+  }
+  #Canvas{
+    display:block;
+    width:100%;
+    max-width:100%;
+    height:auto;
+    aspect-ratio:16 / 9;
+    cursor:none;
+    /* タッチ操作中にページがスクロール・拡大しないように */
+    touch-action:none;
+    -webkit-user-select:none;
+    user-select:none;
+    -webkit-touch-callout:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+  /* 全画面：黒地の中央に16:9で最大化 */
+  #Bigbox:fullscreen{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:#000;
+    border:0;
+    box-shadow:none;
+  }
+  #Bigbox:fullscreen #Canvas{
+    width:min(100vw, calc(100vh * 16 / 9));
+  }
+  .bar{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px 20px;
+  }
+  .bar p{ margin:0; color:var(--muted); font-size:13px; }
+  #fullBtn{
+    font:inherit;
+    font-weight:700;
+    font-size:14px;
+    padding:8px 18px;
+    color:var(--paper);
+    background:var(--ink);
+    border:0;
+    border-radius:3px;
+    box-shadow:3px 3px 0 var(--accent);
+    cursor:pointer;
+  }
+  #fullBtn:focus-visible{ outline:3px solid var(--accent); outline-offset:3px; }
+
+  .how{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+    gap:12px 28px;
+    margin:0;
+    padding:0;
+    list-style:none;
+  }
+  .how li{
+    display:grid;
+    gap:2px;
+  }
+  .how b{
+    font-size:12px;
+    letter-spacing:0.12em;
+    color:var(--muted);
+    font-weight:700;
+  }
+  kbd{
+    display:inline-block;
+    padding:0 7px;
+    margin-right:2px;
+    font-family:inherit;
+    font-size:13px;
+    line-height:1.6;
+    background:var(--paper);
+    border:1px solid var(--ink);
+    border-bottom-width:3px;
+    border-radius:3px;
+  }
+  .note{
+    margin:0;
+    padding-top:14px;
+    border-top:1px solid var(--line);
+    color:var(--muted);
+    font-size:13px;
+  }
+  .note strong{ color:var(--accent); font-weight:700; }
+  footer{
+    color:var(--muted);
+    font-size:12px;
+    text-align:right;
+  }
+</style>
+<style>
+  /* Artifactでは自動で入っていた最小限のリセット */
+  html{ -webkit-text-size-adjust:100%; }
+  body{ margin:0; }
+  img{ max-width:100%; }
+  [hidden]{ display:none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ドローン君<span>.</span></h1>
+    <p class="lead">人間のためにモンスターと戦い続けるドローン君。けれど、敵の中に自分とそっくりな姿が混じりはじめて——。全20WAVEのストーリー付きシューティング。</p>
+  </header>
+
+  <div id="Bigbox"><canvas id="Canvas" width="960" height="540" aria-label="ドローン君 ゲーム画面"></canvas></div>
+
+  <div class="bar">
+    <p>スマホ・タブレットは横向きがおすすめです。</p>
+    <button id="fullBtn" type="button" hidden>全画面で遊ぶ</button>
+  </div>
+
+  <ul class="how">
+    <li><b>移動</b><span><kbd>マウス</kbd> ドローン君がポインタを追いかける。タッチは画面のどこでもドラッグ（指の動いた分だけ動く）</span></li>
+    <li><b>攻撃</b><span>装備が射程内の敵を自動で攻撃</span></li>
+    <li><b>衝撃波</b><span><kbd>クリック</kbd> またはタッチ時は右下のボタン。燃料40で周りの弾を消し、五色の龍が敵に食らいついて大爆発</span></li>
+    <li><b>燃料</b><span>動くと減り、止まると回復。空になると鈍くなる</span></li>
+    <li><b>強化</b><span>パーツで能力を上げ、装備枠を解放</span></li>
+    <li><b>装備</b><span>WAVEクリアごとに1つ獲得。相性の良い2つでシナジー発動</span></li>
+    <li><b>協力プレイ</b><span>ふたりで遊べる協力プレイは、この公開版では準備中です</span></li>
+    <li><b>弾よけ</b><span>当たり判定はドローン中心の赤い点だけ。すれすれでかすると燃料が回復</span></li>
+    <li><b>ボス・レア敵</b><span>5WAVEごとにボス戦。金色の敵や補給機を見つけたら逃さず倒そう</span></li>
+    <li><b>サウンド</b><span>画面右下の BGM / SE で切り替え。<kbd>M</kbd> でまとめて消音</span></li>
+  </ul>
+
+  <p class="note"><strong>マウスでもタッチでも遊べます。</strong>マウスのポインタがゲーム画面の外に出ると一時停止します。音はゲーム画面を一度クリック（タップ）すると鳴り始めます。セーブとハイスコアは、遊んでいるブラウザの中だけに保存されます。</p>
+
+  <footer>&copy; Studio Games</footer>
+</div>
+
+<script src="scripts/drone/common.js"></script>
+<script src="scripts/drone/sound.js"></script>
+<script src="scripts/drone/equipment.js"></script>
+<script src="scripts/drone/bosses.js"></script>
+<script src="scripts/drone/startScreen.js"></script>
+<script src="scripts/drone/mainScreen.js"></script>
+<script src="scripts/drone/dragons.js"></script>
+<script src="scripts/drone/forces.js"></script>
+<script src="scripts/drone/upgradeScreen.js"></script>
+<script src="scripts/drone/gameoverScreen.js"></script>
+<script src="scripts/drone/story.js"></script>
+<script src="scripts/drone/coop.js"></script>
+<script src="scripts/drone/draw.js"></script>
+<script>
+  //全画面ボタン(使えないブラウザでは出さない)。スマホでは横向きに固定を試す
+  (function(){
+    var btn = document.getElementById("fullBtn");
+    var box = document.getElementById("Bigbox");
+    if(!document.fullscreenEnabled || !box.requestFullscreen) return;
+    btn.hidden = false;
+    btn.addEventListener("click", function(){
+      box.requestFullscreen().then(function(){
+        if(screen.orientation && screen.orientation.lock){
+          screen.orientation.lock("landscape").catch(function(){});
+        }
+      }).catch(function(){});
+    });
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+# 改行コードをリポジトリ内ではLFにそろえる(WindowsとそれぞれのOSでの揺れを防ぐ)
+* text=auto eol=lf
+
+# PowerShellのスクリプトはWindowsで実行するのでCRLFのまま
+*.ps1 text eol=crlf
+
+# 画像はそのまま
+*.png binary

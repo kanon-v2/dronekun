@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<!--
+  動作確認(スモークテスト)
+  tools/run-smoke.ps1 からヘッドレスのブラウザで開き、結果を <pre id="result"> に書き出す。
+  ブラウザで直接開いても実行できる(画面の下に結果が出る)。
+-->
+<html lang="ja"><head><meta charset="UTF-8"><base href="../"><!-- 画像などのパスをプロジェクト直下から解決する --><title>ドローン君 スモークテスト</title><style>body{margin:0}</style></head>
+<body><div id="Bigbox"><canvas id="Canvas"></canvas></div><pre id="result">running...</pre>
+<script>
+var errors = [];
+window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.filename || "").split("/").pop() + ":" + e.lineno); });
+</script>
+<script src="scripts/drone/common.js"></script>
+<script src="scripts/drone/sound.js"></script>
+<script src="scripts/drone/equipment.js"></script>
+<script src="scripts/drone/bosses.js"></script>
+<script src="scripts/drone/startScreen.js"></script>
+<script src="scripts/drone/mainScreen.js"></script>
+<script src="scripts/drone/dragons.js"></script>
+<script src="scripts/drone/forces.js"></script>
+<script src="scripts/drone/upgradeScreen.js"></script>
+<script src="scripts/drone/gameoverScreen.js"></script>
+<script src="scripts/drone/story.js"></script>
+<script src="scripts/drone/coop.js"></script>
+<script src="scripts/drone/draw.js"></script>
+<script>
+var out = [], fails = 0;
+function L(s){ out.push(s); }
+function check(name, ok, detail){ if(!ok) fails++; L((ok ? "OK   " : "NG   ") + name + (detail ? "  (" + detail + ")" : "")); }
+function draw1(){ ctx.fillStyle = "white"; ctx.fillRect(0,0,CW,CH); screens[page.number].draw(); }
+var frames = 0;
+//よけながら円を描いて飛ぶボット
+function bot(){
+    frames++; MouseIn = true;
+    MouseX = 480 + 300*Math.cos(frames/60); MouseY = 270 + 170*Math.sin(frames/45);
+    var tx = 0, ty = 0, list = enemyShots.concat(enemies.filter(function(e){ return !e.harmless; }));
+    for(var i=0; i<list.length; i++){ var o = list[i], dx = drone.X - o.x, dy = drone.Y - o.y, d = Math.hypot(dx,dy) || 1, R = (o.r || 5) + 90; if(d < R){ tx += dx/d*(R-d); ty += dy/d*(R-d); } }
+    if(tx || ty){ MouseX = drone.X + tx*2; MouseY = drone.Y + ty*2; }
+    MouseX = Math.max(30, Math.min(CW-30, MouseX)); MouseY = Math.max(30, Math.min(CH-30, MouseY));
+}
+function skipStory(){ var n = 0; while(page.number == 4 && n < 300){ Click = 1; storyScreen.update(); Click = 0; n++; } }
+function setup(w, owned, slots, lv){ save.clear(); game.reset(); game.wave = w; game.owned = owned; game.slots = slots; game.slotCount = 3; for(var k in game.level) game.level[k] = lv; game.seen = { prologue:true, s3:true, s5:true, s8:true, s10:true, s12:true, reveal:w > REVEAL_WAVE, s17:true, s19:true }; }
+
+try{
+    var keepSave = localStorage.getItem("dronekun_save"), keepBest = localStorage.getItem("dronekun_best"), keepClear = localStorage.getItem("dronekun_cleared");
+
+    // 1. ストーリーと画面の流れ
+    save.clear(); game.reset(); page.change(0); draw1();
+    MouseIn = true; MouseX = startButton.X + 10; MouseY = startButton.Y + 10; Click = 1; startScreen.update(); Click = 0;
+    check("はじめから → プロローグ", page.number == 4 && storyScreen.id == "prologue");
+    draw1(); skipStory();
+    check("プロローグ → WAVE1", page.number == 1 && game.wave == 1);
+    var flow = [];
+    [3,5,15,19].forEach(function(w){
+        game.wave = w; page.change(1);
+        enemies = []; mainScreen.toSpawn = 0; mainScreen.state = "clear"; mainScreen.stateTime = 149; mainScreen.update();
+        flow.push(w + ":" + (page.number == 4 ? storyScreen.id : "-"));
+        draw1(); skipStory();
+    });
+    check("WAVEクリア後のストーリー", flow.join(" ") == "3:s3 5:s5 15:reveal 19:s19", flow.join(" "));
+    game.wave = FINAL_WAVE; page.change(1); enemies = []; mainScreen.toSpawn = 0; mainScreen.state = "clear"; mainScreen.stateTime = 149; mainScreen.update();
+    skipStory(); draw1();
+    check("WAVE20クリア → エンディング", page.number == 5);
+
+    // 2. 通常の戦闘(序盤・人間との戦い・ボス)
+    [[2,"序盤"],[17,"人間との戦い"],[5,"ボス 女王蜂"],[10,"ボス 移動要塞"],[20,"ボス ドローン君改"]].forEach(function(c){
+        setup(c[0], { gun:3, missile:2, tesla:2 }, ["gun","missile","tesla"], 4);
+        page.change(1); var f = 0, before = errors.length;
+        while(page.number == 1 && f < 60*25){ bot(); f++; mainScreen.hp = 9; if(f % 200 == 0) Click = 1; mainScreen.update(); Click = 0; if(f % 10 == 0) draw1(); }
+        check("戦闘 WAVE" + c[0] + "（" + c[1] + "）を25秒", errors.length == before, "敵" + enemies.length + " 弾" + enemyShots.length);
+    });
+
+    // 3. 全シナジー
+    SYNERGIES.forEach(function(s){
+        setup(7, {}, [s.a, s.b, null], 5); game.owned[s.a] = 3; game.owned[s.b] = 3;
+        page.change(1); var f = 0, before = errors.length;
+        while(page.number == 1 && f < 60*12){ bot(); f++; mainScreen.hp = 9; mainScreen.update(); if(f % 10 == 0) draw1(); }
+        check("シナジー " + s.name, errors.length == before);
+    });
+
+    // 4. 強化画面・報酬・能力リセット
+    setup(4, { gun:1 }, ["gun",null,null], 3); game.parts = 50; game.pendingReward = 2;
+    page.change(2); draw1();
+    MouseX = rewardCards[0].X + 20; MouseY = rewardCards[0].Y + 20; Click = 1; upgradeScreen.update(); Click = 0;
+    MouseX = rewardCards[1].X + 20; MouseY = rewardCards[1].Y + 20; Click = 1; upgradeScreen.update(); Click = 0;
+    check("報酬を2回選べる", upgradeScreen.state == "main" && game.pendingReward == 0);
+    upgradeScreen.tab = "stats"; var refund = upgradeScreen.refundValue();
+    MouseX = resetButton.X + 10; MouseY = resetButton.Y + 10; Click = 1; upgradeScreen.update(); Click = 0; Click = 1; upgradeScreen.update(); Click = 0;
+    check("能力リセットでパーツ返却", game.level.speed == 1 && refund > 0, "返却 " + refund);
+    upgradeScreen.tab = "equip"; draw1();
+
+    // 5. ストーリー確認モード(Qキー)
+    page.change(0);
+    document.dispatchEvent(new KeyboardEvent("keydown", { code:"KeyQ" }));
+    check("Qキーでストーリー確認モード", page.number == 4 && storyDebug.active);
+    document.dispatchEvent(new KeyboardEvent("keydown", { code:"Escape" }));
+    check("Escでタイトルへ", page.number == 0 && !storyDebug.active);
+
+    //テスト前のセーブ等を戻す
+    save.clear();
+    if(keepSave) localStorage.setItem("dronekun_save", keepSave);
+    if(keepBest) localStorage.setItem("dronekun_best", keepBest);
+    if(keepClear) localStorage.setItem("dronekun_cleared", keepClear); else localStorage.removeItem("dronekun_cleared");
+}catch(e){ fails++; L("NG   例外 " + e.stack); }
+
+check("スクリプトエラーなし", errors.length == 0, errors.slice(0,5).join(" / "));
+L("");
+L(fails == 0 ? "RESULT: OK" : "RESULT: NG (" + fails + "件)");
+document.getElementById("result").textContent = out.join("\n");
+</script>
+</body></html>

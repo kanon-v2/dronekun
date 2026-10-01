@@ -1,0 +1,891 @@
+//------------------------------------------------------------------------------
+//  ふたりで協力プレイ
+//  Artifactのroom機能の「presence(自分の状態を部屋の全員に共有する)」だけで通信する
+//  (presenceは閲覧権限の人でも送れるので、相手は共有された人なら誰でも参加できる)
+//
+//  ・ホスト(部屋を作った人)の画面で敵・敵の弾・アイテムを動かし、状態をゲストへ送る
+//  ・ゲストは自分のドローン君と武器を自分の画面で動かし、敵に与えたダメージ・
+//    拾ったアイテム・衝撃波を「合計値」でホストへ送る(途中が抜けても合計なので狂わない)
+//  ・被弾の判定は、それぞれが自分のドローン君について行う
+//  ・強化・装備・パーツはそれぞれ別。敵の体力は2倍
+//------------------------------------------------------------------------------
+const COOP_TYPES  = ["bug","dasher","shooter","tank","spinner","bomber","kin","mdrone","heli","panzer","goldbug","carrier","queen","fortress","kai"];
+const COOP_SHOTS  = ["normal","small","big","water","missile","dragon"];
+const COOP_PICKS  = ["part","fuel","capsule"];
+const COOP_MODES  = ["enter","idle","aim","dash","spiral","triple","laserAim","laser"];
+const COOP_STATES = ["start","play","clear","over"];
+const COOP_LIMIT  = 3600;   //1回に送る状態の大きさの上限(presenceは4KBまで)
+const COOP_HP_MUL = 2;      //協力プレイでの敵の体力の倍率
+const P2_COLOR    = "40,130,230";
+
+var enemySeq = 0;           //敵の通し番号(ホストとゲストで同じ敵を指すため)
+var pickupSeq = 0;
+
+//敵が狙うプレイヤー(いちばん近い、倒れていない方)
+function nearestPlayer(_x,_y){
+    var me = mainScreen.down ? null : drone;
+    var p = coop.partnerTarget();
+    if(!me && !p) return drone;
+    if(!me) return p;
+    if(!p) return me;
+    return Math.hypot(p.X - _x, p.Y - _y) < Math.hypot(me.X - _x, me.Y - _y) ? p : me;
+}
+var aimAt = null;   //いま動かしている敵が狙っている相手(bosses.js・forces.jsから使う)
+
+var coop = {
+    room:null,          //roomの機能(使えない画面ではnull)
+    checked:false,
+    active:false,       //協力プレイ中か
+    role:null,          //"host" か "guest"
+    code:null,
+    named:null,         //参加している部屋
+    waiting:false,      //ホストが相方を待っている
+    partner:null,       //相方の状態
+    look:new DroneLook(),
+    snap:null,          //ゲスト：ホストから届いた最新の状態
+    snapQ:-1,
+    appliedQ:-1,
+    framesSinceSnap:0,
+    sendQ:0,
+    step:0,
+    //ゲスト→ホスト(合計値)
+    dmg:{},             //{e12:[ダメージ×10, EMP回数, 水回数]}
+    got:[],             //拾ったアイテムの番号(最近のもの)
+    blast:[0,0,0],      //[衝撃波の回数, x, y]
+    //ホスト側で反映済みの値
+    applied:{},
+    gotDone:{},
+    blastDone:0,
+    //出来事(龍の大技・ボス撃破)
+    events:[],
+    evSeq:0,
+    evSeen:0,
+    localReady:false,
+    msg:"",
+    msgTime:0,
+    grazeCd:0,
+    struck:{},
+
+    //------------------------------------------------------------ 準備・部屋
+    init:function(){
+        if(this.checked) return;
+        this.checked = true;
+        var self = this;
+        if(!window.claude || !window.claude.use){ this.room = null; this.ready = true; this.perm = "claudeなし"; return; }
+        //roomの許可の状態を調べる(roomが使えなかったときだけ。なぜ使えないかの手がかりとして表示する)
+        var checkPerm = function(){
+            window.claude.use("permissions").then(function(p){
+                self.permApi = p;
+                if(!p){ self.perm = "確認できない"; return; }
+                p.state("room").then(function(s){ self.perm = s; });
+            }).catch(function(){ self.perm = "確認できない"; });
+        };
+        window.claude.use("room").then(function(r){
+            self.room = r;
+            self.ready = true;
+            if(!r){ checkPerm(); return; }
+            //ロビーに自分の在席を知らせ、参加者の変化を受け取る登録をしておく
+            //(読むだけだと、ほかの画面の状態が届かない場合があるため)
+            try{
+                r.onConnection(function(c){ self.connected = c; }, function(e){ self.lastError = "接続:" + e.code; });
+                r.onPeers(function(ch){ self.lobbyCount = ch.peers.length; }, function(e){ self.lastError = "参加者:" + e.code; });
+                r.presence({ here:true }).catch(function(e){ self.lastError = "在席:" + (e && e.code); });
+            }catch(e){ self.lastError = "登録:" + e.message; }
+        }).catch(function(){ self.room = null; self.ready = true; checkPerm(); });
+    },
+
+    //roomの許可を求める(許可待ちのとき)。許可されたらページを開き直してもらう
+    askPermission:function(){
+        var self = this;
+        if(!this.permApi) return;
+        this.permApi.request(["room"]).then(function(res){
+            self.perm = res.room || "unavailable";
+            if(self.perm == "granted") self.say("許可されました。ページを開き直すと協力プレイを使えます");
+        });
+    },
+
+    //部屋選びの画面に出す診断情報(うまくつながらないときの手がかり)
+    diagnosis:function(){
+        if(!this.room) return "";
+        var ps = [];
+        try{ ps = this.room.peers(); }catch(e){}
+        var others = 0, hosting = 0;
+        for(var i=0; i<ps.length; i++){
+            if(ps[i].sameTab) continue;
+            others++;
+            if(ps[i].presence && ps[i].presence.coop) hosting++;
+        }
+        return "診断：接続" + (this.connected ? "○" : "×") + "　このページを開いているほかの画面 " + others +
+               "（うち部屋を作っている画面 " + hosting + "）" + (this.lastError ? "　エラー " + this.lastError : "");
+    },
+    isHost:function(){ return this.active && this.role == "host"; },
+    isGuest:function(){ return this.active && this.role == "guest"; },
+    hpMul:function(){ return this.active ? COOP_HP_MUL : 1; },
+
+    //ロビーで募集中の部屋(自分以外)
+    openRooms:function(){
+        if(!this.room) return [];
+        var list = [];
+        var ps = this.room.peers();
+        for(var i=0; i<ps.length; i++){
+            var c = ps[i].presence && ps[i].presence.coop;
+            //自分のアカウントでも、別の端末・別のタブで作った部屋は表示する(ひとりで動作確認できるように)
+            if(c && c.open && !ps[i].sameTab && typeof c.code == "string") list.push(c.code);
+        }
+        return list;
+    },
+
+    createRoom:function(){
+        if(!this.room) return;
+        var chars = "abcdefghjkmnpqrstuvwxyz23456789", code = "";
+        for(var i=0; i<4; i++) code += chars.charAt(Math.floor(Math.random()*chars.length));
+        var self = this;
+        this.msg = "部屋を作っています…";
+        this.room.join("dk-" + code).then(function(n){
+            self.named = n;
+            self.code = code;
+            self.role = "host";
+            self.waiting = true;
+            n.presence({ role:"host" }).catch(function(e){ self.lastError = "部屋の在席:" + (e && e.code); });
+            self.room.presence({ here:true, coop:{ code:code, open:true } }).catch(function(e){ self.lastError = "募集:" + (e && e.code); });
+            self.watchPeers();
+            self.msg = "";
+        }).catch(function(e){ self.msg = "部屋を作れませんでした（" + (e && e.code) + "）"; });
+    },
+
+    joinRoom:function(_code){
+        if(!this.room) return;
+        var self = this;
+        this.msg = "部屋に入っています…";
+        this.room.join("dk-" + _code).then(function(n){
+            //満員(もうゲストがいる)なら出る
+            var ps = n.peers(), guests = 0;
+            for(var i=0; i<ps.length; i++) if(!ps[i].sameTab && ps[i].presence && ps[i].presence.role == "guest") guests++;
+            if(guests > 0){ n.leave(); self.msg = "その部屋は満員でした"; return; }
+            self.named = n;
+            self.code = _code;
+            self.role = "guest";
+            n.presence({ role:"guest" }).catch(function(){});
+            self.watchPeers();
+            self.msg = "ホストの応答を待っています…";
+        }).catch(function(e){ self.msg = "部屋に入れませんでした（" + (e && e.code) + "）"; });
+    },
+
+    watchPeers:function(){
+        var self = this;
+        this.named.onPeers(function(ch){
+            for(var i=0; i<ch.left.length; i++){
+                var p = ch.left[i];
+                if(p.sameTab || !p.presence) continue;
+                if(p.presence.role == (self.role == "host" ? "guest" : "host")) self.partnerLeft();
+            }
+        });
+    },
+
+    //ゲーム開始(ホストは相方が来たとき、ゲストはホストの状態が届いたとき)
+    startGame:function(){
+        this.active = true;
+        this.waiting = false;
+        game.reset();
+        enemySeq = 0;
+        pickupSeq = 0;
+        this.resetExchange();
+        this.localReady = false;
+        this.msg = "";
+        if(this.role == "host") this.room.presence({ coop:{ code:this.code, open:false } }).catch(function(){});
+        storyScreen.start("prologue",function(){ page.change(2); });
+    },
+
+    resetExchange:function(){
+        this.dmg = {}; this.got = []; this.blast = [0,0,0];
+        this.applied = {}; this.gotDone = {}; this.blastDone = 0;
+        this.events = []; this.evSeq = 0; this.evSeen = 0;
+        this.snap = null; this.snapQ = -1; this.appliedQ = -1;
+        this.partner = null;
+        this.struck = {};
+    },
+
+    partnerLeft:function(){
+        if(this.role == "guest"){
+            this.leave();
+            startScreen.notice = "ホストとの接続が切れたので、タイトルに戻りました";
+            page.change(0);
+        }else{
+            this.partner = null;
+            this.say("相方が退出しました。ひとりで続けます");
+        }
+    },
+
+    leave:function(){
+        if(this.named){ try{ this.named.leave(); }catch(e){} }
+        if(this.room) this.room.presence({ coop:null }).catch(function(){});
+        this.named = null;
+        this.active = false;
+        this.role = null;
+        this.waiting = false;
+        this.partner = null;
+        this.localReady = false;
+    },
+
+    say:function(_m){ this.msg = _m; this.msgTime = 240; },
+
+    //相方(敵の狙い用)
+    partnerTarget:function(){
+        if(!this.active || !this.partner || this.partner.down) return null;
+        if(this.role == "host" && page.number == 1 && this.partner.page != 1) return null;
+        return this.partner.pos;
+    },
+
+    //------------------------------------------------------------ 毎フレーム
+    update:function(){
+        if(this.msgTime > 0 && --this.msgTime == 0) this.msg = "";
+        if(!this.named) return;
+        if(this.grazeCd > 0) this.grazeCd--;
+        this.framesSinceSnap++;
+
+        //相方のpresenceを読む
+        var ps = this.named.peers(), other = null;
+        for(var i=0; i<ps.length; i++){
+            var p = ps[i];
+            if(p.sameTab || !p.presence) continue;
+            if(p.presence.role == (this.role == "host" ? "guest" : "host")) other = p.presence;
+        }
+
+        if(this.role == "host"){
+            if(this.waiting && other){ this.startGame(); }
+            if(other && other.g) this.readGuest(other.g);
+            if(!this.active) return;
+            //両方の準備ができたら出撃
+            if(page.number == 2 && this.localReady && (!this.partner || this.partner.rd == game.wave)){
+                this.localReady = false;
+                page.change(1);
+            }
+            //ふたりとも倒れたらゲームオーバー
+            if(page.number == 1 && mainScreen.down && this.partner && this.partner.down && mainScreen.state != "over"){
+                mainScreen.state = "over";
+                mainScreen.stateTime = 0;
+                sound.stopMusic();
+            }
+        }else{
+            if(other && other.s) this.readHost(other.s);
+        }
+        this.readEvents(other);
+    },
+
+    //presenceで送る(2フレームに1回＝秒間30回)
+    send:function(){
+        if(!this.named) return;
+        if(++this.step % 2) return;
+        try{
+            if(this.role == "host") this.named.presence({ role:"host", s:this.buildHost() }).catch(function(){});
+            else this.named.presence({ role:"guest", g:this.buildGuest() }).catch(function(){});
+        }catch(e){}
+    },
+
+    phase:function(){
+        switch(page.number){ case 1: return "b"; case 3: return "o"; case 5: return "e"; }
+        return "u";
+    },
+
+    //------------------------------------------------------------ ホスト→ゲスト
+    buildHost:function(){
+        var s = { q:++this.sendQ, ph:this.phase(), w:game.wave, sc:game.score, ev:this.events, rd:this.localReady ? game.wave : 0 };
+        if(!this.active) return s;
+        var M = mainScreen;
+        var r = Math.round;
+        s.h = [r(drone.X), r(drone.Y), drone.look.shown, M.hp, M.maxHp, M.down ? 1 : 0, page.number];
+        if(page.number != 1) return s;
+        s.st = COOP_STATES.indexOf(M.state);
+        s.stt = M.stateTime;
+        s.bw = M.bossWave ? 1 : 0;
+        s.ts = M.toSpawn;
+        //相方に近いものから順に送る(大きすぎるときは遠いものから削る)
+        var gx = this.partner ? this.partner.pos.X : drone.X, gy = this.partner ? this.partner.pos.Y : drone.Y;
+        var byDist = function(a,b){ return Math.hypot(a.x - gx, a.y - gy) - Math.hypot(b.x - gx, b.y - gy); };
+        var ens = enemies.filter(function(e){ return !e.dead; }).sort(byDist);
+        var shs = enemyShots.slice().sort(byDist);
+        var pks = pickups.slice().sort(byDist);
+        var arm = this.armsSummary();
+        var caps = [60,110,30,1];   //敵・弾・アイテム・武器
+        for(var tries=0; tries<30; tries++){
+            s.e = []; s.b = null; s.bm = null; s.bk = null;
+            for(var i=0; i<Math.min(caps[0],ens.length); i++) this.packEnemy(ens[i], s);
+            s.s = [];
+            for(var i=0; i<Math.min(caps[1],shs.length); i++){
+                var b = shs[i];
+                s.s.push(r(b.x), r(b.y), r(b.vx*10), r(b.vy*10), Math.max(0,COOP_SHOTS.indexOf(b.kind || "normal")));
+            }
+            s.p = [];
+            for(var i=0; i<Math.min(caps[2],pks.length); i++){
+                var p = pks[i];
+                s.p.push(p.id, r(p.x), r(p.y), COOP_PICKS.indexOf(p.kind));
+            }
+            s.a = caps[3] ? arm : 0;
+            if(JSON.stringify(s).length <= COOP_LIMIT) break;
+            if(caps[3]){ caps[3] = 0; continue; }
+            if(caps[1] > 30){ caps[1] -= 15; continue; }
+            if(caps[2] > 8){ caps[2] -= 6; continue; }
+            if(caps[0] > 15){ caps[0] -= 6; continue; }
+            caps[1] = Math.max(0, caps[1] - 10);
+        }
+        return s;
+    },
+
+    packEnemy:function(_e,_s){
+        var r = Math.round;
+        var p1 = 0, p2 = 0;
+        switch(_e.type){
+            case "dasher":  p1 = r(Math.atan2(_e.aimY || 0,_e.aimX || 1)*100); p2 = _e.timer; break;
+            case "shooter": p1 = r((_e.face || 0)*100); p2 = r(_e.timer); break;
+            case "spinner": p1 = r((_e.spin || 0)*100); p2 = _e.firing; break;
+            case "bomber":  p2 = _e.fuse; break;
+            case "kin":     p2 = _e.tintIdx || 0; break;
+            case "heli":    p1 = r((_e.face || 0)*100); break;
+            case "panzer":  p1 = r((_e.turret || 0)*100); break;
+        }
+        var flags = (_e.flash > 0 ? 1 : 0) | (_e.slow > 0 ? 2 : 0) | (_e.wet > 0 ? 4 : 0) | (_e.enraged ? 8 : 0);
+        _s.e.push(_e.id, COOP_TYPES.indexOf(_e.type), r(_e.x), r(_e.y), r(Math.max(0,_e.hp)/_e.maxHp*100), p1, p2, flags);
+        if(_e.boss){
+            var aimA = Math.atan2(_e.aimY || 0,_e.aimX || 1);
+            _s.b = [_e.id, COOP_MODES.indexOf(_e.mode), r((_e.angle || 0)*100), _e.count || 0, _e.phase || 0,
+                    r((_e.bladeA || 0)*100), _e.circleT || 0, r(aimA*100)];
+            if(_e.mines){ _s.bm = []; for(var i=0; i<_e.mines.length; i++) _s.bm.push(r(_e.mines[i].x), r(_e.mines[i].y), _e.mines[i].t); }
+            if(_e.strikes){ _s.bk = []; for(var i=0; i<_e.strikes.length; i++) _s.bk.push(r(_e.strikes[i].x), r(_e.strikes[i].y), _e.strikes[i].t); }
+        }
+    },
+
+    //自分の武器の見た目(相方の画面に描いてもらう)
+    armsSummary:function(){
+        var r = Math.round, a = {};
+        var take = function(list,n,f){ var o = []; for(var i=0; i<Math.min(n,list.length); i++) f(list[i],o); return o; };
+        a.b = take(arms.bullets,16,function(b,o){ o.push(r(b.x),r(b.y)); });
+        a.m = take(arms.missiles,8,function(m,o){ o.push(r(m.x),r(m.y),r(m.ang*10)); });
+        a.g = take(arms.bugs,6,function(b,o){ o.push(r(b.x),r(b.y)); });
+        a.w = take(arms.drops,16,function(w,o){ o.push(r(w.x),r(w.y)); });
+        a.n = take(arms.mines,9,function(m,o){ o.push(r(m.x),r(m.y)); });
+        if(arms.has("blade") && !mainScreen.down){
+            var B = arms.bladeInfo();
+            a.bl = [B.n, B.R, B.size, arms.syn.lightblade ? 1 : 0, r(arms.bladeAngle*100)];
+        }
+        if(arms.beams.length){
+            var L = arms.beams[arms.beams.length - 1];
+            a.L = [r(L.x), r(L.y), r(L.dx*100), r(L.dy*100), L.life, L.focus ? 1 : 0, L.w];
+        }
+        return a;
+    },
+
+    //------------------------------------------------------------ ゲスト→ホスト
+    buildGuest:function(){
+        var M = mainScreen, r = Math.round;
+        var g = {
+            x:r(drone.X), y:r(drone.Y), d:drone.look.shown, hp:M.hp, mh:M.maxHp, dn:M.down ? 1 : 0,
+            pg:page.number, rd:this.localReady ? game.wave : 0,
+            dm:this.dmg, got:this.got.slice(-30), bl:this.blast, ev:this.events
+        };
+        if(page.number == 1) g.a = this.armsSummary();
+        if(JSON.stringify(g).length > COOP_LIMIT){ g.a = 0; }
+        return g;
+    },
+
+    //ホスト：ゲストの状態を反映
+    readGuest:function(_g){
+        if(!this.partner) this.partner = { pos:{ X:_g.x, Y:_g.y }, look:new DroneLook() };
+        var P = this.partner;
+        P.tx = _g.x; P.ty = _g.y; P.dir = _g.d; P.hp = _g.hp; P.mh = _g.mh; P.down = !!_g.dn;
+        P.page = _g.pg; P.rd = _g.rd; P.arms = _g.a || null;
+        if(page.number != 1 || !this.active) return;
+        //敵へのダメージ(合計値の増えた分だけ反映)
+        var dm = _g.dm || {};
+        for(var i=0; i<enemies.length; i++){
+            var e = enemies[i], k = "e" + e.id, v = dm[k];
+            if(!v) continue;
+            var done = this.applied[k] || [0,0,0];
+            var d = (v[0] - done[0])/10;
+            if(v[1] > done[1]) e.slow = 150;
+            if(v[2] > done[2]) e.wet = WET_TIME;
+            this.applied[k] = [v[0], v[1], v[2]];
+            if(d > 0) mainScreen.hitEnemy(e, d, "partner");
+        }
+        //ゲストが拾ったアイテムを消す
+        var got = _g.got || [];
+        for(var i=0; i<got.length; i++){
+            if(this.gotDone[got[i]]) continue;
+            this.gotDone[got[i]] = true;
+            for(var j=pickups.length-1; j>=0; j--) if(pickups[j].id == got[i]) pickups.splice(j,1);
+        }
+        //ゲストの衝撃波：まわりの敵の弾を消す
+        var bl = _g.bl || [0,0,0];
+        if(bl[0] > this.blastDone){
+            this.blastDone = bl[0];
+            for(var i=enemyShots.length-1; i>=0; i--){
+                if(Math.hypot(enemyShots[i].x - bl[1], enemyShots[i].y - bl[2]) < BLAST_RADIUS) enemyShots.splice(i,1);
+            }
+        }
+    },
+
+    //ゲスト：ホストの状態を読んで、進行を合わせる
+    readHost:function(_s){
+        if(_s.q == this.snapQ) return;
+        this.snapQ = _s.q;
+        this.snap = _s;
+        this.framesSinceSnap = 0;
+        if(!this.active){
+            //ホストの応答が来たらゲーム開始
+            this.startGame();
+            return;
+        }
+        if(_s.h){
+            if(!this.partner) this.partner = { pos:{ X:_s.h[0], Y:_s.h[1] }, look:new DroneLook() };
+            var P = this.partner;
+            P.tx = _s.h[0]; P.ty = _s.h[1]; P.dir = _s.h[2]; P.hp = _s.h[3]; P.mh = _s.h[4]; P.down = !!_s.h[5]; P.page = _s.h[6];
+            P.arms = _s.a || null;
+        }
+        game.score = _s.sc;
+        if(this.partner) this.partner.rd = _s.rd;
+        //ホストが次のWAVEへ進んだ(WAVEクリア)
+        if(_s.w > game.wave && page.number != 4){
+            for(var w=game.wave; w<_s.w; w++){
+                game.parts += Math.ceil(w/2);
+                game.pendingReward = (game.pendingReward || 0) + 1;
+            }
+            game.wave = _s.w;
+            this.localReady = false;
+            if(game.wave > FINAL_WAVE) storyScreen.start("ending",function(){ page.change(5); });
+            else goUpgrade();
+            return;
+        }
+        if(_s.ph == "o" && page.number == 1){ page.change(3); return; }
+        if(_s.ph == "b" && _s.w == game.wave && page.number == 2 && this.localReady){
+            this.localReady = false;
+            page.change(1);
+        }
+    },
+
+    //------------------------------------------------------------ 出来事(龍の大技・ボス撃破)
+    addEvent:function(_type,_x,_y){
+        this.events.push([++this.evSeq, _type, Math.round(_x), Math.round(_y)]);
+        if(this.events.length > 6) this.events.shift();
+    },
+    readEvents:function(_other){
+        if(!_other) return;
+        var ev = (_other.s && _other.s.ev) || (_other.g && _other.g.ev) || [];
+        for(var i=0; i<ev.length; i++){
+            var e = ev[i];
+            if(e[0] <= this.evSeen) continue;
+            this.evSeen = e[0];
+            if(e[1] == 1 && page.number == 1){
+                //相方の五龍(見た目だけ)
+                dragonBlast.cast(e[2], e[3], true);
+            }else if(e[1] == 2 && this.role == "guest"){
+                //ボス撃破：ゲストにも報酬
+                game.pendingReward = (game.pendingReward || 0) + 1;
+                popup(e[2], e[3] - 60, "ボス撃破！ 報酬+1", "#c33");
+            }
+        }
+    },
+    //衝撃波を出した(mainScreen.blast・dragonBlast.finaleから)
+    onBlast:function(_x,_y,_cast){
+        if(!this.active) return;
+        if(_cast) this.addEvent(1,_x,_y);
+        if(this.role == "guest") this.blast = [this.blast[0] + 1, Math.round(_x), Math.round(_y)];
+    },
+    onBossKill:function(_e){
+        if(this.isHost()) this.addEvent(2,_e.x,_e.y);
+    },
+    //ゲストがアイテムを拾った
+    onCollect:function(_p){
+        if(this.isGuest() && _p.id) this.got.push(_p.id);
+    },
+    //ゲストの攻撃が当たった(ダメージはホストへ送る)
+    guestHit:function(_e,_dmg,_src){
+        if(_e.dead) return;
+        var k = "e" + _e.id;
+        var v = this.dmg[k] || (this.dmg[k] = [0,0,0]);
+        v[0] += Math.round(_dmg*10);
+        if(_src == "emp") v[1]++;
+        if(_src == "water") v[2]++;
+        _e.flash = 6;
+        sound.play("hit");
+    },
+
+    //------------------------------------------------------------ ゲストの戦闘画面
+    //敵はホストから届いた状態を写したもの(動きは届くまでの間だけ先読み)
+    guestStep:function(){
+        var M = mainScreen, S = this.snap;
+        M.paused = false;
+        M.stateTime++;
+        M.clock++;
+        if(M.tint && --M.tint.life <= 0) M.tint = null;
+        if(S && S.st != null && S.st >= 0){
+            var st = COOP_STATES[S.st];
+            if(st != M.state){
+                if(st == "clear"){ sound.stopMusic(); sound.play("clear"); M.bonus = Math.ceil(game.wave/2); }
+                if(st == "play" && M.state == "start" && S.bw){ sound.music(null); sound.music("boss"); }
+                M.state = st;
+                M.stateTime = S.stt;
+            }
+            M.toSpawn = S.ts;
+            M.bossWave = !!S.bw;
+        }
+        if(!M.down && M.state != "over"){
+            drone.update();
+            M.updateFuel();
+            if(Click == 1 && M.state == "play") M.blast();
+        }
+        dragonBlast.update();
+        this.guestSync();
+        arms.update(M.state == "play" && !M.down);
+        this.guestCollide();
+        M.updateShots();
+        M.updatePickups();
+        M.updateEffects();
+        if(M.invincible > 0) M.invincible--;
+        if(M.guard > 0) M.guard--;
+        if(M.shake > 0) M.shake--;
+        if(M.noFuelMsg > 0) M.noFuelMsg--;
+        if(M.rareMsgTime > 0) M.rareMsgTime--;
+    },
+
+    guestSync:function(){
+        var S = this.snap;
+        //届くまでの間は、速さで先に進めておく
+        for(var i=0; i<enemies.length; i++){
+            var e = enemies[i];
+            e.x += e.vx; e.y += e.vy; e.t++;
+            if(e.flash > 0) e.flash--;
+            if(e.look) e.look.update(dirFromVel(e.vx,e.vy), e.vx);
+        }
+        if(!S || !S.e || this.appliedQ == S.q) return;
+        var dt = Math.max(1, this.lastSyncGap || 2);
+        this.lastSyncGap = 0;
+        this.appliedQ = S.q;
+        //敵
+        var map = {};
+        for(var i=0; i<enemies.length; i++) map[enemies[i].id] = enemies[i];
+        var next = [], seen = {};
+        for(var i=0; i<S.e.length; i+=8){
+            var id = S.e[i], type = COOP_TYPES[S.e[i+1]];
+            if(!type) continue;
+            var e = map[id];
+            var x = S.e[i+2], y = S.e[i+3];
+            if(!e){
+                var T = ENEMY_TYPES[type] || RARE_TYPES[type] || BOSS_TYPES[type] || { r:12 };
+                e = { id:id, type:type, r:T.r, x:x, y:y, vx:0, vy:0, t:0, flash:0, dead:false, hp:100, maxHp:100,
+                      slow:0, wet:0, bladeCd:0, timer:0, harmless:type == "kin",
+                      boss:!!BOSS_TYPES[type], rare:!!RARE_TYPES[type], name:(RARE_TYPES[type] || BOSS_TYPES[type] || {}).name };
+                if(type == "kin"){ e.look = new DroneLook(); }
+                if(type == "kai"){ e.look = new DroneLook(); e.look.tint = "190,20,30"; e.mines = []; e.strikes = []; }
+            }else{
+                e.vx = (x - e.x)/dt*0.5 + e.vx*0.5;
+                e.vy = (y - e.y)/dt*0.5 + e.vy*0.5;
+            }
+            e.x = x; e.y = y;
+            e.hp = S.e[i+4];
+            var p1 = S.e[i+5]/100, p2 = S.e[i+6], fl = S.e[i+7];
+            if(fl & 1) e.flash = Math.max(e.flash,3);
+            e.slow = (fl & 2) ? 2 : 0;
+            e.wet = (fl & 4) ? 60 : 0;
+            e.enraged = !!(fl & 8);
+            switch(type){
+                case "dasher":  e.aimX = Math.cos(p1); e.aimY = Math.sin(p1); e.timer = p2; break;
+                case "shooter": e.face = p1; e.timer = p2; break;
+                case "spinner": e.spin = p1; e.firing = p2; break;
+                case "bomber":  e.fuse = p2; break;
+                case "kin":     e.look.tint = KIN_COLORS[p2] || KIN_COLORS[0]; break;
+                case "heli":    e.face = p1; break;
+                case "panzer":  e.turret = p1; break;
+            }
+            next.push(e);
+            seen[id] = true;
+        }
+        //ボスの細かい状態
+        if(S.b){
+            var b = null;
+            for(var i=0; i<next.length; i++) if(next[i].id == S.b[0]) b = next[i];
+            if(b){
+                b.mode = COOP_MODES[S.b[1]] || "idle";
+                b.angle = S.b[2]/100; b.count = S.b[3]; b.phase = S.b[4];
+                b.bladeA = S.b[5]/100; b.circleT = S.b[6];
+                b.aimX = Math.cos(S.b[7]/100); b.aimY = Math.sin(S.b[7]/100);
+                if(b.type == "kai"){
+                    b.mines = []; b.strikes = [];
+                    var bm = S.bm || [], bk = S.bk || [];
+                    for(var i=0; i<bm.length; i+=3) b.mines.push({ x:bm[i], y:bm[i+1], t:bm[i+2] });
+                    for(var i=0; i<bk.length; i+=3) b.strikes.push({ x:bk[i], y:bk[i+1], t:bk[i+2] });
+                }
+            }
+        }
+        //いなくなった敵：近くなら撃破の演出(遠くのものは送る量を減らしただけかもしれない)
+        for(var i=0; i<enemies.length; i++){
+            var e = enemies[i];
+            if(seen[e.id]) continue;
+            e.dead = true;
+            if(Math.hypot(e.x - drone.X, e.y - drone.Y) < 350){
+                burst(e.x,e.y,8 + e.r,"#444");
+                sound.play("kill");
+                delete this.dmg["e" + e.id];   //倒された敵のダメージの記録は送らなくてよい
+            }
+        }
+        enemies = next;
+        //敵の弾
+        enemyShots = [];
+        for(var i=0; i<S.s.length; i+=5){
+            var kind = COOP_SHOTS[S.s[i+4]] || "normal";
+            enemyShots.push({ x:S.s[i], y:S.s[i+1], vx:S.s[i+2]/10, vy:S.s[i+3]/10, r:SHOT_KINDS[kind].r, kind:kind,
+                              grazed:false, color:"150,20,30" });
+        }
+        //アイテム(自分が拾ったものは出さない)
+        var mine = {};
+        for(var i=0; i<this.got.length; i++) mine[this.got[i]] = true;
+        var old = {};
+        for(var i=0; i<pickups.length; i++) old[pickups[i].id] = pickups[i];
+        pickups = [];
+        for(var i=0; i<S.p.length; i+=4){
+            var id = S.p[i];
+            if(mine[id]) continue;
+            var p = old[id] || { id:id, vx:0, vy:0, t:0, life:PICKUP_LIFE };
+            p.x = S.p[i+1]; p.y = S.p[i+2]; p.kind = COOP_PICKS[S.p[i+3]] || "part";
+            pickups.push(p);
+        }
+    },
+
+    //ゲスト：自分のドローン君が敵やボスの攻撃に当たったか
+    guestCollide:function(){
+        this.lastSyncGap = (this.lastSyncGap || 0) + 1;
+        var M = mainScreen;
+        if(M.down) return;
+        for(var i=0; i<enemies.length; i++){
+            var e = enemies[i];
+            if(e.dead) continue;
+            var d = Math.hypot(drone.X - e.x, drone.Y - e.y);
+            if(d < e.r + drone.R && M.canBeHit() && !e.harmless){
+                M.damage();
+                M.hitEnemy(e,1);
+            }
+            if(!e.boss) continue;
+            //レーザー
+            if(e.mode == "laser"){
+                var cx = Math.cos(e.angle), cy = Math.sin(e.angle), rx = drone.X - e.x, ry = drone.Y - e.y;
+                if(rx*cx + ry*cy > 0 && Math.abs(rx*cy - ry*cx) < 11 + HIT_CORE && M.canBeHit()) M.damage();
+            }
+            if(e.type == "kai"){
+                //ブレード
+                var nB = e.phase >= 3 ? 4 : 3;
+                for(var k=0; k<nB; k++){
+                    var a = e.bladeA + k*Math.PI*2/nB;
+                    if(Math.hypot(drone.X - (e.x + Math.cos(a)*64), drone.Y - (e.y + Math.sin(a)*64)) < 12 + HIT_CORE && M.canBeHit()) M.damage();
+                }
+                //落雷(予告が終わる瞬間に範囲内なら被弾)
+                for(var k=0; k<e.strikes.length; k++){
+                    var s = e.strikes[k], key = s.x + "_" + s.y;
+                    if(s.t <= 3 && !this.struck[key]){
+                        this.struck[key] = true;
+                        if(Math.hypot(drone.X - s.x, drone.Y - s.y) < 34 && M.canBeHit()) M.damage();
+                    }
+                }
+            }
+        }
+    },
+
+    //------------------------------------------------------------ 描画
+    drawPartner:function(){
+        if(!this.active || !this.partner || this.partner.page != 1) return;
+        var P = this.partner;
+        if(P.tx == null) return;
+        //届いた位置へなめらかに寄せる
+        var ox = P.pos.X, oy = P.pos.Y;
+        P.pos.X += (P.tx - P.pos.X)*0.35;
+        P.pos.Y += (P.ty - P.pos.Y)*0.35;
+        this.look.update(P.dir || 0, P.pos.X - ox);
+        if(P.arms) this.drawArms(P.arms);
+        if(P.down){
+            ctx.globalAlpha = 0.35;
+            this.look.draw(P.pos.X,P.pos.Y);
+            ctx.globalAlpha = 1;
+        }else{
+            this.look.draw(P.pos.X,P.pos.Y);
+        }
+        //P1/P2の名札
+        var label = this.role == "host" ? "P2" : "P1";
+        ctx.font = "bold 12px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "rgb(" + P2_COLOR + ")";
+        ctx.fillText(label + (P.down ? " ダウン" : ""), P.pos.X, P.pos.Y - 32);
+        ctx.fillStyle = "#000";
+    },
+
+    //相方の武器(簡易表示)
+    drawArms:function(_a){
+        ctx.fillStyle = "#333";
+        for(var i=0; _a.b && i<_a.b.length; i+=2) ctx.fillRect(_a.b[i] - 2,_a.b[i+1] - 2,4,4);
+        for(var i=0; _a.m && i<_a.m.length; i+=3){
+            ctx.save(); ctx.translate(_a.m[i],_a.m[i+1]); ctx.rotate(_a.m[i+2]/10);
+            ctx.fillStyle = "#d62"; ctx.fillRect(-7,-2.5,11,5); ctx.restore();
+        }
+        ctx.fillStyle = "#2a6";
+        for(var i=0; _a.g && i<_a.g.length; i+=2){ ctx.beginPath(); ctx.arc(_a.g[i],_a.g[i+1],5,0,Math.PI*2); ctx.fill(); }
+        ctx.fillStyle = "#29a3d6";
+        for(var i=0; _a.w && i<_a.w.length; i+=2){ ctx.beginPath(); ctx.arc(_a.w[i],_a.w[i+1],3,0,Math.PI*2); ctx.fill(); }
+        ctx.fillStyle = "#875";
+        for(var i=0; _a.n && i<_a.n.length; i+=2){ ctx.beginPath(); ctx.arc(_a.n[i],_a.n[i+1],7,0,Math.PI*2); ctx.fill(); }
+        if(_a.bl && this.partner){
+            var n = _a.bl[0], R = _a.bl[1], sz = _a.bl[2], ang = _a.bl[4]/100;
+            ctx.fillStyle = _a.bl[3] ? "rgb(" + SYN_COLOR.lightblade + ")" : "#555";
+            for(var k=0; k<n; k++){
+                var a = ang + k*Math.PI*2/n;
+                ctx.save();
+                ctx.translate(this.partner.pos.X + Math.cos(a)*R, this.partner.pos.Y + Math.sin(a)*R);
+                ctx.rotate(a*4);
+                ctx.beginPath(); ctx.moveTo(sz,0); ctx.lineTo(0,sz*0.35); ctx.lineTo(-sz,0); ctx.lineTo(0,-sz*0.35); ctx.closePath(); ctx.fill();
+                ctx.restore();
+            }
+        }
+        if(_a.L){
+            var L = _a.L, k = L[4]/14;
+            ctx.strokeStyle = L[5] ? "rgba(" + SYN_COLOR.focus + "," + k + ")" : "rgba(230,40,40," + k + ")";
+            ctx.lineWidth = L[6]*2*k + 1;
+            ctx.beginPath(); ctx.moveTo(L[0],L[1]); ctx.lineTo(L[0] + L[2]*12, L[1] + L[3]*12); ctx.stroke();
+            ctx.lineWidth = 1;
+        }
+        ctx.fillStyle = "#000";
+    },
+
+    //上部の協力プレイ表示(相方の耐久)
+    drawHud:function(){
+        if(!this.active) return;
+        var P = this.partner;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.font = "bold 12px sans-serif";
+        ctx.fillStyle = "rgb(" + P2_COLOR + ")";
+        var label = this.role == "host" ? "P2" : "P1";
+        if(P && P.mh){
+            ctx.fillText(label + " 耐久",14,104);
+            for(var i=0; i<P.mh; i++){
+                if(i < P.hp){ ctx.fillRect(66 + i*14,98,11,11); }
+                else{ ctx.strokeStyle = "rgba(" + P2_COLOR + ",0.5)"; ctx.strokeRect(66.5 + i*14,98.5,10,10); }
+            }
+        }else{
+            ctx.fillText(label + "：接続待ち",14,104);
+        }
+        if(this.msg){
+            ctx.textAlign = "center";
+            ctx.fillText(this.msg,CW/2,CH - 60);
+        }
+        ctx.fillStyle = "#000";
+    }
+};
+
+//------------------------------------------------------------------------------
+//  協力プレイの部屋選び(page 6)
+//------------------------------------------------------------------------------
+var coopCreateButton = new drawRect(CW/2 , GS*5.5 , GS*12 , GS*2.2);
+var coopBackButton = new drawRect(CW/2 , GS*15.3 , GS*8 , GS*1.6);
+var coopPermButton = new drawRect(CW/2 , GS*12.3 , GS*16 , GS*1.4);
+var coopRoomButtons = [];
+for(var i=0; i<4; i++) coopRoomButtons.push(new drawRect(CW/2 , GS*9.4 + i*GS*1.4 , GS*12 , GS*1.2));
+
+var coopScreen = {
+    enter:function(){
+        coop.init();
+        coop.msg = "";
+    },
+    update:function(){
+        if(coopBackButton.clicked()){
+            sound.play("click");
+            coop.leave();
+            page.change(0);
+            return;
+        }
+        if(!coop.room && coop.perm == "prompt" && coopPermButton.clicked()){
+            sound.play("click");
+            coop.askPermission();
+            return;
+        }
+        if(!coop.room || coop.named) return;
+        if(coopCreateButton.clicked()){
+            sound.play("click");
+            coop.createRoom();
+            return;
+        }
+        var rooms = coop.openRooms();
+        for(var i=0; i<Math.min(4,rooms.length); i++){
+            if(coopRoomButtons[i].clicked()){
+                sound.play("click");
+                coop.joinRoom(rooms[i]);
+                return;
+            }
+        }
+    },
+    draw:function(){
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "#000";
+        ctx.font = "bold 40px serif";
+        ctx.fillText("ふたりで協力プレイ",CW/2,GS*2.2);
+        ctx.font = "14px sans-serif";
+        ctx.fillStyle = "#555";
+        ctx.fillText("ストーリーモードをふたりで。敵の体力は2倍、強化・装備はそれぞれ別です",CW/2,GS*3.8);
+
+        if(!coop.ready){
+            ctx.fillText("準備中…",CW/2,GS*8);
+        }else if(!coop.room){
+            ctx.fillStyle = "#c33";
+            ctx.font = "bold 15px sans-serif";
+            ctx.fillText("この画面では協力プレイを使えません。",CW/2,GS*7.5);
+            ctx.font = "14px sans-serif";
+            ctx.fillStyle = "#555";
+            ctx.fillText("協力プレイは、このページの作成者から個別に招待されたアカウント（または同じ組織のメンバー）だけが使えます。",CW/2,GS*8.6);
+            ctx.fillText("リンクだけで開いている場合は、作成者に Share メニューから招待してもらい、招待から開き直してください。",CW/2,GS*9.5);
+            ctx.fillText("（ログインしていない場合や、パソコンに保存したファイルで開いた場合も使えません）",CW/2,GS*10.4);
+            //診断：roomの許可の状態(granted/prompt/denied/unavailable)
+            ctx.font = "12px sans-serif";
+            ctx.fillStyle = "#888";
+            ctx.fillText("診断：通信機能の許可の状態 = " + (coop.perm || "確認中…"),CW/2,GS*11.6);
+            if(coop.perm == "prompt" || coop.perm == "denied"){
+                ctx.font = "bold 16px sans-serif";
+                coopPermButton.button(coop.perm == "prompt" ? "通信機能の利用を許可する" : "許可が拒否されています（Permissionsメニューで解除）", coop.perm == "prompt");
+            }
+        }else if(coop.named && coop.role == "host"){
+            ctx.font = "bold 22px sans-serif";
+            ctx.fillStyle = "#000";
+            ctx.fillText("部屋「" + coop.code + "」で相方を待っています…",CW/2,GS*7.5);
+            ctx.font = "14px sans-serif";
+            ctx.fillStyle = "#555";
+            ctx.fillText("相方がこのページを開いて「ふたりで協力プレイ」からこの部屋を選ぶと始まります",CW/2,GS*8.8);
+        }else if(coop.named){
+            ctx.font = "bold 20px sans-serif";
+            ctx.fillStyle = "#000";
+            ctx.fillText("部屋「" + coop.code + "」に参加しました。ホストを待っています…",CW/2,GS*7.5);
+        }else{
+            ctx.font = "bold 22px serif";
+            coopCreateButton.button("部屋を作る（ホスト）");
+            ctx.font = "13px sans-serif";
+            ctx.fillStyle = "#555";
+            ctx.fillText("募集中の部屋（選ぶと参加します）",CW/2,GS*8.8);
+            var rooms = coop.openRooms();
+            ctx.font = "bold 16px sans-serif";
+            for(var i=0; i<Math.min(4,rooms.length); i++) coopRoomButtons[i].button("部屋「" + rooms[i] + "」に参加");
+            if(rooms.length == 0){
+                ctx.fillStyle = "#999";
+                ctx.font = "13px sans-serif";
+                ctx.fillText("いまは募集中の部屋がありません",CW/2,GS*10);
+            }
+        }
+        if(coop.msg){
+            ctx.fillStyle = "#c33";
+            ctx.font = "bold 14px sans-serif";
+            ctx.fillText(coop.msg,CW/2,GS*14.3);
+        }
+        //診断情報
+        if(coop.room){
+            ctx.font = "12px sans-serif";
+            ctx.fillStyle = "#888";
+            ctx.fillText(coop.diagnosis(),CW/2,GS*17.5);
+        }
+        ctx.font = "14px sans-serif";
+        coopBackButton.button(coop.named ? "やめてタイトルへ" : "タイトルへ");
+        ctx.fillStyle = "#000";
+    }
+};
