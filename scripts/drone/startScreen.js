@@ -92,8 +92,9 @@ const particles = (new Array(50))
 //------------------------------------------------------------------------------
 //  はじめから、つづきからボタン
 //------------------------------------------------------------------------------
-var startButton = new drawRect(canvas.width/2,GS*6.6,GS*14,GS*2.3);
-var continueButton = new drawRect(canvas.width/2,GS*9.1,GS*14,GS*2.3);
+var startButton = new drawRect(canvas.width/2 - GS*3.55,GS*6.6,GS*6.9,GS*2.3);
+var continueButton = new drawRect(canvas.width/2 + GS*3.55,GS*6.6,GS*6.9,GS*2.3);
+var rogueButton = new drawRect(canvas.width/2,GS*9.1,GS*14,GS*2.3);
 var coopButton = new drawRect(canvas.width/2 - GS*3.55,GS*11.6,GS*6.9,GS*2.3);
 var versusButton = new drawRect(canvas.width/2 + GS*3.55,GS*11.6,GS*6.9,GS*2.3);
 
@@ -108,6 +109,7 @@ var startScreen = {
         this.best = save.getBest();
         try{ this.cleared = localStorage.getItem("dronekun_cleared") == "1"; }catch(e){ this.cleared = false; }
         drone.resetStats();
+        rogue.active = false;   //タイトルに戻ったらローグライトのランは中断(保存済み)
     },
     update:function(){
         //はじめから：セーブを消してWAVE1へ
@@ -123,6 +125,13 @@ var startScreen = {
         if(continueButton.clicked() && this.hasSave && save.load()){
             sound.play("click");
             goUpgrade();
+            return;
+        }
+        //ローグライト：研究所へ(rogue.js)
+        if(rogueButton.clicked()){
+            sound.play("click");
+            this.notice = "";
+            page.change(8);
             return;
         }
         //ふたりで協力プレイ：部屋選びへ(coop.js)
@@ -178,7 +187,9 @@ var startScreen = {
 
         ctx.font = "bold 28px serif";
         startButton.button("はじめから");
-        continueButton.button(this.hasSave ? "つづきから" : "つづきから（データなし）", this.hasSave);
+        continueButton.button("つづきから", this.hasSave);
+        ctx.font = "bold 28px serif";
+        rogueButton.button("ローグライト");
         ctx.font = "bold 22px serif";
         coopButton.button("ふたりで協力プレイ");
         versusButton.button("ふたりで対戦");

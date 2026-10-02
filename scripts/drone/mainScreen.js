@@ -198,16 +198,24 @@ var mainScreen = {
         drone.X = CW/2; drone.Y = CH/2;
         //タッチはドラッグで動かすので、目標をドローン君の位置に戻しておく
         if(inputMode == "touch"){ MouseX = drone.X; MouseY = drone.Y; }
-        this.maxHp = game.stat("armor");
-        this.hp = this.maxHp;
-        this.maxFuel = game.stat("fuel");
+        this.maxHp = game.stat("armor") + (rogue.active ? rogue.maxHpBonus() : 0);
+        //ローグライトは耐久を持ち越す(失っている分を引いて始める)
+        this.hp = rogue.active ? Math.max(1, this.maxHp - rogue.lost) : this.maxHp;
+        this.startHp = this.hp;
+        this.maxFuel = game.stat("fuel") + (rogue.has("battery") ? 30 : 0);
         this.fuel = this.maxFuel;
         this.toSpawn = 6 + game.wave*3;
-        this.bossWave = isBossWave(game.wave);
+        this.bossWave = isBossWave(game.wave) && !rogue.active;
         if(this.bossWave){
             //ボスWAVEは雑魚が3分の1。最終WAVEはドローン君改との一騎打ち(雑魚なし)
             this.toSpawn = game.wave >= FINAL_WAVE ? 0 : Math.floor(this.toSpawn/3);
             sound.play("warning");
+        }
+        if(rogue.active){
+            //ローグライト：敵の数とボスはマスの種類で決まる(rogue.js)
+            this.bossWave = rogue.battleType == "boss";
+            this.toSpawn = rogue.spawnCount();
+            if(this.bossWave) sound.play("warning");
         }
         this.rares = 0;
         this.rareMsgTime = 0;
@@ -254,7 +262,7 @@ var mainScreen = {
                     this.state = "play";
                     this.stateTime = 0;
                     if(this.bossWave){
-                        enemies.push(makeBoss(bossTypeFor(game.wave)));
+                        enemies.push(makeBoss(this.bossType()));
                         sound.music(null);
                         sound.music("boss");
                     }
@@ -276,6 +284,7 @@ var mainScreen = {
                 break;
             case "clear":
                 if(this.stateTime >= 150){
+                    if(rogue.active){ rogue.battleWon(); return; }
                     var cleared = game.wave;
                     game.wave++;
                     //報酬を選ぶ回数(補給機のカプセル・ボス撃破の分が上乗せされている)
@@ -291,6 +300,7 @@ var mainScreen = {
                 break;
             case "over":
                 if(this.stateTime >= 100){
+                    if(rogue.active){ rogue.battleLost(); return; }
                     page.change(3);
                     return;
                 }
@@ -321,7 +331,7 @@ var mainScreen = {
     //動くと燃料を使い、止まっていると回復する。空になると追従が遅くなる
     updateFuel:function(){
         this.fuel -= drone.Speed * FUEL_PER_PX;
-        this.fuel = Math.min(this.fuel + FUEL_REGEN, this.maxFuel);
+        this.fuel = Math.min(this.fuel + FUEL_REGEN*(rogue.has("regen") ? 1.5 : 1), this.maxFuel);
         if(this.fuel <= 0){
             this.fuel = 0;
             //燃料切れになった瞬間に音で知らせる
@@ -343,14 +353,15 @@ var mainScreen = {
         this.toSpawn--;
         this.spawned++;
         //同胞が紛れ込む(WAVE3では必ず1体は出る)
-        var forceKin = game.wave == 3 && !this.kinForced && this.spawned >= 4;
-        if(forceKin || Math.random() < kinRate(game.wave)){
+        //(ローグライトでは同胞は出ない。ストーリーのネタバレになるため)
+        var forceKin = game.wave == 3 && !this.kinForced && this.spawned >= 4 && !rogue.active;
+        if(forceKin || (!rogue.active && Math.random() < kinRate(game.wave))){
             this.kinForced = true;
             enemies.push(makeEnemy("kin"));
             return;
         }
         //まれにレア敵が出る(人間との戦いでは補給機だけ)
-        if(game.wave >= 2 && this.rares < RARE_MAX && Math.random() < RARE_RATE){
+        if(game.wave >= 2 && this.rares < RARE_MAX && Math.random() < RARE_RATE*(rogue.has("lucky") ? 2 : 1)){
             var r = makeRare(game.wave <= REVEAL_WAVE && Math.random() < 0.6 ? "goldbug" : "carrier");
             enemies.push(r);
             this.rares++;
@@ -364,12 +375,12 @@ var mainScreen = {
 
     //クリック：燃料を使って周りの敵をまとめて攻撃し、敵の弾を消す
     blast:function(){
-        if(this.fuel < BLAST_COST){
+        if(this.fuel < this.blastCost()){
             this.noFuelMsg = 60;
             sound.play("error");
             return;
         }
-        this.fuel -= BLAST_COST;
+        this.fuel -= this.blastCost();
         //ピンチを切り抜けられるよう、周りの弾はすぐ消して少しのあいだ無敵に
         for(var i=enemyShots.length-1; i>=0; i--){
             if(Math.hypot(enemyShots[i].x - drone.X, enemyShots[i].y - drone.Y) < BLAST_RADIUS){
@@ -391,7 +402,7 @@ var mainScreen = {
     },
     drawTouchBlast:function(){
         var b = this.touchBlast;
-        var ok = this.fuel >= BLAST_COST;
+        var ok = this.fuel >= this.blastCost();
         ctx.fillStyle = ok ? "rgba(220,40,40,0.85)" : "rgba(160,160,160,0.6)";
         ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
         ctx.strokeStyle = "#fff";
@@ -400,7 +411,7 @@ var mainScreen = {
         //燃料がたまっていく様子
         ctx.strokeStyle = ok ? "#fff" : "#555";
         ctx.lineWidth = 4;
-        ctx.beginPath(); ctx.arc(b.x,b.y,b.r + 3,-Math.PI/2,-Math.PI/2 + Math.PI*2*Math.min(1,this.fuel/BLAST_COST)); ctx.stroke();
+        ctx.beginPath(); ctx.arc(b.x,b.y,b.r + 3,-Math.PI/2,-Math.PI/2 + Math.PI*2*Math.min(1,this.fuel/this.blastCost())); ctx.stroke();
         ctx.lineWidth = 1;
         ctx.fillStyle = "#fff";
         ctx.textAlign = "center";
@@ -410,13 +421,29 @@ var mainScreen = {
         ctx.fillStyle = "#000";
     },
 
+    //衝撃波に使う燃料(ローグライトのアイテム「衝撃波コア」で減る)
+    blastCost:function(){
+        return rogue.has("core") ? 28 : BLAST_COST;
+    },
+    //このWAVEのボス(ローグライトはステージで決まる)
+    bossType:function(){
+        return rogue.active ? rogue.bossType() : bossTypeFor(game.wave);
+    },
+
     canBeHit:function(){
         return (this.state == "play" || this.state == "start") && this.invincible == 0 && this.guard == 0 && !this.down;
     },
 
     damage:function(){
         this.hp--;
-        this.invincible = INVINCIBLE_TIME;
+        this.invincible = INVINCIBLE_TIME*(rogue.has("shield") ? 1.6 : 1);
+        //反撃装甲：周りの敵の弾を消す
+        if(rogue.has("thorns")){
+            for(var i=enemyShots.length-1; i>=0; i--){
+                if(Math.hypot(enemyShots[i].x - drone.X, enemyShots[i].y - drone.Y) < 130) enemyShots.splice(i,1);
+            }
+            fx.ring(drone.X,drone.Y,130,"136,51,153",16,5);
+        }
         sound.play("damage");
         this.shake = 12;
         burst(drone.X,drone.Y,10,"#c33");
@@ -471,6 +498,7 @@ var mainScreen = {
         if(Math.random() < FUEL_DROP_RATE) this.drop("fuel",_e.x,_e.y);
         special.onKill(_e);
         this.revenge(_e);
+        rogue.onKill(_e);
     },
 
     //撃ち返し：WAVE4から、小さな敵が倒れぎわにドローンを狙って弾を撃つ
@@ -651,11 +679,11 @@ var mainScreen = {
             if(d < r + HIT_CORE && this.canBeHit()){
                 enemyShots.splice(i,1);
                 this.damage();
-            }else if(!b.grazed && d < r + GRAZE_RANGE && !this.down && (!coop.isGuest() || coop.grazeCd <= 0)){
+            }else if(!b.grazed && d < r + GRAZE_RANGE*(rogue.has("graze") ? 1.6 : 1) && !this.down && (!coop.isGuest() || coop.grazeCd <= 0)){
                 b.grazed = true;
                 if(coop.isGuest()) coop.grazeCd = 6;   //ゲストの弾は届くたびに作り直すので、続けてかすらないように
                 this.graze++;
-                this.fuel = Math.min(this.maxFuel, this.fuel + GRAZE_FUEL);
+                this.fuel = Math.min(this.maxFuel, this.fuel + GRAZE_FUEL*(rogue.has("graze") ? 2 : 1));
                 game.score += 2;
                 effects.push({ x:drone.X + (b.x - drone.X)*0.6, y:drone.Y + (b.y - drone.Y)*0.6,
                                vx:(Math.random()-0.5)*2, vy:(Math.random()-0.5)*2,
@@ -679,7 +707,7 @@ var mainScreen = {
             //近くのアイテムは近い方のプレイヤーへ吸い寄せる(WAVEクリア時は全部)
             var mt = nearestPlayer(p.x,p.y);
             var mx = mt.X - p.x, my = mt.Y - p.y, md = Math.hypot(mx,my) || 1;
-            if(this.state == "clear" || md < MAGNET_RANGE){
+            if(this.state == "clear" || md < MAGNET_RANGE*(rogue.has("magnet") ? 2 : 1)){
                 var s = Math.min(this.state == "clear" ? 12 : 6, md);
                 p.x += mx/md*s; p.y += my/md*s;
             }
@@ -1147,11 +1175,11 @@ var mainScreen = {
         var bw = 160;
         ctx.strokeStyle = "#000";
         ctx.strokeRect(56.5,37.5,bw,13);
-        ctx.fillStyle = drone.slow ? "#d33" : (this.fuel >= BLAST_COST ? "#555" : "#aaa");
+        ctx.fillStyle = drone.slow ? "#d33" : (this.fuel >= this.blastCost() ? "#555" : "#aaa");
         ctx.fillRect(58,39,(bw-3)*this.fuel/this.maxFuel,10);
         //衝撃波に必要な量の目盛り
         ctx.fillStyle = "#d33";
-        ctx.fillRect(57 + bw*BLAST_COST/this.maxFuel,34,2,20);
+        ctx.fillRect(57 + bw*this.blastCost()/this.maxFuel,34,2,20);
         if(drone.slow){
             ctx.fillStyle = "#d33";
             ctx.fillText("燃料切れ！",bw + 66,44);
@@ -1180,7 +1208,7 @@ var mainScreen = {
         ctx.textAlign = "right";
         ctx.fillStyle = "#000";
         ctx.font = "bold 20px sans-serif";
-        ctx.fillText("WAVE " + game.wave + " / " + FINAL_WAVE,CW - 14,20);
+        ctx.fillText(rogue.active ? rogue.label() : "WAVE " + game.wave + " / " + FINAL_WAVE,CW - 14,20);
         ctx.font = "bold 14px sans-serif";
         ctx.fillText("残りの敵 " + (this.toSpawn + enemies.length) + "　SCORE " + game.score + "　パーツ " + game.parts,CW - 14,44);
         if(this.graze > 0){
@@ -1196,9 +1224,9 @@ var mainScreen = {
             ctx.font = "13px sans-serif";
             ctx.fillStyle = "#777";
             if(touch){
-                ctx.fillText("画面のどこでもドラッグで移動（指の動いた分だけ動く）　／　右下のボタン：衝撃波（燃料" + BLAST_COST + "・弾も消す）",14,CH - 36);
+                ctx.fillText("画面のどこでもドラッグで移動（指の動いた分だけ動く）　／　右下のボタン：衝撃波（燃料" + this.blastCost() + "・弾も消す）",14,CH - 36);
             }else{
-                ctx.fillText("敵には自動で攻撃します　／　クリック：衝撃波（燃料" + BLAST_COST + "・弾も消す）　／　動くと燃料を使い、止まると回復",14,CH - 36);
+                ctx.fillText("敵には自動で攻撃します　／　クリック：衝撃波（燃料" + this.blastCost() + "・弾も消す）　／　動くと燃料を使い、止まると回復",14,CH - 36);
             }
             ctx.fillText("弾は中心の赤い点に当たらなければ大丈夫。すれすれでかすると燃料が回復",14,CH - 16);
         }
@@ -1219,13 +1247,13 @@ var mainScreen = {
             ctx.font = "bold 56px serif";
             ctx.fillText("WARNING",CW/2,CH/2 - 72);
             ctx.font = "bold 18px sans-serif";
-            ctx.fillText("WAVE " + game.wave + "　ボス「" + BOSS_TYPES[bossTypeFor(game.wave)].name + "」接近中",CW/2,CH/2 - 30);
+            ctx.fillText((rogue.active ? "ステージ" + rogue.stage : "WAVE " + game.wave) + "　ボス「" + BOSS_TYPES[this.bossType()].name + "」接近中",CW/2,CH/2 - 30);
             ctx.globalAlpha = 1;
         }else if(this.state == "start"){
             ctx.globalAlpha = Math.min(1, (60 - this.stateTime)/20);
             ctx.font = "bold 56px serif";
             ctx.fillStyle = "#000";
-            ctx.fillText("WAVE " + game.wave,CW/2,CH/2 - 60);
+            ctx.fillText(rogue.active ? rogue.label() : "WAVE " + game.wave,CW/2,CH/2 - 60);
             ctx.globalAlpha = 1;
         }else if(this.state == "clear"){
             ctx.font = "bold 56px serif";

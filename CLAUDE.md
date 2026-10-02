@@ -47,6 +47,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | `lib/peerjs.min.js` | PeerJS 1.5.5(外部ライブラリ。MITライセンス、`lib/PEERJS-LICENSE`)。協力プレイの通信に使う。手を加えない |
 | `coop.js` | ふたりで協力プレイ(下記「協力プレイ」参照)。対戦も同じ部屋・通信を使う |
 | `versus.js` | ふたりで対戦(下記「対戦」参照)。page 7 |
+| `rogue.js` | ローグライト(下記「ローグライト」参照)。page 8 研究所・page 9 マップ |
 | `draw.js` | 1/60秒刻みの更新ループと描画。最後に読み込む |
 
 画像は `images/game/` 以下(ドローン君の6方向とポインタ)。それ以外の見た目はすべてキャンバスに図形で描いている。
@@ -55,11 +56,11 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 ## 仕組み
 
 - キャンバスは 960×540 固定(32×18 マスで `GS = 30px`)。CSSで縮めても座標はこの大きさのまま。
-- 画面(page)の番号: 0 タイトル / 1 戦闘 / 2 強化 / 3 ゲームオーバー / 4 ストーリー / 5 エンディング / 6 協力プレイ・対戦の部屋選び / 7 対戦。
+- 画面(page)の番号: 0 タイトル / 1 戦闘 / 2 強化 / 3 ゲームオーバー / 4 ストーリー / 5 エンディング / 6 協力プレイ・対戦の部屋選び / 7 対戦 / 8 ローグライトの研究所 / 9 ローグライトのマップ。
   各画面は `{ enter(), update(), draw() }` を持つオブジェクトで、`draw.js` の `screens` 配列に並ぶ。切り替えは `page.change(n)`。
 - 更新は `draw.js` で1/60秒ごと(画面のリフレッシュレートに依存しない)。`update()` が1コマ、`draw()` が描画。
 - クリックは `Click == 1` が1コマだけ立つ。ボタンは `drawRect` の `clicked()` / `button()` を使う。
-- セーブは `localStorage`(`dronekun_save`・ハイスコア `dronekun_best`・クリア済み `dronekun_cleared`)。強化画面に入ったときに自動セーブ。
+- セーブは `localStorage`(`dronekun_save`・ハイスコア `dronekun_best`・クリア済み `dronekun_cleared`)。強化画面に入ったときに自動セーブ。ローグライトは別のキー(`dronekun_rogue_run` 中断中のラン・`dronekun_rogue_meta` コア・永続強化・解放の記録)。
 - 全20WAVE(`FINAL_WAVE`)。5WAVEごとにボス。WAVE15(`REVEAL_WAVE`)のボス後に真実が明かされ、WAVE16からは人間の兵器が敵になる。
 
 ## 書き方の決まり
@@ -91,6 +92,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | ストーリーの文章・背景・流れる時期 | `story.js` の `STORIES`・`STORY_SKY`・`STORY_AFTER` |
 | BGM | `sound.js` の `TRACKS` |
 | 対戦の耐久・装備ごとのダメージ倍率 | `versus.js` の `VS_HP`・`VS_DAMAGE_MUL` |
+| ローグライトの難しさ・マップ・アイテム・永続強化・解放 | `rogue.js` の `RG_*`(`RG_ITEMS`・`RG_UPGRADES`・`RG_UNLOCKS` など) |
 
 難易度は「プレイヤーを弱くする方向」と「敵の弾幕を増やす方向」で上げてきた経緯がある。敵の体力を上げる調整は控えめにする。
 
@@ -126,6 +128,16 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 - 衝撃波は五龍が相手に食らいつく。出した直後(`mainScreen.guard`)は受けたダメージを無視する。相手の衝撃波は `dragonBlast.cast(…, true, [versus.me])` で、龍が自分に向かってくる見た目だけ描く。
 - 能力・装備は対戦用に `game` を作り直す(ひとり用のセーブには書き込まない。つづきからはセーブから読み直す)。
 - バランス調整：`tools/vs-balance.html`(組み合わせを変えて自動で何戦もする。`#8` で戦数)と `tools/vs-dps.html`(装備1つずつの毎秒のダメージ)。自動プレイは近づかないので、ブレード・地雷は実際より弱く出る。
+
+## ローグライト(rogue.js)
+
+- ラン：3ステージ。各ステージは分岐マップ(`RG_LAYERS` 階層＋ボス)。マスは戦闘・強敵・宝箱・ショップ・休憩・ボス。マスの難しさは `game.wave` に入れて(WAVE換算)、敵の出方はふだんの戦闘と同じ仕組みを使う。
+- `rogue.active` のとき、戦闘画面・強化画面・セーブの動きが変わる(`mainScreen` の enter・クリア・撃墜、`upgradeScreen` の出撃ボタン・報酬の候補、`save.write`)。強化画面はそのまま使い、「出撃」の代わりにマップへ戻る。
+- 耐久は持ち越す。`rogue.lost`(失っている分)で持つので、最大耐久が増えると今の耐久も増える。ステージが変わると全回復。
+- アイテムの効き目は `rogue.has(id)` で、使う場所(戦闘画面・`game.range`・`arms.rate`)に直接書いている。ローグライト以外では `rogue.has` は常に false。
+- メタ進行：ランで集めたコアを研究所で使う(永続強化 `RG_UPGRADES`)。解放は `RG_UNLOCKS` の条件(永続の記録 `meta.stats` の値)を満たすと、アイテム・武器が出るようになる。記録はランの終わりにまとめて足す。
+- ネタバレ対策：同胞・人間の兵器は出さない。ステージ3のボスは、ストーリーをクリア済みならドローン君改、未クリアなら移動要塞。
+- バランス確認：`tools/rogue-sim.html`(自動プレイでランを何回か通す)。
 
 ## Git の運用
 

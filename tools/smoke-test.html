@@ -24,6 +24,7 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
 <script src="lib/peerjs.min.js"></script>
 <script src="scripts/drone/coop.js"></script>
 <script src="scripts/drone/versus.js"></script>
+<script src="scripts/drone/rogue.js"></script>
 <script src="scripts/drone/draw.js"></script>
 <script>
 var out = [], fails = 0;
@@ -107,6 +108,90 @@ try{
     check("Qキーでストーリー確認モード", page.number == 4 && storyDebug.active);
     document.dispatchEvent(new KeyboardEvent("keydown", { code:"Escape" }));
     check("Escでタイトルへ", page.number == 0 && !storyDebug.active);
+
+    // 6. ローグライト
+    var keepRgMeta = localStorage.getItem(RG_META_KEY), keepRgRun = localStorage.getItem(RG_RUN_KEY);
+    localStorage.removeItem(RG_META_KEY); localStorage.removeItem(RG_RUN_KEY);
+    save.clear(); game.reset(); game.wave = 7; save.write();
+    var storyBefore = localStorage.getItem("dronekun_save");
+    function rgFight(_max){ var f = 0; while(page.number == 1 && f < _max){ bot(); f++; mainScreen.hp = mainScreen.maxHp; mainScreen.update(); if(f % 30 == 0) draw1(); } return f; }
+    page.change(8); draw1();
+    MouseX = rgStartButton.X + 5; MouseY = rgStartButton.Y + 5; Click = 1; rogueHub.update(); Click = 0;
+    check("ローグライト：ランを始めるとマップへ", page.number == 9 && rogue.active && rogue.stage == 1 && arms.equipped().length == 1);
+    draw1();
+    //マップ：どのマスにも入口から行けて、どのマスからもボスへ行ける
+    var mapOk = true;
+    for(var n=0; n<30; n++){
+        var mp = rogue.makeMap();
+        for(var l=0; l<mp.length; l++){
+            for(var j=0; j<mp[l].length; j++){
+                if(l < mp.length - 1 && mp[l][j].next.length == 0) mapOk = false;
+                if(l > 0){ var inc = false; for(var k=0; k<mp[l-1].length; k++) if(mp[l-1][k].next.indexOf(j) >= 0) inc = true; if(!inc) mapOk = false; }
+                if(l == 0 && mp[l][j].type != "battle") mapOk = false;
+            }
+        }
+        if(mp[mp.length - 1][0].type != "boss") mapOk = false;
+    }
+    check("ローグライト：マップのつながり（30枚）", mapOk);
+    var ch = rogue.choices(); rogue.go(ch[0][0], ch[0][1]);
+    check("ローグライト：戦闘マスで戦闘へ", page.number == 1 && game.wave == 1 && mainScreen.toSpawn == RG_SPAWN_BASE + RG_SPAWN_PER, "敵" + mainScreen.toSpawn);
+    rgFight(60*90);
+    check("ローグライト：勝つと報酬カード", page.number == 2 && upgradeScreen.state == "reward", "page" + page.number);
+    MouseX = rewardCards[0].X + 5; MouseY = rewardCards[0].Y + 5; Click = 1; upgradeScreen.update(); Click = 0; draw1();
+    check("ローグライト中はストーリーのセーブを書き換えない", localStorage.getItem("dronekun_save") == storyBefore && rogue.hasRun());
+    MouseX = nextButton.X + 5; MouseY = nextButton.Y + 5; Click = 1; upgradeScreen.update(); Click = 0;
+    check("ローグライト：強化画面からマップへ", page.number == 9 && rogueMap.mode == "map" && rogue.layer == 0);
+    //宝箱・ショップ・休憩
+    rogue.items = []; rogueMap.open("chest"); draw1();
+    var c0 = rgCard(0, rogueMap.offers.length); MouseX = c0.X + 5; MouseY = c0.Y + 5; Click = 1; rogueMap.update(); Click = 0;
+    check("ローグライト：宝箱でアイテム", rogue.items.length == 1 && rogueMap.mode == "map");
+    game.parts = 100; rogueMap.open("shop"); draw1();
+    var s0 = rgCard(0, rogueMap.offers.length); MouseX = s0.X + 5; MouseY = s0.Y + 5; Click = 1; rogueMap.update(); Click = 0;
+    var bought = game.parts < 100;
+    MouseX = rgLeaveButton.X + 5; MouseY = rgLeaveButton.Y + 5; Click = 1; rogueMap.update(); Click = 0;
+    check("ローグライト：ショップで買える", bought && rogueMap.mode == "map");
+    rogue.lost = 2; rogueMap.open("rest"); draw1();
+    MouseX = rgRestButtons[0].X + 5; MouseY = rgRestButtons[0].Y + 5; Click = 1; rogueMap.update(); Click = 0;
+    check("ローグライト：休憩で回復", rogue.lost == 0);
+    //アイテムの効き目
+    rogue.items = ["armor","battery","scope"];
+    rogue.battleType = "battle"; game.wave = 2; page.change(1);
+    check("ローグライト：アイテムの効果（耐久・燃料・射程）",
+          mainScreen.maxHp == game.stat("armor") + RG_BASE_HP + 1 && mainScreen.maxFuel == game.stat("fuel") + 30 && game.range() == 170 + game.level.brain*30 + 50);
+    //ボスを倒すと次のステージ(アイテムを選んでから強化画面)
+    game.owned = { gun:3, missile:3, tesla:3 }; game.slots = ["gun","missile","tesla"]; game.slotCount = 3;
+    for(var k in game.level) game.level[k] = 5;
+    rogue.layer = rogue.map.length - 1; rogue.node = 0; rogue.battleType = "boss"; game.wave = rogue.level(rogue.layer, "boss");
+    page.change(1);
+    var bossName = enemies.length;
+    rgFight(60*120);
+    check("ローグライト：ボスを倒すとステージ2へ", rogue.stage == 2 && page.number == 9 && rogueMap.mode == "chest" && rogue.layer == -1, "stage" + rogue.stage + " page" + page.number + " " + rogueMap.mode);
+    draw1();
+    //中断して、続きから
+    rogueMap.open("map");
+    MouseX = rgQuitButton.X + 5; MouseY = rgQuitButton.Y + 5; Click = 1; rogueMap.update(); Click = 0;
+    var quit = page.number == 0 && !rogue.active;
+    page.change(8); draw1();
+    MouseX = rgResumeButton.X + 5; MouseY = rgResumeButton.Y + 5; Click = 1; rogueHub.update(); Click = 0;
+    check("ローグライト：中断して続きから", quit && page.number == 9 && rogue.active && rogue.stage == 2);
+    //撃墜されるとラン終了。コアがたまり、条件を満たすと解放
+    ch = rogue.choices(); rogue.go(ch[0][0], ch[0][1]);
+    var f2 = 0; mainScreen.hp = 1; mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.damage();
+    while(page.number == 1 && f2 < 300){ mainScreen.update(); f2++; }
+    draw1();
+    check("ローグライト：撃墜でラン終了・コア獲得", page.number == 9 && rogueMap.mode == "over" && !rogue.active && !rogue.hasRun() && rogue.meta.cores > 0,
+          "コア" + rogue.meta.cores);
+    check("ローグライト：ステージ1のボスで「火薬袋」が解放", rogue.itemPool().indexOf("powder") >= 0 && rogue.weaponPool().indexOf("emp") >= 0);
+    rogueMap.t = 99; MouseX = rgResultButton.X + 5; MouseY = rgResultButton.Y + 5; Click = 1; rogueMap.update(); Click = 0;
+    draw1();
+    //永続強化を買う
+    var coresBefore = rogue.meta.cores;
+    MouseX = rgUpButtons[1].X + 5; MouseY = rgUpButtons[1].Y + 5; Click = 1; rogueHub.update(); Click = 0;
+    check("ローグライト：研究所で永続強化", page.number == 8 && rogue.up("parts") == 1 && rogue.meta.cores == coresBefore - RG_UPGRADES[1].cost[0]);
+    localStorage.removeItem(RG_META_KEY); localStorage.removeItem(RG_RUN_KEY);
+    if(keepRgMeta) localStorage.setItem(RG_META_KEY, keepRgMeta);
+    if(keepRgRun) localStorage.setItem(RG_RUN_KEY, keepRgRun);
+    page.change(0);
 
     //テスト前のセーブ等を戻す
     save.clear();

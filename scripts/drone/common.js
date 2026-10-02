@@ -234,7 +234,7 @@ var game = {
     },
     //自動攻撃の射程
     range:function(){
-        return 170 + this.level.brain * 30;
+        return 170 + this.level.brain * 30 + (typeof rogue != "undefined" && rogue.has("scope") ? 50 : 0);
     }
 };
 game.reset();
@@ -254,6 +254,11 @@ var save = {
         });
     },
     write:function(){
+        //ローグライト中はストーリーのセーブとは別に、ランを保存する(rogue.js)
+        if(typeof rogue != "undefined" && rogue.active){
+            rogue.saveRun();
+            return;
+        }
         //協力プレイはその場かぎり(ひとり用のセーブは上書きしない)。コンティニュー用にメモリにだけ覚えておく
         if(typeof coop != "undefined" && coop.active){
             coop.checkpoint = this.data();

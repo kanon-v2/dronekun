@@ -2,8 +2,8 @@
 //  描画実行
 //------------------------------------------------------------------------------
 //page.numberの番号順
-//0:スタート 1:戦闘 2:強化 3:ゲームオーバー 4:ストーリー 5:エンディング 6:協力プレイ・対戦の部屋選び 7:対戦
-var screens = [startScreen, mainScreen, upgradeScreen, gameoverScreen, storyScreen, endingScreen, coopScreen, versusScreen];
+//0:スタート 1:戦闘 2:強化 3:ゲームオーバー 4:ストーリー 5:エンディング 6:協力プレイ・対戦の部屋選び 7:対戦 8:ローグライトの研究所 9:ローグライトのマップ
+var screens = [startScreen, mainScreen, upgradeScreen, gameoverScreen, storyScreen, endingScreen, coopScreen, versusScreen, rogueHub, rogueMap];
 
 //画面の更新間隔(60Hz/144Hzなど)に関わらず同じ速さで動くよう、1/60秒刻みで更新する
 const STEP = 1000/60;

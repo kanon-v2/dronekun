@@ -448,6 +448,8 @@ var sound = {
             case 4: break;  //ストーリーは行ごとに曲を決める(story.js)
             case 5: this.music("title"); break;
             case 6: this.music("title"); break;
+            case 8: this.music("title"); break;
+            case 9: this.music("shop"); break;
         }
     },
 

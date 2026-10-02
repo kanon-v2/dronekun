@@ -209,7 +209,7 @@ var arms = {
     },
     //賢さによる攻撃間隔の倍率(Lv1:1.0 ～ Lv5:0.84)
     rate:function(){
-        return 0.6 + 0.4 * game.stat("brain") / 70;
+        return (0.6 + 0.4 * game.stat("brain") / 70) * (rogue.has("overclock") ? 0.85 : 1);
     },
     cooldown:function(_id){
         var c = WEAPONS[_id].cd[this.level(_id)-1] * this.rate();

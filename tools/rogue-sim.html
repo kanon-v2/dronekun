@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<!--
+  ローグライトのバランス確認：よけて動く自動プレイでランを最初から最後まで何回か遊び、どこまで進めたかを出す。
+  行き先はランダム、報酬は1枚目、パーツは装備枠→耐久→賢さ…の順に使う。#回数 で回数を変えられる(既定4回)。
+  ローグライトの記録(dronekun_rogue_*)は、終わったら元に戻す。
+  ヘッドレス：msedge --headless=new --allow-file-access-from-files --virtual-time-budget=5000 --dump-dom tools/rogue-sim.html
+-->
+<html lang="ja"><head><meta charset="UTF-8"><base href="../"><!-- 画像などのパスをプロジェクト直下から解決する --><title>ドローン君 ローグライトの自動プレイ</title><style>body{margin:0}</style></head>
+<body><div id="Bigbox"><canvas id="Canvas"></canvas></div><pre id="result">running...</pre>
+<script>
+var errors = [];
+window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.filename || "").split("/").pop() + ":" + e.lineno); });
+</script>
+<script src="scripts/drone/common.js"></script>
+<script src="scripts/drone/sound.js"></script>
+<script src="scripts/drone/equipment.js"></script>
+<script src="scripts/drone/bosses.js"></script>
+<script src="scripts/drone/startScreen.js"></script>
+<script src="scripts/drone/mainScreen.js"></script>
+<script src="scripts/drone/dragons.js"></script>
+<script src="scripts/drone/forces.js"></script>
+<script src="scripts/drone/upgradeScreen.js"></script>
+<script src="scripts/drone/gameoverScreen.js"></script>
+<script src="scripts/drone/story.js"></script>
+<script src="lib/peerjs.min.js"></script>
+<script src="scripts/drone/coop.js"></script>
+<script src="scripts/drone/versus.js"></script>
+<script src="scripts/drone/rogue.js"></script>
+<script src="scripts/drone/draw.js"></script>
+<script>
+window.requestAnimationFrame = function(){};
+var out = [], frames = 0;
+function bot(){
+    frames++; MouseIn = true;
+    MouseX = 480 + 300*Math.cos(frames/60); MouseY = 270 + 170*Math.sin(frames/45);
+    var tx = 0, ty = 0, list = enemyShots.concat(enemies.filter(function(e){ return !e.harmless; }));
+    for(var i=0; i<list.length; i++){ var o = list[i], dx = drone.X - o.x, dy = drone.Y - o.y, d = Math.hypot(dx,dy) || 1, R = (o.r || 5) + 90; if(d < R){ tx += dx/d*(R-d); ty += dy/d*(R-d); } }
+    if(tx || ty){ MouseX = drone.X + tx*2; MouseY = drone.Y + ty*2; }
+    MouseX = Math.max(30, Math.min(CW-30, MouseX)); MouseY = Math.max(30, Math.min(CH-30, MouseY));
+}
+function upgradeAI(){
+    while(page.number == 2 && upgradeScreen.state == "reward"){ upgradeScreen.takeReward(upgradeScreen.offers[0]); }
+    //空いている枠に装備・枠の解放・能力(耐久→賢さ→速さ)
+    var changed = true;
+    while(changed){
+        changed = false;
+        var k = game.slotCount;
+        if(k < 3 && game.parts >= SLOT_COST[k]){ game.parts -= SLOT_COST[k]; game.slotCount++; changed = true; }
+        var own = WEAPON_IDS.filter(function(id){ return game.owned[id] && !arms.has(id); });
+        for(var i=0; i<own.length; i++){ var e = upgradeScreen.emptySlot(); if(e >= 0){ game.slots[e] = own[i]; changed = true; } }
+        var order = ["armor","brain","speed","fuel","accuracy"];
+        for(var i=0; i<order.length; i++){ if(upgradeScreen.canBuy(order[i])){ game.parts -= upgradeScreen.cost(order[i]); game.level[order[i]]++; changed = true; break; } }
+    }
+}
+var runs = +(location.hash.slice(1) || 4), results = [];
+//遊んでいる人の記録を消さないよう、終わったら元に戻す
+var keepMeta = localStorage.getItem(RG_META_KEY), keepRun = localStorage.getItem(RG_RUN_KEY), keepSave = localStorage.getItem("dronekun_save");
+localStorage.removeItem(RG_META_KEY); localStorage.removeItem(RG_RUN_KEY);
+for(var r=0; r<runs; r++){
+    rogue.startRun();
+    var guard = 0, battles = 0, hpLog = [];
+    while(guard++ < 400){
+        if(page.number == 9){
+            var m = rogueMap.mode;
+            if(m == "over" || m == "clear") break;
+            if(m == "map"){ var ch = rogue.choices(); var pick = ch[Math.floor(Math.random()*ch.length)]; rogue.go(pick[0], pick[1]); continue; }
+            if(m == "chest"){ if(rogueMap.offers.length) rogue.addItem(rogueMap.offers[0].id); else game.parts += RG_CHEST_PARTS; rogueMap.afterChest(); continue; }
+            if(m == "shop"){ for(var i=0; i<rogueMap.offers.length; i++){ var o = rogueMap.offers[i]; if(o.kind == "heal") while(rogue.lost > 0 && game.parts >= o.price){ game.parts -= o.price; rogue.lost--; } else if(o.kind == "item" && game.parts >= o.price){ game.parts -= o.price; rogue.addItem(o.id); } } rogue.finishNode(); continue; }
+            if(m == "rest"){ if(rogue.lost > 0) rogue.lost = Math.max(0, rogue.lost - rogueMap.restHeal()); else game.parts += RG_REST_PARTS; rogue.finishNode(); continue; }
+        }
+        if(page.number == 1){
+            battles++;
+            var f = 0; while(page.number == 1 && f < 60*240){ bot(); f++; mainScreen.update(); }
+            hpLog.push(rogue.battleType.charAt(0) + (page.number == 9 && rogueMap.mode == "over" ? "x" : (mainScreen.hp)));
+            continue;
+        }
+        if(page.number == 2){ upgradeAI(); rogue.toMap(); continue; }
+        break;
+    }
+    out.push("ラン" + (r+1) + ": " + rogueMap.mode + " ステージ" + rogue.stage + " " + (rogue.layer + 1) + "階  戦闘" + battles + " 撃破" + rogue.run.kills + " コア+" + rogue.run.cores + " アイテム" + rogue.items.length + "  [" + hpLog.join(" ") + "]");
+}
+out.push("コア合計 " + rogue.meta.cores);
+localStorage.removeItem(RG_META_KEY); localStorage.removeItem(RG_RUN_KEY);
+if(keepMeta) localStorage.setItem(RG_META_KEY, keepMeta);
+if(keepRun) localStorage.setItem(RG_RUN_KEY, keepRun);
+if(keepSave) localStorage.setItem("dronekun_save", keepSave);
+document.getElementById("result").textContent = out.join("\n");
+</script></body></html>

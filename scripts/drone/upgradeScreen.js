@@ -146,7 +146,9 @@ var upgradeScreen = {
 
     //まだ最大レベルでない装備から3つ選ぶ。足りなければパーツで埋める
     makeOffers:function(){
-        var pool = WEAPON_IDS.filter(function(id){ return (game.owned[id] || 0) < MAX_WEAPON_LEVEL; });
+        //(ローグライトでは解放済みの武器だけ)
+        var ids = rogue.active ? rogue.weaponPool() : WEAPON_IDS;
+        var pool = ids.filter(function(id){ return (game.owned[id] || 0) < MAX_WEAPON_LEVEL; });
         for(var i=pool.length-1; i>0; i--){
             var j = Math.floor(Math.random()*(i+1));
             var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp;
@@ -317,6 +319,12 @@ var upgradeScreen = {
         }
 
         if(nextButton.clicked()){
+            //ローグライトはマップへ戻って次の行き先を選ぶ
+            if(rogue.active){
+                sound.play("click");
+                rogue.toMap();
+                return;
+            }
             //協力プレイは、ふたりとも準備できたら出撃(coop.update)。もう一度押すと取り消し
             if(coop.active){
                 coop.localReady = !coop.localReady;
@@ -328,6 +336,7 @@ var upgradeScreen = {
         }
         if(toTitleButton.clicked()){
             if(coop.active) coop.leave();
+            if(rogue.active){ rogue.saveRun(); rogue.active = false; }
             sound.play("click");
             page.change(0);
             return;
@@ -358,7 +367,7 @@ var upgradeScreen = {
         ctx.textAlign = "left";
         ctx.font = "15px sans-serif";
         var info = [
-            "耐久　　" + game.stat("armor"),
+            "耐久　　" + (game.stat("armor") + (rogue.active ? rogue.maxHpBonus() : 0)),
             "燃料　　" + game.stat("fuel"),
             "攻撃速度 ×" + (1/arms.rate()).toFixed(2),
             "射程　　" + game.range() + "px"
@@ -385,7 +394,7 @@ var upgradeScreen = {
             nextButton.text("相方を待っています…（押すと取り消し）");
             ctx.fillStyle = "#000";
         }else{
-            nextButton.button("WAVE " + game.wave + " へ出撃" + (coop.active ? "（準備完了）" : ""));
+            nextButton.button(rogue.active ? "マップへ（次の行き先を選ぶ）" : "WAVE " + game.wave + " へ出撃" + (coop.active ? "（準備完了）" : ""));
         }
         if(coop.active){
             ctx.font = "12px sans-serif";
@@ -398,7 +407,7 @@ var upgradeScreen = {
             ctx.fillStyle = "#000";
         }
         ctx.font = "14px sans-serif";
-        toTitleButton.button(coop.active ? "協力プレイをやめる" : "タイトルへ（保存済み）");
+        toTitleButton.button(coop.active ? "協力プレイをやめる" : rogue.active ? "中断（保存済み）" : "タイトルへ（保存済み）");
     },
 
     drawTab:function(_rect,_label,_selected){
