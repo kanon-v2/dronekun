@@ -173,6 +173,7 @@ var mainScreen = {
     reload:0,
     shake:0,
     noFuelMsg:0,
+    fuelOut:false,      //燃料切れで追従が遅くなっているか(燃料が FUEL_RESUME まで戻ると解除)
     bonus:0,
     bossWave:false,     //このWAVEにボスが出るか
     rares:0,            //このWAVEに出たレア敵の数
@@ -222,6 +223,7 @@ var mainScreen = {
         this.invincible = 0;
         this.reload = 30;
         this.shake = 0;
+        this.fuelOut = false;
         this.noFuelMsg = 0;
         this.state = "start";
         this.stateTime = 0;
@@ -322,9 +324,15 @@ var mainScreen = {
         this.fuel = Math.min(this.fuel + FUEL_REGEN, this.maxFuel);
         if(this.fuel <= 0){
             this.fuel = 0;
+            //燃料切れになった瞬間に音で知らせる
+            if(!this.fuelOut) sound.play("error");
+            this.fuelOut = true;
             drone.slow = true;
         }
-        if(drone.slow && this.fuel >= FUEL_RESUME) drone.slow = false;
+        if(drone.slow && this.fuel >= FUEL_RESUME){
+            drone.slow = false;
+            this.fuelOut = false;
+        }
     },
 
     spawn:function(){
@@ -804,7 +812,9 @@ var mainScreen = {
 
         this.drawEffects();
         ctx.font = "bold 14px sans-serif";
-        if(this.noFuelMsg > 0){
+        if(this.fuelOut && this.state != "over" && !this.down){
+            this.drawSlowMark("燃料切れ！止まると回復", "210,40,40", 38);
+        }else if(this.noFuelMsg > 0){
             ctx.fillStyle = "#c33";
             ctx.fillText("燃料が足りない！",drone.X,drone.Y - 34);
         }
@@ -850,6 +860,29 @@ var mainScreen = {
             ctx.font = "18px sans-serif";
             ctx.fillText(inputMode == "touch" ? "画面をタッチすると再開します" : "キャンバスにマウスを戻すと再開します",CW/2,CH/2 + 25);
         }
+        ctx.fillStyle = "#000";
+    },
+
+    //追従が遅くなっていることを、ドローン君のまわりで知らせる(気づかないまま鈍くなるのを防ぐ)
+    //_color："r,g,b"　_dy：文字をドローン君の中心から何px上に出すか
+    drawSlowMark:function(_text,_color,_dy){
+        var a = 0.65 + 0.3*Math.sin(this.clock*0.25);    //点滅
+        ctx.strokeStyle = "rgba(" + _color + "," + a + ")";
+        ctx.lineWidth = 4;
+        ctx.setLineDash([6,5]);
+        ctx.beginPath(); ctx.arc(drone.X,drone.Y,drone.R + 16,0,Math.PI*2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.font = "bold 14px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.lineWidth = 4;
+        ctx.lineJoin = "round";
+        ctx.strokeStyle = "rgba(255,255,255,0.9)";
+        ctx.strokeText(_text,drone.X,drone.Y - _dy);
+        ctx.lineJoin = "miter";
+        ctx.lineWidth = 1;
+        ctx.fillStyle = "rgb(" + _color + ")";
+        ctx.fillText(_text,drone.X,drone.Y - _dy);
         ctx.fillStyle = "#000";
     },
 

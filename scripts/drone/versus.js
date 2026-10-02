@@ -88,7 +88,7 @@ var versus = {
         var M = mainScreen;
         M.down = false; M.state = "play";
         M.maxFuel = game.stat("fuel"); M.fuel = M.maxFuel;
-        M.guard = 0; M.invincible = 0; M.shake = 0; M.tint = null; M.slowmo = 0; M.noFuelMsg = 0; M.clock = 0;
+        M.guard = 0; M.invincible = 0; M.shake = 0; M.tint = null; M.slowmo = 0; M.noFuelMsg = 0; M.fuelOut = false; M.clock = 0;
         arms.reset();
         dragonBlast.reset();
         drone.applyStats();
@@ -446,7 +446,10 @@ var versus = {
             this.label("あなた", drone.X, drone.Y, "#000");
         }
         M.drawEffects();
-        if(M.noFuelMsg > 0){
+        //遅くなっている理由をドローン君のまわりに出す(「あなた」の名札より上)
+        if(this.phase == "fight" && M.fuelOut) M.drawSlowMark("燃料切れ！止まると回復", "210,40,40", 50);
+        else if(this.phase == "fight" && this.empSlow > 0) M.drawSlowMark("EMPで減速中", "134,102,204", 50);
+        else if(M.noFuelMsg > 0){
             ctx.font = "bold 14px sans-serif";
             ctx.fillStyle = "#c33";
             ctx.fillText("燃料が足りない！",drone.X,drone.Y - 48);

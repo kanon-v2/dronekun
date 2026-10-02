@@ -72,6 +72,16 @@ try{
         check("戦闘 WAVE" + c[0] + "（" + c[1] + "）を25秒", errors.length == before, "敵" + enemies.length + " 弾" + enemyShots.length);
     });
 
+    // 燃料切れ：遅くなり、ドローン君のまわりに知らせが出て、燃料が戻ると解除
+    setup(2, { gun:1 }, ["gun",null,null], 1);
+    page.change(1); mainScreen.update();
+    mainScreen.fuel = 0.01; MouseX = drone.X + 200; MouseY = drone.Y;
+    mainScreen.update(); mainScreen.update(); draw1();
+    var outNow = mainScreen.fuelOut && drone.slow;
+    mainScreen.fuel = FUEL_RESUME + 1; MouseX = drone.X; MouseY = drone.Y;
+    mainScreen.update();
+    check("燃料切れで遅くなり、回復で戻る", outNow && !mainScreen.fuelOut && !drone.slow);
+
     // 3. 全シナジー
     SYNERGIES.forEach(function(s){
         setup(7, {}, [s.a, s.b, null], 5); game.owned[s.a] = 3; game.owned[s.b] = 3;
