@@ -495,6 +495,7 @@ var sound = {
             case "reward":    this.jingle([79,83,86,91],0.06,"triangle",0.08); break;
             //画面の操作
             case "click":     this.tone("square",880,880,0.03,0.04,S,0,0,2500); break;
+            case "hover":     this.tone("triangle",1500,1700,0.025,0.025,S,0,0,4000); break;   //タイトルのメニューにマウスが乗った
             case "buy":       this.tone("triangle",660,660,0.06,0.08,S); this.tone("triangle",990,990,0.1,0.08,S,now + 0.07); break;
         }
     },
