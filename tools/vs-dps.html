@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<!--
+  協力プレイの動作確認
+  ゲームを2つ(ホスト・ゲスト)iframe で開き、偽のPeerJS(tools/fake-peer.js)の通信をこのページが中継する。
+  部屋を作る → コード違いで入れない → コードで入る → プロローグ → 強化 → 出撃 → WAVEクリアがそろう → 切断 を確かめる。
+  tools/run-smoke.ps1 からヘッドレスで開き、結果を <pre id="result"> に書き出す。
+-->
+<html lang="ja"><head><meta charset="UTF-8"><title>ドローン君 協力プレイのテスト</title>
+<style>body{margin:0} iframe{width:480px;height:270px;border:1px solid #888}</style></head>
+<body>
+<iframe id="host" name="host" src="coop-frame.html"></iframe><iframe id="guest" name="guest" src="coop-frame.html"></iframe>
+<pre id="result">running...</pre>
+<script>
+var frames = { host:document.getElementById("host").contentWindow, guest:document.getElementById("guest").contentWindow };
+var st = { host:null, guest:null };
+var out = [], fails = 0;
+function L(s){ out.push(s); }
+function check(name, ok, detail){ if(!ok) fails++; L((ok ? "OK   " : "NG   ") + name + (detail ? "  (" + detail + ")" : "")); }
+function cmd(who, m){ frames[who].postMessage(m, "*"); }
+
+//------------------------------------------------ 偽PeerJSの中継(仲介サーバーと通信路の代わり)
+var ids = {};   //PeerのID → そのPeerがいる画面
+function toFrame(win, m){ m.fp = true; m.toFrame = true; win.postMessage(m, "*"); }
+window.addEventListener("message", function(ev){
+    var m = ev.data;
+    if(!m) return;
+    if(m.st){ st[m.name] = m; return; }
+    if(!m.fp || m.toFrame) return;
+    var src = ev.source;
+    switch(m.type){
+        case "register":
+            if(ids[m.id] && ids[m.id] != src) toFrame(src, { type:"error", peer:m.id, etype:"unavailable-id" });
+            else { ids[m.id] = src; toFrame(src, { type:"open", peer:m.id }); }
+            break;
+        case "connect":
+            if(!ids[m.to]){ toFrame(src, { type:"error", peer:m.id, etype:"peer-unavailable" }); break; }
+            toFrame(ids[m.to], { type:"incoming", peer:m.to, from:m.id, cid:m.cid });
+            setTimeout(function(){ toFrame(src, { type:"connopen", cid:m.cid }); }, 5);
+            break;
+        case "data":
+        case "close":
+            if(ids[m.to]) toFrame(ids[m.to], { type:m.type, cid:m.cid, d:m.d });
+            break;
+        case "destroy":
+            delete ids[m.id];
+            break;
+    }
+});
+
+//------------------------------------------------ 手順
+var IDS = ["gun","missile","laser","bug","tesla","mine","blade","water","emp"], k = 0, WIN = 1200;
+function waitFor(cond, ms, then){
+    var t0 = Date.now();
+    var iv = setInterval(function(){ var ok = false; try{ ok = st.host && st.guest && cond(); }catch(e){} if(ok || Date.now() - t0 > ms){ clearInterval(iv); then(ok); } }, 50);
+}
+function loop(){
+    var r = k + 1;
+    waitFor(function(){ return st.host.vs.ph == "fight" && st.host.vs.r == r && st.host.vs.t > 180 + WIN; }, 300000, function(ok){
+        var h = st.host.vs;
+        L(IDS[k] + " : " + (h.dealt/10) + " / 20秒 = " + Math.round(h.dealt/10/20*10)/10 + "/秒" + (ok ? "" : " TIMEOUT"));
+        cmd("host", { cmd:"forfeit" });
+        waitFor(function(){ return st.host.vs.ph == "result" && st.guest.vs.ph == "result"; }, 20000, function(){
+            k++;
+            if(k >= IDS.length){ cmd("host", { cmd:"stop" }); cmd("guest", { cmd:"stop" }); L("DONE"); document.getElementById("result").textContent = out.join("\n"); return; }
+            cmd("host", { cmd:"picks", p:[IDS[k]] });
+            setTimeout(function(){ cmd("host", { cmd:"again" }); cmd("guest", { cmd:"again" }); loop(); }, 200);
+        });
+    });
+}
+window.addEventListener("load", function(){
+    waitFor(function(){ return true; }, 5000, function(){
+        cmd("host", { cmd:"picks", p:[IDS[0]] }); cmd("guest", { cmd:"picks", p:[] });
+        cmd("host", { cmd:"forceReady" }); cmd("guest", { cmd:"forceReady" });
+        cmd("host", { cmd:"create", mode:"vs" });
+        waitFor(function(){ return st.host.waiting && st.host.code; }, 5000, function(){
+            cmd("guest", { cmd:"join", code:st.host.code });
+            cmd("host", { cmd:"auto" }); cmd("guest", { cmd:"auto" });
+            loop();
+        });
+    });
+});
+</script></body></html>

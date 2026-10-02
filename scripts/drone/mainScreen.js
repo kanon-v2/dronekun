@@ -441,6 +441,8 @@ var mainScreen = {
 
     //_src：何で攻撃したか("gun","missile"など。シナジーの判定に使う)
     hitEnemy:function(_e,_dmg,_src){
+        //対戦の相手：ダメージを数えて相手へ送るだけ(相手の耐久は相手の画面で減らす。versus.js)
+        if(_e.rival){ versus.hit(_e,_dmg,_src); return; }
         //ゲストの攻撃はダメージをホストへ送るだけ(敵を動かしているのはホスト)
         if(coop.isGuest()){ coop.guestHit(_e,_dmg,_src); return; }
         if(_e.dead) return;
@@ -800,6 +802,59 @@ var mainScreen = {
             ctx.beginPath(); ctx.arc(drone.X,drone.Y,HIT_CORE*0.75,0,Math.PI*2); ctx.fill();
         }
 
+        this.drawEffects();
+        ctx.font = "bold 14px sans-serif";
+        if(this.noFuelMsg > 0){
+            ctx.fillStyle = "#c33";
+            ctx.fillText("燃料が足りない！",drone.X,drone.Y - 34);
+        }
+        ctx.restore();
+
+        //連鎖爆破などで画面全体がうっすら色づく
+        if(this.tint){
+            ctx.fillStyle = "rgba(" + this.tint.color + "," + (0.16*this.tint.life/this.tint.maxLife) + ")";
+            ctx.fillRect(0,0,CW,CH);
+        }
+
+        this.drawHud();
+        coop.drawHud();
+        if(this.down && this.state != "over"){
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.font = "bold 22px sans-serif";
+            ctx.fillStyle = "rgba(200,40,40,0.9)";
+            ctx.fillText("ダウン中……次のWAVEで復帰します。相方をたのむ！",CW/2,CH/2 + 80);
+            ctx.fillStyle = "#000";
+        }
+        special.drawBossBar();
+        //レア敵の出現案内
+        if(this.rareMsgTime > 0){
+            ctx.globalAlpha = Math.min(1, this.rareMsgTime/30);
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.font = "bold 16px sans-serif";
+            ctx.fillStyle = "#b8860b";
+            ctx.fillText("★ " + this.rareMsg,CW/2,this.bossWave ? 100 : 70);
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = "#000";
+        }
+        this.drawBanner();
+
+        if(this.paused){
+            ctx.fillStyle = "rgba(255,255,255,0.75)";
+            ctx.fillRect(0,0,CW,CH);
+            ctx.fillStyle = "#000";
+            ctx.textAlign = "center";
+            ctx.font = "bold 40px serif";
+            ctx.fillText("一時停止中",CW/2,CH/2 - 20);
+            ctx.font = "18px sans-serif";
+            ctx.fillText(inputMode == "touch" ? "画面をタッチすると再開します" : "キャンバスにマウスを戻すと再開します",CW/2,CH/2 + 25);
+        }
+        ctx.fillStyle = "#000";
+    },
+
+    //破片・衝撃波・文字(対戦画面からも使う)
+    drawEffects:function(){
         //破片・衝撃波
         for(var i=0; i<effects.length; i++){
             var f = effects[i];
@@ -865,54 +920,6 @@ var mainScreen = {
             ctx.fillText(p.text,p.x,p.y);
         }
         ctx.globalAlpha = 1;
-        ctx.font = "bold 14px sans-serif";
-        if(this.noFuelMsg > 0){
-            ctx.fillStyle = "#c33";
-            ctx.fillText("燃料が足りない！",drone.X,drone.Y - 34);
-        }
-        ctx.restore();
-
-        //連鎖爆破などで画面全体がうっすら色づく
-        if(this.tint){
-            ctx.fillStyle = "rgba(" + this.tint.color + "," + (0.16*this.tint.life/this.tint.maxLife) + ")";
-            ctx.fillRect(0,0,CW,CH);
-        }
-
-        this.drawHud();
-        coop.drawHud();
-        if(this.down && this.state != "over"){
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.font = "bold 22px sans-serif";
-            ctx.fillStyle = "rgba(200,40,40,0.9)";
-            ctx.fillText("ダウン中……次のWAVEで復帰します。相方をたのむ！",CW/2,CH/2 + 80);
-            ctx.fillStyle = "#000";
-        }
-        special.drawBossBar();
-        //レア敵の出現案内
-        if(this.rareMsgTime > 0){
-            ctx.globalAlpha = Math.min(1, this.rareMsgTime/30);
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.font = "bold 16px sans-serif";
-            ctx.fillStyle = "#b8860b";
-            ctx.fillText("★ " + this.rareMsg,CW/2,this.bossWave ? 100 : 70);
-            ctx.globalAlpha = 1;
-            ctx.fillStyle = "#000";
-        }
-        this.drawBanner();
-
-        if(this.paused){
-            ctx.fillStyle = "rgba(255,255,255,0.75)";
-            ctx.fillRect(0,0,CW,CH);
-            ctx.fillStyle = "#000";
-            ctx.textAlign = "center";
-            ctx.font = "bold 40px serif";
-            ctx.fillText("一時停止中",CW/2,CH/2 - 20);
-            ctx.font = "18px sans-serif";
-            ctx.fillText(inputMode == "touch" ? "画面をタッチすると再開します" : "キャンバスにマウスを戻すと再開します",CW/2,CH/2 + 25);
-        }
-        ctx.fillStyle = "#000";
     },
 
     drawBackground:function(){

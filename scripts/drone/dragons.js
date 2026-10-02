@@ -20,13 +20,14 @@ var dragonBlast = {
     },
 
     //_visual：協力プレイの相方の技を自分の画面に描くだけ(ダメージや弾消しはしない)
-    cast:function(_x,_y,_visual){
+    //_targets：狙う相手を決めて渡す(対戦で、相手の技が自分に向かってくるように見せる)。省略時は近い敵
+    cast:function(_x,_y,_visual,_targets){
         var c = { x:_x, y:_y, t:0, dragons:[], finished:false, visual:!!_visual };
         //近い敵から順に5体まで狙う。足りない分は五芒星の方向へ飛ぶ
         var taken = [];
         for(var i=0; i<5; i++){
             var a = -Math.PI/2 + i*Math.PI*2/5;
-            var target = arms.nearest(_x,_y,DRAGON_REACH,taken);
+            var target = _targets ? (_targets[i % _targets.length] || null) : arms.nearest(_x,_y,DRAGON_REACH,taken);
             if(target) taken.push(target);
             c.dragons.push({
                 x:_x + Math.cos(a)*50, y:_y + Math.sin(a)*50,  //陣の頂点から出る

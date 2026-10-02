@@ -54,7 +54,8 @@ function toCanvasPos(e){
 }
 //戦闘中のタッチはドラッグ操作になる
 function isTouchDrag(){
-    return inputMode == "touch" && page.number == 1;
+    //戦闘中と対戦の戦闘中はドラッグで動かす
+    return inputMode == "touch" && (page.number == 1 || (page.number == 7 && versus.dragging()));
 }
 
 canvas.addEventListener("pointerdown",function(e){

@@ -24,9 +24,10 @@ window.requestAnimationFrame = function(){};   //ループはこのページで�
 <script src="scripts/drone/story.js"></script>
 <script src="tools/fake-peer.js"></script>
 <script src="scripts/drone/coop.js"></script>
+<script src="scripts/drone/versus.js"></script>
 <script src="scripts/drone/draw.js"></script>
 <script>
-var auto = false, unarmed = false, geared = -1, frames = 0, ticks = 0;
+var forceReady = false, auto = false, unarmed = false, geared = -1, frames = 0, ticks = 0;
 function bot(){
     frames++; MouseIn = true;
     MouseX = 480 + 300*Math.cos(frames/60); MouseY = 270 + 170*Math.sin(frames/45);
@@ -49,6 +50,11 @@ function autoPlay(){
         if(!coop.localReady) coop.localReady = true;
     }
     else if(page.number == 1){ bot(); mainScreen.hp = Math.max(mainScreen.hp, 1); if(!unarmed && frames % 300 == 0) Click = 1; }
+    //対戦：準備OKを押し、戦闘はよけながら飛んで、ときどき衝撃波
+    else if(page.number == 7){
+        if(versus.phase == "select" && !versus.ready && (versus.picks.length == VS_PICKS || forceReady)) versus.ready = true;
+        if(versus.phase == "fight"){ bot(); if(frames % 400 == 0) Click = 1; }
+    }
 }
 function step(){
     if(Click == 1 && sound.handleClick()) Click = 0;
@@ -62,6 +68,9 @@ function step(){
 //ホストが反映した、ゲストからのダメージの回数(合計)
 var partnerHits = 0, hitEnemy0 = mainScreen.hitEnemy;
 mainScreen.hitEnemy = function(_e,_d,_src){ if(_src == "partner") partnerHits++; return hitEnemy0.apply(this, arguments); };
+//対戦で与えたダメージの内訳(装備ごと。バランス調整用)
+var vsSrc = {}, vsHit0 = versus.hit;
+versus.hit = function(_e,_d,_src){ if(versus.live()) vsSrc[_src] = Math.round(((vsSrc[_src] || 0) + _d*(VS_DAMAGE_MUL[_src] || 1))*10)/10; return vsHit0.apply(this, arguments); };
 var loop = setInterval(function(){
     try{
         for(var i=0; i<4; i++){ if(auto) autoPlay(); step(); }
@@ -73,14 +82,21 @@ var loop = setInterval(function(){
 setInterval(function(){
     top.postMessage({ st:true, name:window.name, page:page.number, active:coop.active, role:coop.role, inRoom:coop.inRoom,
         waiting:coop.waiting, code:coop.code, wave:game.wave, msg:coop.msg, notice:startScreen.notice || "",
-        partner:!!coop.partner, partnerHits:partnerHits, enemies:enemies.length, story:page.number == 4 ? storyScreen.id : "", errors:errors.slice(0,5) }, "*");
+        partner:!!coop.partner, partnerHits:partnerHits, enemies:enemies.length,
+        vs:{ a:versus.active, ph:versus.phase, r:versus.round, hp:versus.hp, res:versus.result, w:versus.wins, l:versus.losses, d:versus.draws, dealt:versus.dealt, mx:VS_HP, ft:versus.fightTime, t:versus.t, src:vsSrc },
+        story:page.number == 4 ? storyScreen.id : "", errors:errors.slice(0,5) }, "*");
 }, 100);
 
 //親ページからの指示
 window.addEventListener("message", function(ev){
     var m = ev.data;
     if(!m || !m.cmd) return;
-    if(m.cmd == "create"){ coop.init(); page.change(6); coop.createRoom(); }
+    if(m.cmd == "create"){ coop.init(); coop.mode = m.mode || "coop"; page.change(6); coop.createRoom(); }
+    if(m.cmd == "picks") versus.picks = m.p.slice();
+    if(m.cmd == "again") versus.newRound();
+    if(m.cmd == "forceReady") forceReady = true;
+    if(m.cmd == "clearSrc") vsSrc = {};
+    if(m.cmd == "forfeit" && versus.phase == "fight") versus.hp = 0;
     if(m.cmd == "join"){ coop.init(); page.change(6); coop.joinRoom(m.code); }
     if(m.cmd == "auto"){ auto = true; unarmed = !!m.unarmed; }
     if(m.cmd == "leave"){ coop.leave(); page.change(0); }

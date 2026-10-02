@@ -57,6 +57,7 @@ function waitFor(cond, ms, then){
         if(ok || Date.now() - t0 > ms){ clearInterval(iv); then(ok, Date.now() - t0); }
     }, 50);
 }
+function vsDesc(){ return ["host","guest"].map(function(k){ var v = st[k] && st[k].vs; return v ? k + ":p" + st[k].page + " " + v.ph + v.r + " hp" + Math.round(v.hp*10)/10 + " " + v.res : k + ":-"; }).join(" / "); }
 function both(f){ return f(st.host) && f(st.guest); }
 function desc(){ return ["host","guest"].map(function(k){ var s = st[k]; return s ? k + ":p" + s.page + " w" + s.wave + (s.active ? " active" : "") + (s.msg ? " 「" + s.msg + "」" : "") : k + ":-"; }).join(" / "); }
 
@@ -127,6 +128,48 @@ var steps = [
         cmd("host", { cmd:"leave" });
         waitFor(function(){ return st.guest.page == 0 && !st.guest.active && st.guest.notice; }, 12000, function(ok){
             check("ホストが抜けるとゲストはタイトルへ", ok, st.guest.notice || desc()); next();
+        });
+    },
+
+    //------------------------------------------------ 対戦(versus.js)
+    function(next){
+        cmd("host", { cmd:"picks", p:["gun","missile","tesla"] });
+        cmd("guest", { cmd:"picks", p:["laser","bug","blade"] });
+        cmd("host", { cmd:"create", mode:"vs" });
+        waitFor(function(){ return st.host.waiting && st.host.code; }, 5000, function(){
+            cmd("guest", { cmd:"join", code:st.host.code });
+            waitFor(function(){ return both(function(s){ return s.vs.a && s.page == 7; }); }, 8000, function(ok){
+                check("対戦：コードで入る → ふたりとも装備選び", ok, vsDesc()); next();
+            });
+        });
+    },
+    function(next){
+        //auto はまだ有効なので、準備OKを押して戦闘が始まる
+        waitFor(function(){ return both(function(s){ return s.vs.ph == "fight" && s.vs.r == 1; }); }, 10000, function(ok){
+            check("対戦：ふたりとも準備OKで戦闘開始", ok, vsDesc()); next();
+        });
+    },
+    function(next){
+        waitFor(function(){ return both(function(s){ return s.vs.ph == "result"; }); }, 200000, function(ok, ms){
+            var h = st.host.vs, g = st.guest.vs;
+            var pair = h.res + "/" + g.res;
+            check("対戦：決着がつく", ok, vsDesc() + " 戦闘" + Math.round(h.ft/60) + "秒");
+            check("対戦：勝敗が食い違わない", pair == "win/lose" || pair == "lose/win" || pair == "draw/draw", pair);
+            check("対戦：おたがいの攻撃が届く", h.dealt > 0 && g.dealt > 0 && h.hp < h.mx && g.hp < g.mx,
+                  "与えたダメージ " + h.dealt/10 + " / " + g.dealt/10);
+            next();
+        });
+    },
+    function(next){
+        cmd("host", { cmd:"again" }); cmd("guest", { cmd:"again" });
+        waitFor(function(){ return both(function(s){ return s.vs.ph == "fight" && s.vs.r == 2; }); }, 10000, function(ok){
+            check("対戦：もう一度 → 第2戦", ok, vsDesc()); next();
+        });
+    },
+    function(next){
+        cmd("guest", { cmd:"leave" });
+        waitFor(function(){ return st.host.page == 0 && !st.host.vs.a && st.host.notice; }, 12000, function(ok){
+            check("対戦：相手が抜けるとタイトルへ", ok, st.host.notice || vsDesc()); next();
         });
     },
     function(next){

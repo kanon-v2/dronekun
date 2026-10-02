@@ -94,7 +94,8 @@ const particles = (new Array(50))
 //------------------------------------------------------------------------------
 var startButton = new drawRect(canvas.width/2,GS*6.6,GS*14,GS*2.3);
 var continueButton = new drawRect(canvas.width/2,GS*9.1,GS*14,GS*2.3);
-var coopButton = new drawRect(canvas.width/2,GS*11.6,GS*14,GS*2.3);
+var coopButton = new drawRect(canvas.width/2 - GS*3.55,GS*11.6,GS*6.9,GS*2.3);
+var versusButton = new drawRect(canvas.width/2 + GS*3.55,GS*11.6,GS*6.9,GS*2.3);
 
 //------------------------------------------------------------------------------
 //  スタート画面処理
@@ -128,6 +129,15 @@ var startScreen = {
         if(coopButton.clicked()){
             sound.play("click");
             this.notice = "";
+            if(!coop.inRoom) coop.mode = "coop";
+            page.change(6);
+            return;
+        }
+        //ふたりで対戦：同じ部屋選びの画面を対戦用に使う(versus.js)
+        if(versusButton.clicked()){
+            sound.play("click");
+            this.notice = "";
+            if(!coop.inRoom) coop.mode = "vs";
             page.change(6);
             return;
         }
@@ -169,7 +179,9 @@ var startScreen = {
         ctx.font = "bold 28px serif";
         startButton.button("はじめから");
         continueButton.button(this.hasSave ? "つづきから" : "つづきから（データなし）", this.hasSave);
+        ctx.font = "bold 22px serif";
         coopButton.button("ふたりで協力プレイ");
+        versusButton.button("ふたりで対戦");
         //協力プレイから戻ったときのお知らせ
         if(this.notice){
             ctx.font = "bold 14px sans-serif";

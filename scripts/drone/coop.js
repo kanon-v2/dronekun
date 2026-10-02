@@ -20,6 +20,7 @@ const COOP_HP_MUL = 2;      //協力プレイでの敵の体力の倍率
 const COOP_ID_PREFIX = "dronekun-room-";  //PeerJSのIDの頭に付ける(ほかのアプリのIDとぶつからないように)
 const COOP_CODE_CHARS = "abcdefghjkmnpqrstuvwxyz23456789";  //部屋コードに使う文字(見間違えやすい i l o 0 1 は使わない)
 const COOP_TIMEOUT = 8000;  //相方から何も届かないまま、この時間(ミリ秒)たったら切断とみなす
+const COOP_NO_REPLY = 12000; //ゲストがつながってから、この時間(ミリ秒)ホストから何も届かなければ入り直しを案内する
 const P2_COLOR    = "40,130,230";
 
 var enemySeq = 0;           //敵の通し番号(ホストとゲストで同じ敵を指すため)
@@ -45,6 +46,7 @@ var coop = {
     remote:null,        //相方から最後に届いた状態
     lastRecv:0,
     active:false,       //協力プレイ中か
+    mode:"coop",        //"coop"(協力プレイ)か "vs"(対戦。versus.js)。ゲストはホストから届いた値に合わせる
     role:null,          //"host" か "guest"
     code:null,
     waiting:false,      //ホストが相方を待っている
@@ -88,8 +90,10 @@ var coop = {
     },
 
     //部屋を作る：コードをPeerJSのIDにして、相方からつないでくるのを待つ
-    createRoom:function(){
+    //_mode："coop" か "vs"
+    createRoom:function(_mode){
         if(!this.available || this.inRoom) return;
+        this.mode = _mode || this.mode || "coop";
         var code = "";
         for(var i=0; i<4; i++) code += COOP_CODE_CHARS.charAt(Math.floor(Math.random()*COOP_CODE_CHARS.length));
         var self = this;
@@ -106,7 +110,7 @@ var coop = {
         });
         peer.on("connection",function(c){
             //すでに相方がいる・もう始まっているときは断る(ふたりまで。途中からの参加はできない)
-            if(self.conn || self.active){ c.on("open",function(){ c.close(); }); return; }
+            if(self.conn || self.active || versus.active){ c.on("open",function(){ c.close(); }); return; }
             self.setupConn(c);
         });
         peer.on("error",function(e){
@@ -148,14 +152,18 @@ var coop = {
     setupConn:function(_c){
         var self = this;
         this.conn = _c;
-        _c.on("open",function(){
-            if(self.conn != _c) return;
+        var onOpen = function(){
+            if(self.conn != _c || self.connOpen) return;
             self.connOpen = true;
             self.lastRecv = Date.now();
             if(self.role == "guest") self.msg = "ホストの応答を待っています…";
-        });
+        };
+        _c.on("open",onOpen);
+        //つながった合図を取りこぼしても進めるよう、すでに開いている・データが届いたときも「つながった」とする
+        if(_c.open) onOpen();
         _c.on("data",function(d){
             if(self.conn != _c || !d || typeof d != "object") return;
+            onOpen();
             self.remote = d;
             self.lastRecv = Date.now();
         });
@@ -201,6 +209,13 @@ var coop = {
 
     //ゲーム開始(ホストは相方がつないできたとき、ゲストはホストの状態が届いたとき)
     startGame:function(){
+        if(this.mode == "vs"){
+            //対戦：装備選びへ(versus.js)
+            this.waiting = false;
+            this.msg = "";
+            versus.start(this.role == "host");
+            return;
+        }
         this.active = true;
         this.waiting = false;
         game.reset();
@@ -222,6 +237,17 @@ var coop = {
     },
 
     partnerLeft:function(){
+        if(this.mode == "vs"){
+            var fighting = versus.active;
+            this.leave();
+            if(fighting){
+                startScreen.notice = "対戦相手との接続が切れたので、タイトルに戻りました";
+                page.change(0);
+            }else{
+                this.say("相手との接続が切れました");
+            }
+            return;
+        }
         if(this.role == "guest"){
             var playing = this.active;
             this.leave();
@@ -241,6 +267,7 @@ var coop = {
 
     leave:function(){
         this.closePeer();
+        versus.active = false;
         this.inRoom = false;
         this.active = false;
         this.role = null;
@@ -266,14 +293,27 @@ var coop = {
         this.framesSinceSnap++;
         //しばらく何も届かなければ切断とみなす(相方がタブを閉じた・回線が切れた)。
         //始まる前は数えない(ホストが招待リンクを送るため別のアプリに切り替えている間は、ホストの画面が止まっているため)
-        if(this.active && this.connOpen && Date.now() - this.lastRecv > COOP_TIMEOUT){
+        if((this.active || versus.active) && this.connOpen && Date.now() - this.lastRecv > COOP_TIMEOUT){
             this.closePeer();
             this.partnerLeft();
             return;
         }
 
+        //ゲスト：つながったのにホストから何も届かないときは、入り直しを案内する
+        if(this.role == "guest" && this.connOpen && !this.remote && Date.now() - this.lastRecv > COOP_NO_REPLY){
+            this.msg = "ホストから応答がありません。いったん戻って、もう一度入り直してください";
+        }
+
         //相方から最後に届いた状態
         var other = this.remote && this.remote.role == (this.role == "host" ? "guest" : "host") ? this.remote : null;
+
+        //ゲストは、ホストから届いた遊び方(協力・対戦)に合わせる
+        if(this.role == "guest" && other && other.m && !this.active && !versus.active) this.mode = other.m;
+        if(this.mode == "vs"){
+            if(!versus.active && other && (this.role == "guest" || (this.waiting && this.connOpen))) this.startGame();
+            if(versus.active) versus.read(other && other.v);
+            return;
+        }
 
         if(this.role == "host"){
             if(this.waiting && this.connOpen && other){ this.startGame(); }
@@ -301,7 +341,8 @@ var coop = {
         if(!this.conn || !this.connOpen) return;
         if(++this.step % 2) return;
         try{
-            if(this.role == "host") this.conn.send({ role:"host", s:this.buildHost() });
+            if(this.mode == "vs") this.conn.send({ role:this.role, m:"vs", v:versus.build() });
+            else if(this.role == "host") this.conn.send({ role:"host", m:"coop", s:this.buildHost() });
             else this.conn.send({ role:"guest", g:this.buildGuest() });
         }catch(e){}
     },
@@ -739,8 +780,10 @@ var coop = {
         ctx.fillStyle = "#000";
     },
 
-    //相方の武器(簡易表示)
-    drawArms:function(_a){
+    //相方の武器(簡易表示)。_ox,_oy：ブレードの中心(省略時は相方の位置。対戦の相手にも使う)
+    drawArms:function(_a,_ox,_oy){
+        var P = this.partner;
+        var ox = _ox != null ? _ox : (P ? P.pos.X : 0), oy = _oy != null ? _oy : (P ? P.pos.Y : 0);
         ctx.fillStyle = "#333";
         for(var i=0; _a.b && i<_a.b.length; i+=2) ctx.fillRect(_a.b[i] - 2,_a.b[i+1] - 2,4,4);
         for(var i=0; _a.m && i<_a.m.length; i+=3){
@@ -753,13 +796,13 @@ var coop = {
         for(var i=0; _a.w && i<_a.w.length; i+=2){ ctx.beginPath(); ctx.arc(_a.w[i],_a.w[i+1],3,0,Math.PI*2); ctx.fill(); }
         ctx.fillStyle = "#875";
         for(var i=0; _a.n && i<_a.n.length; i+=2){ ctx.beginPath(); ctx.arc(_a.n[i],_a.n[i+1],7,0,Math.PI*2); ctx.fill(); }
-        if(_a.bl && this.partner){
+        if(_a.bl && (_ox != null || P)){
             var n = _a.bl[0], R = _a.bl[1], sz = _a.bl[2], ang = _a.bl[4]/100;
             ctx.fillStyle = _a.bl[3] ? "rgb(" + SYN_COLOR.lightblade + ")" : "#555";
             for(var k=0; k<n; k++){
                 var a = ang + k*Math.PI*2/n;
                 ctx.save();
-                ctx.translate(this.partner.pos.X + Math.cos(a)*R, this.partner.pos.Y + Math.sin(a)*R);
+                ctx.translate(ox + Math.cos(a)*R, oy + Math.sin(a)*R);
                 ctx.rotate(a*4);
                 ctx.beginPath(); ctx.moveTo(sz,0); ctx.lineTo(0,sz*0.35); ctx.lineTo(-sz,0); ctx.lineTo(0,-sz*0.35); ctx.closePath(); ctx.fill();
                 ctx.restore();
@@ -845,10 +888,17 @@ var coopScreen = {
             }
             if(navigator.share && coopShareButton.clicked()){
                 sound.play("click");
-                navigator.share({ title:"ドローン君 ふたりで協力プレイ", text:"部屋コード " + coop.code.toUpperCase(), url:coop.inviteLink() }).catch(function(){});
+                navigator.share({ title:"ドローン君 " + coopScreen.title(), text:"部屋コード " + coop.code.toUpperCase(), url:coop.inviteLink() }).catch(function(){});
                 return;
             }
         }
+    },
+
+    //画面の題名(協力プレイか対戦か)
+    title:function(){
+        if(coop.mode == "vs") return "ふたりで対戦";
+        if(coop.mode == "coop") return "ふたりで協力プレイ";
+        return "ふたりで遊ぶ";   //招待リンクで開いて、まだ遊び方が届いていない
     },
 
     //招待リンクをコピー。できないブラウザでは、選んでコピーできる入力欄に出す
@@ -867,10 +917,13 @@ var coopScreen = {
         ctx.textBaseline = "middle";
         ctx.fillStyle = "#000";
         ctx.font = "bold 40px serif";
-        ctx.fillText("ふたりで協力プレイ",CW/2,GS*2.2);
+        ctx.fillText(this.title(),CW/2,GS*2.2);
         ctx.font = "14px sans-serif";
         ctx.fillStyle = "#555";
-        ctx.fillText("ストーリーモードをふたりで。敵の体力は2倍、強化・装備はそれぞれ別です（インターネット接続が必要）",CW/2,GS*3.8);
+        ctx.fillText(coop.mode == "vs"
+            ? "ドローン君同士の1対1。装備を3つ選んで戦います（インターネット接続が必要）"
+            : coop.mode == null ? "招待された部屋につないでいます"
+            : "ストーリーモードをふたりで。敵の体力は2倍、強化・装備はそれぞれ別です（インターネット接続が必要）",CW/2,GS*3.8);
 
         if(!coop.available){
             ctx.fillStyle = "#c33";
@@ -884,7 +937,7 @@ var coopScreen = {
             if(coop.waiting){
                 ctx.font = "15px sans-serif";
                 ctx.fillStyle = "#555";
-                ctx.fillText("相方に部屋コードか招待リンクを送ってください。相方がつなぐと始まります",CW/2,GS*5.4);
+                ctx.fillText((coop.mode == "vs" ? "相手" : "相方") + "に部屋コードか招待リンクを送ってください。つながると始まります",CW/2,GS*5.4);
                 //部屋コードを大きく
                 ctx.font = "bold 64px monospace";
                 ctx.fillStyle = "#000";
@@ -938,6 +991,7 @@ var coopScreen = {
     setTimeout(function(){
         coop.init();
         if(!coop.available) return;
+        coop.mode = null;   //協力プレイか対戦かは、ホストから届いてから決まる
         page.change(6);
         coop.joinRoom(code);
     }, 300);
