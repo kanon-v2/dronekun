@@ -82,7 +82,7 @@ var loop = setInterval(function(){
 setInterval(function(){
     top.postMessage({ st:true, name:window.name, page:page.number, active:coop.active, role:coop.role, inRoom:coop.inRoom,
         waiting:coop.waiting, code:coop.code, wave:game.wave, msg:coop.msg, notice:startScreen.notice || "",
-        partner:!!coop.partner, partnerHits:partnerHits, enemies:enemies.length,
+        partner:!!coop.partner, partnerHits:partnerHits, parts:game.parts, partsGot:coop.partsGot, partnerParts:coop.partnerParts, enemies:enemies.length,
         vs:{ a:versus.active, ph:versus.phase, r:versus.round, hp:versus.hp, res:versus.result, w:versus.wins, l:versus.losses, d:versus.draws, dealt:versus.dealt, mx:VS_HP, ft:versus.fightTime, t:versus.t, src:vsSrc },
         story:page.number == 4 ? storyScreen.id : "", errors:errors.slice(0,5) }, "*");
 }, 100);
@@ -95,6 +95,8 @@ window.addEventListener("message", function(ev){
     if(m.cmd == "picks") versus.picks = m.p.slice();
     if(m.cmd == "again") versus.newRound();
     if(m.cmd == "forceReady") forceReady = true;
+    if(m.cmd == "die" && page.number == 1){ mainScreen.hp = 1; mainScreen.damage(); }
+    if(m.cmd == "continue") coop.wantContinue = true;
     if(m.cmd == "clearSrc") vsSrc = {};
     if(m.cmd == "forfeit" && versus.phase == "fight") versus.hp = 0;
     if(m.cmd == "join"){ coop.init(); page.change(6); coop.joinRoom(m.code); }

@@ -245,15 +245,22 @@ game.reset();
 var save = {
     KEY:"dronekun_save",
     BEST_KEY:"dronekun_best",
+    //今の進行状況を文字列にする(セーブと、協力プレイのコンティニューに使う)
+    data:function(){
+        return JSON.stringify({
+            wave:game.wave, parts:game.parts, score:game.score, level:game.level,
+            owned:game.owned, slots:game.slots, slotCount:game.slotCount, pendingReward:game.pendingReward,
+            seen:game.seen
+        });
+    },
     write:function(){
-        //協力プレイはその場かぎり(ひとり用のセーブは上書きしない)
-        if(typeof coop != "undefined" && coop.active) return;
+        //協力プレイはその場かぎり(ひとり用のセーブは上書きしない)。コンティニュー用にメモリにだけ覚えておく
+        if(typeof coop != "undefined" && coop.active){
+            coop.checkpoint = this.data();
+            return;
+        }
         try{
-            localStorage.setItem(this.KEY, JSON.stringify({
-                wave:game.wave, parts:game.parts, score:game.score, level:game.level,
-                owned:game.owned, slots:game.slots, slotCount:game.slotCount, pendingReward:game.pendingReward,
-                seen:game.seen
-            }));
+            localStorage.setItem(this.KEY, this.data());
         }catch(e){}
     },
     exists:function(){
@@ -262,7 +269,13 @@ var save = {
     //読み込めたらtrue
     load:function(){
         try{
-            var d = JSON.parse(localStorage.getItem(this.KEY));
+            return this.restore(localStorage.getItem(this.KEY));
+        }catch(e){ return false; }
+    },
+    //data() で作った文字列から進行状況を戻す。戻せたらtrue
+    restore:function(_s){
+        try{
+            var d = JSON.parse(_s);
             if(!d) return false;
             game.reset();
             game.wave = d.wave;

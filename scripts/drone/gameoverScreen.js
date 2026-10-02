@@ -16,12 +16,19 @@ var gameoverScreen = {
         this.newRecord = game.score > best;
         if(this.newRecord) save.setBest(game.score);
         this.best = Math.max(best, game.score);
-        //最後に強化画面で保存した状態からやり直せる(協力プレイはその場かぎりなので、やり直しは無し)
+        //最後に強化画面で保存した状態からやり直せる(協力プレイはふたりともコンティニューを押すと、覚えておいた状態から)
         this.coopMode = coop.active;
+        coop.wantContinue = false;
         this.canRetry = save.exists();
     },
     update:function(){
         if(this.coopMode){
+            //コンティニュー(もう一度押すと取り消し)。ふたりとも押すと始まる(coop.update)
+            if(retryButton.clicked()){
+                sound.play("click");
+                coop.wantContinue = !coop.wantContinue;
+                return;
+            }
             if(gameoverTitleButton.clicked()){
                 sound.play("click");
                 coop.leave();
@@ -65,12 +72,17 @@ var gameoverScreen = {
 
         ctx.font = "bold 24px serif";
         if(this.coopMode){
-            ctx.font = "16px sans-serif";
-            ctx.fillStyle = "#555";
-            ctx.fillText("ふたりとも撃墜されました。協力プレイはここで終わりです",CW/2,GS*11.8);
-            ctx.font = "bold 24px serif";
-            ctx.fillStyle = "#000";
+            retryButton.button(coop.wantContinue ? "コンティニュー（取り消す）" : "コンティニュー（WAVE " + game.wave + "から）");
             gameoverTitleButton.button("タイトルへ");
+            //相方のようす
+            ctx.font = "16px sans-serif";
+            ctx.fillStyle = "rgb(" + P2_COLOR + ")";
+            var other = coop.partnerWantsContinue();
+            var msg = !coop.partner && coop.role == "host" ? "相方はいません。コンティニューするとひとりで続けます"
+                    : coop.wantContinue ? (other ? "まもなく始まります…" : "相方がコンティニューを押すのを待っています…")
+                    : (other ? "相方がコンティニューを待っています！" : "ふたりともコンティニューを押すと、強化画面からやり直せます");
+            ctx.fillText(msg,CW/2,GS*10.2);
+            ctx.fillStyle = "#000";
             return;
         }
         retryButton.button(this.canRetry ? "直前のWAVEからやり直す" : "もう一度はじめから");

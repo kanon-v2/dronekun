@@ -104,8 +104,30 @@ var steps = [
     },
     function(next){
         waitFor(function(){ return both(function(s){ return s.page == 1 && s.wave == 2; }); }, 30000, function(ok){
-            check("WAVE2へ一緒に出撃", ok, desc()); next();
+            check("WAVE2へ一緒に出撃", ok, desc());
+            //拾ったパーツはふたりとも受け取る(相手が拾った数が、自分にも足されている)
+            var h = st.host, g = st.guest;
+            check("拾ったパーツをふたりとも受け取る", h.partsGot + g.partsGot > 0 && h.partnerParts == g.partsGot && g.partnerParts == h.partsGot,
+                  "ホストが拾った" + h.partsGot + "・ゲストが拾った" + g.partsGot + "　受け取り ホスト" + h.partnerParts + "・ゲスト" + g.partnerParts);
+            next();
         });
+    },
+    function(next){
+        cmd("host", { cmd:"die" }); cmd("guest", { cmd:"die" });
+        waitFor(function(){ return both(function(s){ return s.page == 3; }); }, 15000, function(ok){
+            check("ふたりとも撃墜でゲームオーバー", ok, desc()); next();
+        });
+    },
+    function(next){
+        //片方だけ押しても始まらない
+        cmd("guest", { cmd:"continue" });
+        setTimeout(function(){
+            var waiting = both(function(s){ return s.page == 3; });
+            cmd("host", { cmd:"continue" });
+            waitFor(function(){ return both(function(s){ return s.page == 1 && s.wave == 2; }); }, 20000, function(ok){
+                check("コンティニュー：ふたりとも押すとWAVE2からやり直す", waiting && ok, (waiting ? "" : "片方だけで始まった ") + desc()); next();
+            });
+        }, 1000);
     },
     function(next){
         cmd("guest", { cmd:"leave" });
