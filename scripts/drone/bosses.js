@@ -11,9 +11,10 @@ const RARE_TYPES = {
     carrier: { name:"補給機", r:18, hp:8, speed:0.9, score:150, parts:3 }    //横切るだけ。倒すと報酬カプセル
 };
 const BOSS_TYPES = {
-    queen:    { name:"女王蜂",   r:34 },   //弾の輪・手下を呼ぶ・突進
-    fortress: { name:"移動要塞", r:40 },   //渦巻き弾・3方向弾・なぎ払いレーザー
-    kai:      { name:"ドローン君改", r:28 } //最終ボス：ドローン君と同じ武器をたくさん使う
+    //en・title：登場のときに出す英語名と異名
+    queen:    { name:"女王蜂",   r:34, en:"QUEEN BEE",       title:"群れを統べる女王" },   //弾の輪・手下を呼ぶ・突進
+    fortress: { name:"移動要塞", r:40, en:"MOBILE FORTRESS", title:"動く鉄壁" },           //渦巻き弾・3方向弾・なぎ払いレーザー
+    kai:      { name:"ドローン君改", r:28, en:"DRONE-KUN KAI", title:"もうひとりのドローン君" } //最終ボス：ドローン君と同じ武器をたくさん使う
 };
 
 //ドローン君改の攻撃の順番(体力が減るほど種類が増える)
@@ -153,7 +154,7 @@ var special = {
         if(_e.mode == "enter"){
             _e.vx = 0;
             _e.vy = 1.5;
-            if(_e.y >= 160){ _e.mode = "idle"; _e.vy = 0; }
+            if(_e.y >= 160){ _e.mode = "idle"; _e.vy = 0; this.bossLanded(_e); }
             return false;
         }
         if(!_e.enraged && _e.hp < _e.maxHp/2 && _e.type != "kai"){
@@ -163,6 +164,25 @@ var special = {
             sound.play("warning");
         }
         return true;
+    },
+
+    //ボスが降りきった：着地の衝撃(衝撃波・土煙・閃光・大きな揺れ)。協力プレイのゲストは coop.guestSync から
+    bossLanded:function(_e){
+        var x = _e.x, y = _e.y + _e.r*0.6;
+        fx.ring(x,y,260,"255,210,140",28,10);
+        fx.ring(x,y,170,"200,190,180",20,6);
+        fx.flare(x,y,_e.r*3,"255,240,210",14);
+        for(var i=0; i<18; i++){
+            //土煙(左右に広がる)
+            var a = Math.PI*(i % 2 ? 0.05 : 0.95) + (Math.random()-0.5)*0.6, s = 2 + Math.random()*4;
+            var life = 40 + Math.random()*30;
+            effects.push({ smoke:true, x:x, y:y, vx:Math.cos(a)*s, vy:Math.sin(a)*s*0.4 - 0.3,
+                           R0:8, R1:26 + Math.random()*20, life:life, maxLife:life, color:"120,110,100" });
+        }
+        burst(x,y,24,"#555");
+        fx.tint("255,255,255",12);
+        fx.shake(22);
+        sound.play("bossImpact");
     },
 
     //弾をばらまく(_n発を等間隔に)

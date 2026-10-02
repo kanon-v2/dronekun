@@ -44,6 +44,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | `upgradeScreen.js` | 強化画面(報酬カード・能力強化・装備・能力リセット) |
 | `gameoverScreen.js` | ゲームオーバー画面 |
 | `story.js` | ストーリー(`STORIES`)・ストーリー画面・エンディング・ストーリー確認モード |
+| `bossDebug.js` | デバッグ：ボス戦だけを遊ぶ(タイトルで B キー) |
 | `lib/peerjs.min.js` | PeerJS 1.5.5(外部ライブラリ。MITライセンス、`lib/PEERJS-LICENSE`)。協力プレイの通信に使う。手を加えない |
 | `coop.js` | ふたりで協力プレイ(下記「協力プレイ」参照)。対戦も同じ部屋・通信を使う |
 | `versus.js` | ふたりで対戦(下記「対戦」参照)。page 7 |
@@ -97,6 +98,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 ## 開発用の機能
 
 - タイトル画面で `Q` キー: 戦闘なしで全ストーリーを順に流す(`Esc` でタイトルへ)。セーブ等は変えない。
+- タイトル画面で `B` キー: ボス戦だけを遊ぶメニュー(`bossDebug.js`)。数字キー1～4でWAVE5/10/15/20のボス、`E` で装備の強さ(弱い/標準/最強)、`M` で無敵。戦闘中は `Esc` でメニューへ。セーブ・ハイスコアは変えない(始める前の状態に戻す)。
 - `common.js` の `DEBUG = true` で、マウス座標などを左上に表示。
 - 画面上部の中央に、フレームレート(1秒あたりの描画回数)を常に表示している(`draw.js` の `fps`)。`FPS_WARN` 未満でオレンジ、`FPS_BAD` 未満で赤。
 

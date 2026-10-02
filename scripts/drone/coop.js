@@ -632,13 +632,14 @@ var coop = {
             var st = COOP_STATES[S.st];
             if(st != M.state){
                 if(st == "clear"){ sound.stopMusic(); sound.play("clear"); M.bonus = Math.ceil(game.wave/2); }
-                if(st == "play" && M.state == "start" && S.bw){ sound.music(null); sound.music("boss"); }
+                if(st == "play" && M.state == "start" && S.bw) M.bossArrive();
                 M.state = st;
                 M.stateTime = S.stt;
             }
             M.toSpawn = S.ts;
             M.bossWave = !!S.bw;
         }
+        if(M.state == "start" && M.bossWave) M.warningStep();
         if(!M.down && M.state != "over"){
             drone.update();
             M.updateFuel();
@@ -655,6 +656,7 @@ var coop = {
         if(M.guard > 0) M.guard--;
         if(M.shake > 0) M.shake--;
         if(M.noFuelMsg > 0) M.noFuelMsg--;
+        if(M.bossIntro > 0) M.bossIntro--;
         if(M.rareMsgTime > 0) M.rareMsgTime--;
     },
 
@@ -715,7 +717,9 @@ var coop = {
             var b = null;
             for(var i=0; i<next.length; i++) if(next[i].id == S.b[0]) b = next[i];
             if(b){
-                b.mode = COOP_MODES[S.b[1]] || "idle";
+                var nm = COOP_MODES[S.b[1]] || "idle";
+                if(b.mode == "enter" && nm != "enter") special.bossLanded(b);   //降りきった瞬間の着地の演出
+                b.mode = nm;
                 b.angle = S.b[2]/100; b.count = S.b[3]; b.phase = S.b[4];
                 b.bladeA = S.b[5]/100; b.circleT = S.b[6];
                 b.aimX = Math.cos(S.b[7]/100); b.aimY = Math.sin(S.b[7]/100);

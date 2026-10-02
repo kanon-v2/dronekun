@@ -333,6 +333,21 @@ var sound = {
                     this.tone("square",i % 2 ? 660 : 880,0,0.2,0.05,S,now + i*0.24,0.01,2000);
                 }
                 break;
+            //ボスの接近(地鳴り)・登場(うなり声)・着地(重い衝撃)
+            case "rumble":
+                this.tone("sine",48,36,2.2,0.3,S,0,0.6);
+                this.noise(2.2,0.12,"lowpass",260,90,S);
+                break;
+            case "bossAppear":
+                this.tone("sawtooth",150,62,1.1,0.16,S,0,0.05,700);
+                this.tone("sawtooth",158,66,1.1,0.12,S,0,0.05,700);
+                this.noise(1.0,0.16,"bandpass",500,140,S);
+                break;
+            case "bossImpact":
+                this.noise(1.3,0.5,"lowpass",1800,40,S);
+                this.tone("sine",95,24,1.0,0.42,S);
+                this.tone("square",150,55,0.22,0.06,S,0,0,900);
+                break;
             case "summon":    this.tone("triangle",600,1400,0.12,0.06,S); this.tone("triangle",700,1600,0.12,0.05,S,now + 0.1); break;
             case "bossShot":  this.tone("square",300,160,0.08,0.05,S,0,0,1400); break;
             case "beamCharge":this.tone("sawtooth",120,900,1.1,0.06,S,0,0.05,1800); break;

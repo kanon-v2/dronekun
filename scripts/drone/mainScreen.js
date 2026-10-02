@@ -21,6 +21,8 @@ const KILL_FX_MIN     = 0.8;    //爆発の大きさの倍率の下限(敵の半
 const KILL_FX_MAX     = 2.2;
 const KILL_FX_SHAKE   = 1.5;    //この倍率以上(戦車など大きい敵)は画面を揺らす
 const KILL_FX_BUSY    = 450;    //演出の数がこれを超えていたら、軽い爆発にする
+//ボスの登場
+const BOSS_INTRO_TIME = 200;    //ボスの名前を出しておく時間(上下の黒い帯もこの間)
 
 //敵の種類
 const ENEMY_TYPES = {
@@ -252,6 +254,7 @@ var mainScreen = {
         this.graze = 0;
         this.guard = 0;
         this.slowmo = 0;
+        this.bossIntro = 0;
         dragonBlast.reset();
         this.tint = null;
         this.spawnTimer = 0;
@@ -285,13 +288,13 @@ var mainScreen = {
         switch(this.state){
             case "start":
                 //ボスWAVEはWARNINGを長めに見せてからボス登場
+                if(this.bossWave) this.warningStep();
                 if(this.stateTime >= (this.bossWave ? 150 : 60)){
                     this.state = "play";
                     this.stateTime = 0;
                     if(this.bossWave){
                         enemies.push(makeBoss(bossTypeFor(game.wave)));
-                        sound.music(null);
-                        sound.music("boss");
+                        this.bossArrive();
                     }
                 }
                 break;
@@ -311,6 +314,7 @@ var mainScreen = {
                 break;
             case "clear":
                 if(this.stateTime >= 150){
+                    if(bossDebug.active){ bossDebug.finish("clear"); return; }
                     var cleared = game.wave;
                     game.wave++;
                     //報酬を選ぶ回数(補給機のカプセル・ボス撃破の分が上乗せされている)
@@ -326,6 +330,7 @@ var mainScreen = {
                 break;
             case "over":
                 if(this.stateTime >= 100){
+                    if(bossDebug.active){ bossDebug.finish("over"); return; }
                     page.change(3);
                     return;
                 }
@@ -350,6 +355,8 @@ var mainScreen = {
         if(this.guard > 0) this.guard--;
         if(this.shake > 0) this.shake--;
         if(this.noFuelMsg > 0) this.noFuelMsg--;
+        if(this.bossIntro > 0) this.bossIntro--;
+        bossDebug.tick();
         if(this.rareMsgTime > 0) this.rareMsgTime--;
     },
 
@@ -450,6 +457,12 @@ var mainScreen = {
     },
 
     damage:function(){
+        //デバッグのボス戦で無敵にしているときは減らない(当たった音と点滅だけ)
+        if(bossDebug.active && bossDebug.god){
+            this.invincible = 30;
+            sound.play("damage");
+            return;
+        }
         this.hp--;
         this.invincible = INVINCIBLE_TIME;
         sound.play("damage");
@@ -885,6 +898,9 @@ var mainScreen = {
             ctx.fillStyle = "#000";
         }
         this.drawBanner();
+        this.drawBossIntro();
+        bossDebug.drawTag();
+        this.drawBossIntro();
 
         if(this.paused){
             ctx.fillStyle = "rgba(255,255,255,0.75)";
@@ -1249,21 +1265,131 @@ var mainScreen = {
         ctx.fillStyle = "#000";
     },
 
+    //----------------------------------------------------------------- ボスの登場
+    //接近中(WARNINGの間)：サイレンをもう一度・地鳴り・小刻みな揺れ
+    warningStep:function(){
+        var t = this.stateTime;
+        if(t == 1) sound.play("rumble");
+        if(t == 75) sound.play("warning");
+        if(t < 140) this.shake = Math.max(this.shake, 2 + t/50);
+    },
+    //ボスが現れた：上の閃光・うなり声・名前の表示を始める(協力プレイのゲストは coop.guestStep から)
+    bossArrive:function(){
+        sound.music(null);
+        sound.music("boss");
+        sound.play("bossAppear");
+        fx.flare(CW/2, 0, 260, "255,90,60", 30);
+        fx.shake(12);
+        this.bossIntro = BOSS_INTRO_TIME;
+    },
+
+    //接近の警告：暗くなる画面・赤く脈打つ四隅・流れる危険表示の帯・ぶれる WARNING
+    drawBossWarning:function(){
+        var t = this.stateTime, fade = Math.min(1, (150 - t)/20, t/10);
+        var pulse = 0.5 + 0.5*Math.sin(t*0.25);
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, fade);
+        ctx.fillStyle = "rgba(0,0,0," + 0.28*Math.min(1, t/40) + ")";
+        ctx.fillRect(0,0,CW,CH);
+        var g = ctx.createRadialGradient(CW/2,CH/2,CH*0.35,CW/2,CH/2,CW*0.62);
+        g.addColorStop(0,"rgba(220,20,20,0)");
+        g.addColorStop(1,"rgba(220,20,20," + (0.25 + 0.3*pulse) + ")");
+        ctx.fillStyle = g;
+        ctx.fillRect(0,0,CW,CH);
+        //帯
+        var top = CH/2 - 118, h = 112;
+        ctx.fillStyle = "rgba(150,10,15," + (0.75 + 0.15*pulse) + ")";
+        ctx.fillRect(0,top,CW,h);
+        this.hazard(top - 14, t);
+        this.hazard(top + h, -t);
+        //WARNING(赤い残像が横にぶれる)
+        var jx = (Math.random() - 0.5)*(t % 20 < 3 ? 10 : 2);
+        var sc = 1 + 0.05*pulse;
+        ctx.translate(CW/2, top + 44);
+        ctx.scale(sc, sc);
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = "900 64px serif";
+        ctx.fillStyle = "rgba(255,60,60,0.7)";
+        ctx.fillText("WARNING", jx - 5, 0);
+        ctx.fillStyle = "rgba(255,200,60,0.5)";
+        ctx.fillText("WARNING", jx + 5, 0);
+        ctx.fillStyle = "#fff";
+        ctx.fillText("WARNING", jx, 0);
+        ctx.restore();
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, fade);
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = "bold 18px sans-serif";
+        ctx.fillStyle = "#fff";
+        ctx.fillText("WAVE " + game.wave + "　ボス「" + BOSS_TYPES[bossTypeFor(game.wave)].name + "」接近中",CW/2,top + 92);
+        ctx.restore();
+    },
+    //黄色と黒の斜めじまの帯(_shift で流れる)
+    hazard:function(_y,_shift){
+        ctx.save();
+        ctx.beginPath(); ctx.rect(0,_y,CW,14); ctx.clip();
+        ctx.fillStyle = "#f2c200";
+        ctx.fillRect(0,_y,CW,14);
+        ctx.fillStyle = "#111";
+        var off = ((_shift*2) % 28 + 28) % 28;
+        for(var x=-28; x<CW + 28; x+=28){
+            ctx.beginPath();
+            ctx.moveTo(x + off,_y + 14); ctx.lineTo(x + off + 14,_y); ctx.lineTo(x + off + 28,_y); ctx.lineTo(x + off + 14,_y + 14);
+            ctx.fill();
+        }
+        ctx.restore();
+    },
+
+    //登場：上下の黒い帯と、左から滑り込む名前(英語名・異名)
+    drawBossIntro:function(){
+        if(this.bossIntro <= 0) return;
+        var T = BOSS_TYPES[bossTypeFor(game.wave)];
+        var age = BOSS_INTRO_TIME - this.bossIntro;
+        var inK = Math.min(1, age/18), outK = Math.min(1, this.bossIntro/24);
+        var k = Math.min(inK, outK);
+        var bar = 40*k;
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0,0,CW,bar);
+        ctx.fillRect(0,CH - bar,CW,bar);
+        //名前
+        var e = 1 - Math.pow(1 - Math.min(1, age/28), 3);  //すっと止まる
+        var x = -320 + (GS*2 + 320)*e;
+        var y = CH - 150;
+        ctx.save();
+        ctx.globalAlpha = outK;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.font = "bold 16px sans-serif";
+        ctx.fillStyle = "#c22";
+        ctx.fillText(T.en || "", x + 4, y - 44);
+        ctx.font = "900 54px serif";
+        ctx.lineJoin = "round";
+        ctx.lineWidth = 8;
+        ctx.strokeStyle = "rgba(255,255,255,0.9)";
+        ctx.strokeText(T.name, x, y);
+        ctx.fillStyle = "#111";
+        ctx.fillText(T.name, x, y);
+        ctx.lineJoin = "miter";
+        //名前の下に伸びる赤い線と異名
+        var w = 380*Math.min(1, Math.max(0, (age - 12)/24));
+        ctx.fillStyle = "#c22";
+        ctx.fillRect(x, y + 34, w, 4);
+        ctx.font = "bold 17px sans-serif";
+        ctx.fillStyle = "#333";
+        ctx.globalAlpha = outK*Math.min(1, Math.max(0, (age - 24)/16));
+        ctx.fillText("―― " + (T.title || ""), x + 6, y + 58);
+        ctx.restore();
+        ctx.lineWidth = 1;
+        ctx.fillStyle = "#000";
+    },
+
     drawBanner:function(){
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         if(this.state == "start" && this.bossWave){
-            //ボス接近の警告(点滅する赤い帯)
-            var on = Math.floor(this.stateTime/15) % 2 == 0;
-            ctx.globalAlpha = Math.min(1, (150 - this.stateTime)/20);
-            ctx.fillStyle = "rgba(210,40,40," + (on ? 0.85 : 0.6) + ")";
-            ctx.fillRect(0,CH/2 - 110,CW,100);
-            ctx.fillStyle = "#fff";
-            ctx.font = "bold 56px serif";
-            ctx.fillText("WARNING",CW/2,CH/2 - 72);
-            ctx.font = "bold 18px sans-serif";
-            ctx.fillText("WAVE " + game.wave + "　ボス「" + BOSS_TYPES[bossTypeFor(game.wave)].name + "」接近中",CW/2,CH/2 - 30);
-            ctx.globalAlpha = 1;
+            this.drawBossWarning();
         }else if(this.state == "start"){
             ctx.globalAlpha = Math.min(1, (60 - this.stateTime)/20);
             ctx.font = "bold 56px serif";

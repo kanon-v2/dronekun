@@ -110,6 +110,11 @@ var startScreen = {
         drone.resetStats();
     },
     update:function(){
+        //デバッグのボス戦メニューを出している間は、タイトルのボタンを押せない(bossDebug.js)
+        if(bossDebug.menu){
+            bossDebug.updateMenu();
+            return;
+        }
         //はじめから：セーブを消してWAVE1へ
         if(startButton.clicked()){
             sound.play("click");
@@ -206,5 +211,6 @@ var startScreen = {
 
         //ドローン表示
         drone.draw();
+        if(bossDebug.menu) bossDebug.drawMenu();
     }
 };
