@@ -185,6 +185,18 @@ drawRect.prototype = {
     }
 }
 
+//角の丸い四角の形を作る(このあと ctx.fill() や ctx.stroke() で描く)
+function roundRectPath(_x,_y,_w,_h,_r){
+    var r = Math.min(_r, _w/2, _h/2);
+    ctx.beginPath();
+    ctx.moveTo(_x + r,_y);
+    ctx.arcTo(_x + _w,_y,_x + _w,_y + _h,r);
+    ctx.arcTo(_x + _w,_y + _h,_x,_y + _h,r);
+    ctx.arcTo(_x,_y + _h,_x,_y,r);
+    ctx.arcTo(_x,_y,_x + _w,_y,r);
+    ctx.closePath();
+}
+
 //------------------------------------------------------------------------------
 //  ドローンの能力(メモ.txtの5項目)。レベル1～5
 //------------------------------------------------------------------------------
