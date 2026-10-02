@@ -98,6 +98,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 
 - タイトル画面で `Q` キー: 戦闘なしで全ストーリーを順に流す(`Esc` でタイトルへ)。セーブ等は変えない。
 - `common.js` の `DEBUG = true` で、マウス座標などを左上に表示。
+- 画面上部の中央に、フレームレート(1秒あたりの描画回数)を常に表示している(`draw.js` の `fps`)。`FPS_WARN` 未満でオレンジ、`FPS_BAD` 未満で赤。
 
 ## 協力プレイ(coop.js)
 

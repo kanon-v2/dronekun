@@ -10,7 +10,35 @@ const STEP = 1000/60;
 var lastTime = 0;
 var acc = 0;
 
+//フレームレート(1秒あたりの描画回数)。1秒ごとに数え直して、画面の上の中央に小さく出す
+const FPS_WARN = 50;    //これを下回るとオレンジ
+const FPS_BAD  = 30;    //これを下回ると赤
+var fps = {
+    count:0,
+    last:0,
+    value:0,
+    tick:function(_now){
+        this.count++;
+        if(this.last == 0) this.last = _now;
+        if(_now - this.last >= 1000){
+            this.value = Math.round(this.count*1000/(_now - this.last));
+            this.count = 0;
+            this.last = _now;
+        }
+    },
+    draw:function(){
+        if(this.value == 0) return;   //最初の1秒は数えている途中
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = "bold 11px sans-serif";
+        ctx.fillStyle = this.value < FPS_BAD ? "#d22" : (this.value < FPS_WARN ? "#e08000" : "#999");
+        ctx.fillText("FPS " + this.value, CW/2, 8);
+        ctx.fillStyle = "#000";
+    }
+};
+
 function draw(now){
+    fps.tick(now);
     if(lastTime == 0) lastTime = now;
     acc += Math.min(now - lastTime, 100);
     lastTime = now;
@@ -31,6 +59,7 @@ function draw(now){
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     screens[page.number].draw();
     sound.draw();
+    fps.draw();
 
     //ポインタは一番手前
     pointer.calcXY();
