@@ -16,6 +16,11 @@ const FUEL_DROP_RATE  = 0.12;   //燃料缶を落とす確率
 const HIT_CORE        = 6;      //敵の弾に対するドローンの当たり判定(中心の小さな点)
 const GRAZE_RANGE     = 22;     //弾がこの距離までかすめると「かすり」
 const GRAZE_FUEL      = 1.5;    //かすり1回で回復する燃料
+//敵を倒したときの爆発(killBlast)
+const KILL_FX_MIN     = 0.8;    //爆発の大きさの倍率の下限(敵の半径/12 をこの範囲に収める)
+const KILL_FX_MAX     = 2.2;
+const KILL_FX_SHAKE   = 1.5;    //この倍率以上(戦車など大きい敵)は画面を揺らす
+const KILL_FX_BUSY    = 450;    //演出の数がこれを超えていたら、軽い爆発にする
 
 //敵の種類
 const ENEMY_TYPES = {
@@ -143,6 +148,36 @@ function setShooterTarget(_e){
 //------------------------------------------------------------------------------
 //  演出
 //------------------------------------------------------------------------------
+//敵を倒したときの爆発。閃光・火の玉・衝撃波・火花・破片・煙を重ねる
+//_r：敵の大きさ(大きいほど派手に)　_glow：火花の色("r,g,b"。省略時はオレンジ)
+function killBlast(_x,_y,_r,_glow){
+    var k = Math.max(KILL_FX_MIN, Math.min(KILL_FX_MAX, _r/12));   //大きさの倍率
+    var glow = _glow || "255,170,60";
+    //演出が多すぎるときは軽くする(連鎖で一度にたくさん倒したとき)
+    var lite = effects.length > KILL_FX_BUSY;
+    //煙(火の玉より先に入れて、奥に描く)
+    if(!lite){
+        for(var i=0; i<Math.round(2 + k*2); i++){
+            var a = Math.random()*Math.PI*2, d = Math.random()*_r*0.6;
+            var life = 40 + Math.random()*25;
+            effects.push({ smoke:true, x:_x + Math.cos(a)*d, y:_y + Math.sin(a)*d,
+                           vx:Math.cos(a)*0.6, vy:Math.sin(a)*0.6 - 0.5,
+                           R0:5*k, R1:(16 + Math.random()*10)*k, life:life, maxLife:life, color:"80,78,76" });
+        }
+    }
+    fx.flare(_x,_y,54*k,"255,120,30",lite ? 12 : 22);   //火の玉
+    fx.flare(_x,_y,30*k,"255,248,225",10);             //中心の白い閃光
+    fx.ring(_x,_y,60*k,"255,175,70",14,5);             //衝撃波
+    if(!lite) fx.ring(_x,_y,88*k,"255,220,150",22,2);  //外側の薄い衝撃波
+    fx.sparks(_x,_y,lite ? 4 : Math.round(10 + k*6),glow,7*k,3.5);
+    burst(_x,_y,lite ? 4 : Math.round(5 + _r*0.6),"#333");   //破片
+    //大きい敵は少し揺らし、低い爆発音も重ねる
+    if(k >= KILL_FX_SHAKE){
+        fx.shake(4);
+        sound.play("explode");
+    }
+}
+
 function burst(_x,_y,_n,_color){
     for(var i=0; i<_n; i++){
         var a = Math.random()*Math.PI*2, s = 1 + Math.random()*4;
@@ -466,7 +501,7 @@ var mainScreen = {
         arms.onKill(_e,_src);
         game.score += _e.score;
         popup(_e.x,_e.y - _e.r,"+" + _e.score);
-        burst(_e.x,_e.y,8 + _e.r,"#444");
+        killBlast(_e.x,_e.y,_e.r,_e.type == "goldbug" ? "255,215,0" : null);
         for(var i=0; i<_e.parts; i++) this.drop("part",_e.x,_e.y);
         if(Math.random() < FUEL_DROP_RATE) this.drop("fuel",_e.x,_e.y);
         special.onKill(_e);
@@ -713,6 +748,7 @@ var mainScreen = {
         for(var i=effects.length-1; i>=0; i--){
             var f = effects[i];
             f.life--;
+            if(f.smoke) f.vy -= 0.02;   //煙はゆっくり上へ昇る
             if(!f.ring && !f.line && !f.flare){ f.x += f.vx; f.y += f.vy; f.vx *= 0.92; f.vy *= 0.92; }
             if(f.life <= 0) effects.splice(i,1);
         }
@@ -892,6 +928,13 @@ var mainScreen = {
         for(var i=0; i<effects.length; i++){
             var f = effects[i];
             var k = 1 - f.life/f.maxLife;   //0→1へ進む
+            if(f.smoke){
+                //煙：ふくらみながら薄くなる
+                var R = f.R0 + (f.R1 - f.R0)*(1 - (1-k)*(1-k));
+                ctx.fillStyle = "rgba(" + f.color + "," + (0.32*(1-k)) + ")";
+                ctx.beginPath(); ctx.arc(f.x,f.y,R,0,Math.PI*2); ctx.fill();
+                continue;
+            }
             if(f.ring){
                 //R・colorが無ければクリックの衝撃波。wで太さ
                 ctx.strokeStyle = "rgba(" + (f.color || "220,40,40") + "," + (1-k) + ")";

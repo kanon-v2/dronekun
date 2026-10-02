@@ -495,6 +495,8 @@ var special = {
             for(var i=0; i<5; i++){
                 burst(_e.x + (Math.random()-0.5)*_e.r*2, _e.y + (Math.random()-0.5)*_e.r*2, 16, i % 2 ? "#e84" : "#333");
             }
+            //体のあちこちで爆発が重なる
+            for(var i=0; i<4; i++) killBlast(_e.x + (Math.random()-0.5)*_e.r*2.4, _e.y + (Math.random()-0.5)*_e.r*2.4, _e.r);
             effects.push({ ring:true, x:_e.x, y:_e.y, life:30, maxLife:30, R:220, color:"230,120,40" });
             popup(_e.x,_e.y - _e.r - 16,_e.name + " 撃破！　報酬+1","#c33");
             sound.stopMusic();

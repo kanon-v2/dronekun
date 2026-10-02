@@ -733,7 +733,7 @@ var coop = {
             if(seen[e.id]) continue;
             e.dead = true;
             if(Math.hypot(e.x - drone.X, e.y - drone.Y) < 350){
-                burst(e.x,e.y,8 + e.r,"#444");
+                killBlast(e.x,e.y,e.r,e.type == "goldbug" ? "255,215,0" : null);
                 sound.play("kill");
                 delete this.dmg["e" + e.id];   //倒された敵のダメージの記録は送らなくてよい
             }
