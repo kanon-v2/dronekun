@@ -4,6 +4,10 @@
 //------------------------------------------------------------------------------
 const BGM_VOLUME = 0.32;
 const SE_VOLUME = 0.55;
+const HEAVY_BOOM_LEN = 1.6;     //ボスの着地の重い衝撃音(heavyBoom)の長さ(秒)
+const KAI_BOOT_LEN = 1.6;       //ドローン君改の始動音の長さ(秒)。mainScreen の KAI_BOOT_TIME(フレーム)と合わせる
+//ドローン君改の始動でリレーが入る時刻(秒)。だんだん間隔が詰まる。mainScreen の見た目(光る・揺れる)もこれに合わせる
+const KAI_RELAYS = [0.0, 0.34, 0.6, 0.79, 0.93, 1.04, 1.13, 1.2, 1.26, 1.31, 1.36, 1.4, 1.44, 1.48, 1.51, 1.54];
 
 //同じ効果音が短時間に重なりすぎないよう、最低この間隔(秒)をあける
 const SE_INTERVAL = {
@@ -244,6 +248,116 @@ var sound = {
         s.start(t, Math.random()*0.5);
         s.stop(t + _dur + 0.05);
     },
+    //重い衝撃音(エンジンのような低いうなりを少し含む)。ボスの着地に使う
+    //  重低音(沈んでいく)＋ずらして重ねた低いのこぎり波(うなり)＋こもった轟き＋頭の破裂音とパンチ
+    //  小さなスピーカーでも重さが伝わるよう、軽く歪ませて倍音を足す
+    heavyBoom:function(_dest){
+        var c = this.ctx, t = c.currentTime;
+        var end = t + HEAVY_BOOM_LEN;
+        var out = c.createGain();
+        out.gain.value = 0.6;
+        out.connect(_dest);
+        var drive = c.createWaveShaper();
+        if(!this.driveCurve){
+            //tanh の形：大きな音ほどなめらかに頭打ちになる
+            var n = 1024, curve = new Float32Array(n), k = 2.5;
+            for(var i=0; i<n; i++){ var x = i*2/(n - 1) - 1; curve[i] = Math.tanh(k*x)/Math.tanh(k); }
+            this.driveCurve = curve;
+        }
+        drive.curve = this.driveCurve;
+        drive.connect(out);
+        //音量の形：すっと立ち上がり、少し保って、ゆっくり消える
+        var env = function(_v,_hold,_decay){
+            var g = c.createGain();
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.exponentialRampToValueAtTime(_v, t + 0.012);
+            g.gain.setValueAtTime(_v, t + _hold);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + _hold + _decay);
+            return g;
+        };
+        //1. 重低音
+        var sub = c.createOscillator();
+        sub.type = "sine";
+        sub.frequency.setValueAtTime(100, t);
+        sub.frequency.exponentialRampToValueAtTime(30, t + 1.15);
+        var subG = env(0.8, 0.15, 1.3);
+        sub.connect(subG); subG.connect(drive);
+        //2. エンジンのうなり(少しずつずらした低い音が干渉して「ウォンウォン」と揺れる)
+        var lp = c.createBiquadFilter();
+        lp.type = "lowpass";
+        lp.Q.value = 7;
+        lp.frequency.setValueAtTime(1400, t);
+        lp.frequency.exponentialRampToValueAtTime(150, t + 1.3);
+        var lfo = c.createOscillator(), lfoG = c.createGain();
+        lfo.frequency.setValueAtTime(9, t);
+        lfo.frequency.linearRampToValueAtTime(5, t + 1.3);
+        lfoG.gain.value = 60;
+        lfo.connect(lfoG); lfoG.connect(lp.frequency);
+        var engG = env(0.22, 0.24, 1.1);
+        lp.connect(engG); engG.connect(drive);
+        var oscs = [sub, lfo];
+        [55, 55.8, 82.6, 41.2].forEach(function(f){
+            var o = c.createOscillator();
+            o.type = "sawtooth";
+            o.frequency.setValueAtTime(f, t);
+            o.frequency.exponentialRampToValueAtTime(f*0.75, t + 1.3);
+            o.connect(lp);
+            oscs.push(o);
+        });
+        //3. こもった轟き
+        var ns = c.createBufferSource();
+        ns.buffer = this.noiseBuf;
+        ns.loop = true;
+        var nf = c.createBiquadFilter();
+        nf.type = "lowpass";
+        nf.frequency.setValueAtTime(900, t);
+        nf.frequency.exponentialRampToValueAtTime(70, t + 1.15);
+        var nG = env(0.55, 0.04, 1.2);
+        ns.connect(nf); nf.connect(nG); nG.connect(out);
+        oscs.push(ns);
+        //4. 頭の破裂音と「ドン」のパンチ
+        this.noise(0.07, 0.45, "highpass", 2200, 700, out);
+        this.tone("square", 240, 40, 0.16, 0.16, out, 0, 0, 1400);
+        for(var i=0; i<oscs.length; i++){ oscs[i].start(t); oscs[i].stop(end); }
+    },
+
+    //ドローン君改の始動音：リレーが「カチッ…カチッ、カチカチカチ」と間隔を詰めて入っていく(KAI_RELAYS)
+    //  カチッと入るたびに、低い電気のうなりが1段ずつ大きくなる(電源が順に入っていく)
+    kaiBoot:function(_dest){
+        var c = this.ctx, t = c.currentTime, L = KAI_BOOT_LEN;
+        for(var i=0; i<KAI_RELAYS.length; i++){
+            this.relayClick(_dest, t + KAI_RELAYS[i], i);
+        }
+        //電気のうなり(50Hz・100Hz)。リレーが入るたびに段々大きく
+        var hum = c.createGain();
+        hum.gain.setValueAtTime(0.0001, t);
+        for(var i=0; i<KAI_RELAYS.length; i++){
+            hum.gain.setValueAtTime(0.0001 + 0.12*(i + 1)/KAI_RELAYS.length, t + KAI_RELAYS[i] + 0.01);
+        }
+        hum.gain.setValueAtTime(0.12, t + L - 0.03);
+        hum.gain.exponentialRampToValueAtTime(0.0001, t + L + 0.04);
+        var lp = c.createBiquadFilter();
+        lp.type = "lowpass";
+        lp.frequency.value = 400;
+        lp.connect(hum); hum.connect(_dest);
+        [[50,"sine",1],[100,"sawtooth",0.35]].forEach(function(h){
+            var o = c.createOscillator(), g = c.createGain();
+            o.type = h[1];
+            o.frequency.value = h[0];
+            g.gain.value = h[2];
+            o.connect(g); g.connect(lp);
+            o.start(t); o.stop(t + L + 0.1);
+        });
+    },
+    //リレーの「カチッ」：接点が閉じる鋭い音＋小さな「コッ」＋すぐあとの跳ね返り
+    relayClick:function(_dest,_when,_i){
+        var pitch = 1 + ((_i*37) % 7 - 3)*0.05;    //1つずつ少し高さを変える(決まった並びで)
+        this.noise(0.014, 0.6, "bandpass", 3200*pitch, 2400*pitch, _dest, _when);
+        this.tone("square", 1300*pitch, 900*pitch, 0.012, 0.09, _dest, _when, 0.001, 5000);
+        this.tone("sine", 190*pitch, 120*pitch, 0.03, 0.26, _dest, _when, 0.001);
+        this.noise(0.008, 0.22, "bandpass", 2600*pitch, 2200*pitch, _dest, _when + 0.016);
+    },
+
     //短いフレーズ(ジングル)
     jingle:function(_notes,_gap,_type,_vol,_len){
         var t = this.ctx.currentTime;
@@ -334,20 +448,37 @@ var sound = {
                 }
                 break;
             //ボスの接近(地鳴り)・登場(うなり声)・着地(重い衝撃)
+            //地鳴り(ゴゴゴ)。短くして何度も鳴らし、「ッ」で途切れるようにする
             case "rumble":
-                this.tone("sine",48,36,2.2,0.3,S,0,0.6);
-                this.noise(2.2,0.12,"lowpass",260,90,S);
+                this.tone("sine",50,40,0.75,0.3,S,0,0.15);
+                this.tone("sawtooth",38,32,0.75,0.08,S,0,0.15,220);
+                this.noise(0.75,0.14,"lowpass",300,110,S);
+                break;
+            case "rumbleHard":
+                this.tone("sine",56,42,0.62,0.42,S,0,0.08);
+                this.tone("sawtooth",42,34,0.62,0.13,S,0,0.08,260);
+                this.noise(0.62,0.22,"lowpass",420,130,S);
+                break;
+            //ドローン君改の登場：ゆっくりな心臓の鼓動(ドクン)・始動音・点火(ヴォン)
+            case "heartbeat":
+                this.tone("sine",72,44,0.15,0.7,S,0,0.004,300);
+                this.noise(0.1,0.18,"lowpass",160,60,S);
+                this.tone("sine",64,40,0.13,0.5,S,now + 0.22,0.004,300);
+                break;
+            case "kaiBoot":   this.kaiBoot(S); break;
+            case "kaiIgnite":
+                this.noise(0.7,0.5,"lowpass",2600,80,S);
+                this.tone("sawtooth",150,58,0.6,0.2,S,0,0,900);
+                this.tone("sine",95,38,0.7,0.5,S);
+                this.tone("triangle",2400,1800,0.45,0.05,S);
                 break;
             case "bossAppear":
                 this.tone("sawtooth",150,62,1.1,0.16,S,0,0.05,700);
                 this.tone("sawtooth",158,66,1.1,0.12,S,0,0.05,700);
                 this.noise(1.0,0.16,"bandpass",500,140,S);
                 break;
-            case "bossImpact":
-                this.noise(1.3,0.5,"lowpass",1800,40,S);
-                this.tone("sine",95,24,1.0,0.42,S);
-                this.tone("square",150,55,0.22,0.06,S,0,0,900);
-                break;
+            //着地(ドンっ)：低いうなりを含む重い衝撃(heavyBoom)
+            case "bossImpact": this.heavyBoom(S); break;
             case "summon":    this.tone("triangle",600,1400,0.12,0.06,S); this.tone("triangle",700,1600,0.12,0.05,S,now + 0.1); break;
             case "bossShot":  this.tone("square",300,160,0.08,0.05,S,0,0,1400); break;
             case "beamCharge":this.tone("sawtooth",120,900,1.1,0.06,S,0,0.05,1800); break;

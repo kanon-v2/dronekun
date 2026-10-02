@@ -625,6 +625,8 @@ var coop = {
     guestStep:function(){
         var M = mainScreen, S = this.snap;
         M.paused = false;
+        //ボスの着地の瞬間のヒットストップ(届いた状態だけは読んでおく)
+        if(M.hitStop > 0){ M.hitStop--; this.guestSync(); return; }
         M.stateTime++;
         M.clock++;
         if(M.tint && --M.tint.life <= 0) M.tint = null;
@@ -640,6 +642,14 @@ var coop = {
             M.bossWave = !!S.bw;
         }
         if(M.state == "start" && M.bossWave) M.warningStep();
+        //ボスの登場の演出中は、ボス(ホストから届く)と演出以外は止める
+        if(M.cinematic()){
+            if(M.bossFreeze) M.bossEntrance(true);
+            this.guestSync();
+            M.updateEffects();
+            M.tickTimers();
+            return;
+        }
         if(!M.down && M.state != "over"){
             drone.update();
             M.updateFuel();
@@ -654,10 +664,9 @@ var coop = {
         M.updateEffects();
         if(M.invincible > 0) M.invincible--;
         if(M.guard > 0) M.guard--;
-        if(M.shake > 0) M.shake--;
         if(M.noFuelMsg > 0) M.noFuelMsg--;
-        if(M.bossIntro > 0) M.bossIntro--;
         if(M.rareMsgTime > 0) M.rareMsgTime--;
+        M.tickTimers();
     },
 
     guestSync:function(){

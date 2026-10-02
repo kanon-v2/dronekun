@@ -83,6 +83,18 @@ try{
     mainScreen.update();
     check("燃料切れで遅くなり、回復で戻る", outNow && !mainScreen.fuelOut && !drone.slow);
 
+    // ボスの登場：WARNINGから着地までは、ボスと演出以外は止まる。着地したら動き出す
+    setup(5, { gun:2 }, ["gun",null,null], 2);
+    page.change(1); MouseIn = true;
+    var fz = 0; while(!mainScreen.bossFreeze && fz < 400){ mainScreen.update(); fz++; }
+    var dx0 = drone.X, dy0 = drone.Y; MouseX = dx0 + 250; MouseY = dy0 + 100;
+    for(var i=0; i<40; i++) mainScreen.update();
+    var stillOk = drone.X == dx0 && drone.Y == dy0 && enemies.length == 1 && enemies[0].boss && enemyShots.length == 0;
+    fz = 0; while(mainScreen.bossFreeze && fz < 400){ mainScreen.update(); fz++; draw1(); }
+    var landed = !mainScreen.bossFreeze && enemies[0] && enemies[0].mode == "idle" && mainScreen.donT > 0;
+    for(var i=0; i<40; i++) mainScreen.update();
+    check("ボスの登場：演出中は止まり、着地すると動き出す", stillOk && landed && drone.X != dx0, "停止" + stillOk + " 着地" + landed);
+
     // 3. 全シナジー
     SYNERGIES.forEach(function(s){
         setup(7, {}, [s.a, s.b, null], 5); game.owned[s.a] = 3; game.owned[s.b] = 3;

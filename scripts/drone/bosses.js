@@ -168,6 +168,8 @@ var special = {
 
     //ボスが降りきった：着地の衝撃(衝撃波・土煙・閃光・大きな揺れ)。協力プレイのゲストは coop.guestSync から
     bossLanded:function(_e){
+        //ドローン君改は着地ではなく、始動して開幕する(mainScreen.kaiIgnite)
+        if(_e.type == "kai"){ mainScreen.kaiIgnite(_e); return; }
         var x = _e.x, y = _e.y + _e.r*0.6;
         fx.ring(x,y,260,"255,210,140",28,10);
         fx.ring(x,y,170,"200,190,180",20,6);
@@ -180,9 +182,24 @@ var special = {
                            R0:8, R1:26 + Math.random()*20, life:life, maxLife:life, color:"120,110,100" });
         }
         burst(x,y,24,"#555");
-        fx.tint("255,255,255",12);
-        fx.shake(22);
+        fx.tint("255,255,255",14);
+        fx.shake(30);
         sound.play("bossImpact");
+        //「ドンッ!!」：画面ごと止めて、寄って、文字を出す。ここで登場の演出は終わり(みんな動き出す)
+        var M = mainScreen;
+        M.hitStop = BOSS_HITSTOP;
+        M.zoomT = ZOOM_TIME;
+        M.zoomX = x; M.zoomY = y;
+        M.donT = DON_TIME;
+        M.flashT = FLASH_TIME;
+        //ドローン君が現れる(光の輪と一緒に。現れてすぐは少しのあいだ無敵)
+        M.droneIn = DRONE_IN_TIME;
+        M.guard = Math.max(M.guard, 60);
+        fx.ring(drone.X, drone.Y, 46, "80,160,255", 22, 3);
+        fx.flare(drone.X, drone.Y, 40, "120,190,255", 18);
+        M.donX = x;
+        M.donY = Math.min(CH - 90, y + 110);
+        M.bossFreeze = false;
     },
 
     //弾をばらまく(_n発を等間隔に)

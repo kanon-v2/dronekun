@@ -23,6 +23,22 @@ const KILL_FX_SHAKE   = 1.5;    //この倍率以上(戦車など大きい敵)�
 const KILL_FX_BUSY    = 450;    //演出の数がこれを超えていたら、軽い爆発にする
 //ボスの登場
 const BOSS_INTRO_TIME = 200;    //ボスの名前を出しておく時間(上下の黒い帯もこの間)
+const BOSS_DESCENT_TIME = 110;  //「ゴゴゴ」：ゆっくり降りてくる時間
+const BOSS_HUSH_TIME = 12;      //「ッ」：揺れも音も止まる溜め
+const BOSS_SLAM_TIME = 5;       //一気に落ちる時間
+const BOSS_HOVER_Y = 95;        //ゆっくり降りてきて止まる高さ(ここから着地点160へ落ちる)
+const BOSS_HITSTOP = 9;         //「ドンっ」：着地の瞬間に画面ごと止める時間
+const DON_TIME = 55;            //「ドンッ!!」の文字を出しておく時間
+const ZOOM_TIME = 18;           //着地の瞬間のズーム
+const FLASH_TIME = 12;          //着地の瞬間の白い閃光
+const DRONE_IN_TIME = 24;       //ボス戦で、着地のあとドローン君が現れるまでの時間
+//ドローン君改の登場(鼓動 → 影が浮かぶ → 始動 → 開幕)
+const KAI_HEART_TIME = 280;     //鼓動の時間(WARNINGの代わり)
+const KAI_BEAT_EVERY = 66;      //鼓動の間隔(ゆっくり)
+const KAI_APPEAR_TIME = 60;     //暗闇に影が浮かび上がる時間
+const KAI_BOOT_TIME = 96;       //始動音が高まる時間(sound.js の KAI_BOOT_LEN と同じ長さ)
+const KAI_DARK_OUT = 30;        //開幕のあと暗闇が晴れる時間
+var KAI_RELAY_FRAMES = KAI_RELAYS.map(function(s){ return Math.round(s*60); });   //リレーが入るフレーム(始動の始まりから)
 
 //敵の種類
 const ENEMY_TYPES = {
@@ -244,7 +260,7 @@ var mainScreen = {
         if(this.bossWave){
             //ボスWAVEは雑魚が3分の1。最終WAVEはドローン君改との一騎打ち(雑魚なし)
             this.toSpawn = game.wave >= FINAL_WAVE ? 0 : Math.floor(this.toSpawn/3);
-            sound.play("warning");
+            if(!this.isKaiWave()) sound.play("warning");   //ドローン君改は静かな鼓動から始まる
         }
         this.rares = 0;
         this.rareMsgTime = 0;
@@ -255,6 +271,15 @@ var mainScreen = {
         this.guard = 0;
         this.slowmo = 0;
         this.bossIntro = 0;
+        this.bossFreeze = false;
+        this.introT = 0;
+        this.hitStop = 0;
+        this.donT = 0;
+        this.zoomT = 0;
+        this.flashT = 0;
+        this.droneIn = 0;
+        this.beatT = 0;
+        this.kaiDark = 0;
         dragonBlast.reset();
         this.tint = null;
         this.spawnTimer = 0;
@@ -276,11 +301,14 @@ var mainScreen = {
         this.paused = coop.active ? false : !MouseIn;
         sound.duck(this.paused);
         if(this.paused) return;
+        //ボスの着地の瞬間は、画面ごと少し止める(ヒットストップ)
+        if(this.hitStop > 0){ this.hitStop--; return; }
         this.stateTime++;
         this.clock++;
         if(this.tint && --this.tint.life <= 0) this.tint = null;
 
-        if(this.state != "over"){
+        //ボスの登場の演出中(WARNINGから着地まで)は、ボスと演出以外は動かない
+        if(this.state != "over" && !this.cinematic()){
             drone.update();
             this.updateFuel();
         }
@@ -289,7 +317,7 @@ var mainScreen = {
             case "start":
                 //ボスWAVEはWARNINGを長めに見せてからボス登場
                 if(this.bossWave) this.warningStep();
-                if(this.stateTime >= (this.bossWave ? 150 : 60)){
+                if(this.stateTime >= (this.bossWave ? (this.isKaiWave() ? KAI_HEART_TIME : 150) : 60)){
                     this.state = "play";
                     this.stateTime = 0;
                     if(this.bossWave){
@@ -299,6 +327,7 @@ var mainScreen = {
                 }
                 break;
             case "play":
+                if(this.bossFreeze) break;   //ボスの登場の演出中は敵を出さない・衝撃波も出せない
                 this.spawn();
                 if(Click == 1) this.blast();
                 //全部倒したらWAVEクリア
@@ -337,6 +366,13 @@ var mainScreen = {
                 break;
         }
 
+        if(this.bossFreeze){
+            this.bossEntrance();
+            this.updateEffects();
+            this.tickTimers();
+            return;
+        }
+
         //衝撃波の直後は、ドローン君と龍以外が1フレームおきにしか動かない(スローモーション)
         var frozen = false;
         if(this.slowmo > 0){
@@ -353,11 +389,25 @@ var mainScreen = {
         this.updateEffects();
         if(this.invincible > 0) this.invincible--;
         if(this.guard > 0) this.guard--;
-        if(this.shake > 0) this.shake--;
         if(this.noFuelMsg > 0) this.noFuelMsg--;
-        if(this.bossIntro > 0) this.bossIntro--;
         bossDebug.tick();
         if(this.rareMsgTime > 0) this.rareMsgTime--;
+        this.tickTimers();
+    },
+    //演出の時間を進める(登場の演出中も止めない分)
+    tickTimers:function(){
+        if(this.shake > 0) this.shake--;
+        if(this.bossIntro > 0) this.bossIntro--;
+        if(this.donT > 0) this.donT--;
+        if(this.zoomT > 0) this.zoomT--;
+        if(this.flashT > 0) this.flashT--;
+        if(this.droneIn > 0) this.droneIn--;
+        if(this.beatT > 0) this.beatT--;
+        if(this.kaiDark > 0) this.kaiDark--;
+    },
+    //ボスの登場の演出中か(ドローン君を動かさない)
+    cinematic:function(){
+        return this.bossWave && (this.state == "start" || this.bossFreeze);
     },
 
     //動くと燃料を使い、止まっていると回復する。空になると追従が遅くなる
@@ -762,7 +812,8 @@ var mainScreen = {
             var f = effects[i];
             f.life--;
             if(f.smoke) f.vy -= 0.02;   //煙はゆっくり上へ昇る
-            if(!f.ring && !f.line && !f.flare){ f.x += f.vx; f.y += f.vy; f.vx *= 0.92; f.vy *= 0.92; }
+            if(f.fall){ f.vy += 0.12; f.x += f.vx; f.y += f.vy; }   //砂ぼこりは落ちていく
+            else if(!f.ring && !f.line && !f.flare){ f.x += f.vx; f.y += f.vy; f.vx *= 0.92; f.vy *= 0.92; }
             if(f.life <= 0) effects.splice(i,1);
         }
         for(var i=popups.length-1; i>=0; i--){
@@ -778,10 +829,19 @@ var mainScreen = {
         if(this.shake > 0){
             ctx.translate((Math.random()-0.5)*this.shake, (Math.random()-0.5)*this.shake);
         }
+        //ボスの着地の瞬間は、着地点に向かってぐっと寄る
+        if(this.zoomT > 0){
+            var z = 1 + 0.08*this.zoomT/ZOOM_TIME;
+            ctx.translate(this.zoomX, this.zoomY);
+            ctx.scale(z, z);
+            ctx.translate(-this.zoomX, -this.zoomY);
+        }
         this.drawBackground();
 
+        //ボスの登場の演出中はドローン君を出さない(着地のあとに現れる)
+        var showMe = this.state != "over" && !this.cinematic();
         //自動攻撃の射程
-        if(this.state != "over"){
+        if(showMe){
             ctx.strokeStyle = "rgba(0,0,0,0.06)";
             ctx.beginPath();
             ctx.arc(drone.X,drone.Y,game.range(),0,Math.PI*2);
@@ -847,12 +907,15 @@ var mainScreen = {
 
         //ドローン(被弾後の無敵中は点滅、撃墜されたら消える)
         //協力プレイの相方
-        coop.drawPartner();
-        if(this.state != "over" && !this.down && Math.floor(this.invincible/4) % 2 == 0){
+        if(!this.cinematic()) coop.drawPartner();
+        if(showMe && !this.down && Math.floor(this.invincible/4) % 2 == 0){
+            //着地のあとは、ふわっと現れる
+            ctx.globalAlpha = 1 - this.droneIn/DRONE_IN_TIME;
             drone.draw();
+            ctx.globalAlpha = 1;
         }
         //敵の弾に対する当たり判定(中心の点)
-        if(this.state != "over"){
+        if(showMe){
             ctx.fillStyle = "#fff";
             ctx.beginPath(); ctx.arc(drone.X,drone.Y,HIT_CORE*0.75 + 1.5,0,Math.PI*2); ctx.fill();
             ctx.fillStyle = "#e22";
@@ -860,6 +923,7 @@ var mainScreen = {
         }
 
         this.drawEffects();
+        this.drawKaiIntro();
         ctx.font = "bold 14px sans-serif";
         if(this.fuelOut && this.state != "over" && !this.down){
             this.drawSlowMark("燃料切れ！止まると回復", "210,40,40", 38);
@@ -874,6 +938,12 @@ var mainScreen = {
             ctx.fillStyle = "rgba(" + this.tint.color + "," + (0.16*this.tint.life/this.tint.maxLife) + ")";
             ctx.fillRect(0,0,CW,CH);
         }
+        //ボスの着地の瞬間の白い閃光(ヒットストップの間は真っ白に近いまま)
+        if(this.flashT > 0){
+            ctx.fillStyle = "rgba(255,255,255," + (0.85*this.flashT/FLASH_TIME) + ")";
+            ctx.fillRect(0,0,CW,CH);
+        }
+        this.drawDon();     //閃光の上に出す
 
         this.drawHud();
         coop.drawHud();
@@ -897,10 +967,10 @@ var mainScreen = {
             ctx.globalAlpha = 1;
             ctx.fillStyle = "#000";
         }
+        this.drawGogogo();
         this.drawBanner();
         this.drawBossIntro();
         bossDebug.drawTag();
-        this.drawBossIntro();
 
         if(this.paused){
             ctx.fillStyle = "rgba(255,255,255,0.75)";
@@ -1269,18 +1339,229 @@ var mainScreen = {
     //接近中(WARNINGの間)：サイレンをもう一度・地鳴り・小刻みな揺れ
     warningStep:function(){
         var t = this.stateTime;
+        if(this.isKaiWave()){ this.kaiHeartStep(t); return; }
         if(t == 1) sound.play("rumble");
         if(t == 75) sound.play("warning");
         if(t < 140) this.shake = Math.max(this.shake, 2 + t/50);
     },
     //ボスが現れた：上の閃光・うなり声・名前の表示を始める(協力プレイのゲストは coop.guestStep から)
     bossArrive:function(){
+        if(this.isKaiWave()){ this.kaiArrive(); return; }
         sound.music(null);
         sound.music("boss");
         sound.play("bossAppear");
         fx.flare(CW/2, 0, 260, "255,90,60", 30);
         fx.shake(12);
         this.bossIntro = BOSS_INTRO_TIME;
+        this.bossFreeze = true;     //着地するまで、ボスと演出以外は止める
+        this.introT = 0;
+    },
+
+    //登場：ゴゴゴ(ゆっくり降りる・揺れが強まる・砂ぼこり) → ッ(静止) → ドンっ(一気に落ちて着地)
+    //_visual：協力プレイのゲスト。揺れ・砂ぼこり・音だけ(ボスはホストから届いた位置で動き、着地もホストに合わせる)
+    bossEntrance:function(_visual){
+        var b = null;
+        for(var i=0; i<enemies.length; i++) if(enemies[i].boss) b = enemies[i];
+        if(this.isKaiWave()){ this.kaiEntrance(b,_visual); return; }
+        if(!b && !_visual){ this.bossFreeze = false; return; }
+        if(_visual) b = { x:0, y:0 };   //動かさない仮のボス
+        var t = ++this.introT;
+        var A = BOSS_DESCENT_TIME, H = A + BOSS_HUSH_TIME, S = H + BOSS_SLAM_TIME;
+        b.vx = 0; b.vy = 0;
+        if(t <= A){
+            var k = t/A, e = k*k*(3 - 2*k);
+            b.y = -60 + (BOSS_HOVER_Y + 60)*e;
+            b.x = CW/2 + (Math.random() - 0.5)*5*k;
+            this.shake = Math.max(this.shake, 2 + 8*k);
+            //天井から砂ぼこりが落ちる
+            if(Math.random() < 0.3 + 0.6*k){
+                effects.push({ fall:true, x:Math.random()*CW, y:-4, vx:(Math.random() - 0.5)*0.6, vy:1 + Math.random()*2,
+                               life:50, maxLife:50, size:2 + Math.random()*3, color:"#8a8070" });
+            }
+            if(t == 1) sound.play("rumble");
+            if(t == 38) sound.play("rumble");
+            if(t == 74) sound.play("rumbleHard");
+        }else if(t <= H){
+            //ッ：ぴたりと止まる
+            b.x = CW/2;
+            b.y = BOSS_HOVER_Y - 6*(t - A)/BOSS_HUSH_TIME;   //少し浮き上がって溜める
+            this.shake = 0;
+        }else if(t < S){
+            b.y += (160 - b.y)/(S - t);
+        }else if(!_visual){
+            b.y = 160;
+            b.mode = "idle";
+            special.bossLanded(b);
+        }
+    },
+
+    //------------------------------------------------------------ ドローン君改の登場
+    //鼓動(暗闇・ゆっくりなドクン) → 影が浮かぶ → 始動(リレーがカチカチ入る・色づく・光が集まる) → 開幕(点火・閃光・暗闇が晴れる)
+    isKaiWave:function(){
+        return this.bossWave && bossTypeFor(game.wave) == "kai";
+    },
+    beat:function(_strong){
+        sound.play("heartbeat");
+        this.beatT = 24;
+        this.shake = Math.max(this.shake, _strong ? 6 : 3);
+    },
+    //鼓動(WARNINGの代わり)
+    kaiHeartStep:function(_t){
+        if(_t == 1) sound.stopMusic();
+        if(_t >= 20 && _t < KAI_HEART_TIME - 10 && (_t - 20) % KAI_BEAT_EVERY == 0) this.beat(false);
+    },
+    //ボスが現れた：まだ動かさず、暗闇の中に影を置く
+    kaiArrive:function(){
+        this.bossFreeze = true;
+        this.introT = 0;
+        for(var i=0; i<enemies.length; i++){
+            var e = enemies[i];
+            if(e.boss){ e.x = CW/2; e.y = 160; }
+        }
+    },
+    kaiEntrance:function(_b,_visual){
+        var t = ++this.introT, A = KAI_APPEAR_TIME, B = A + KAI_BOOT_TIME;
+        if(_b && !_visual){ _b.x = CW/2; _b.y = 160; _b.vx = 0; _b.vy = 0; }
+        var cx = _b ? _b.x : CW/2, cy = _b ? _b.y : 160;
+        if(t == 20) this.beat(true);    //影が浮かぶ途中で、最後の強い鼓動
+        if(t == A) sound.play("kaiBoot");
+        if(t > A && t < B){
+            //始動：揺れが強まり、光が吸い込まれるように集まる
+            var k = (t - A)/KAI_BOOT_TIME;
+            this.shake = Math.max(this.shake, 1 + 3*k);
+            if(t % 3 == 0){
+                var a = Math.random()*Math.PI*2, R = 150 + Math.random()*60, sp = 6 + 8*k;
+                effects.push({ x:cx + Math.cos(a)*R, y:cy + Math.sin(a)*R, vx:-Math.cos(a)*sp, vy:-Math.sin(a)*sp,
+                               life:22, maxLife:22, size:2.5 + 2*k, glow:Math.random() < 0.5 ? "255,60,60" : "120,180,255" });
+            }
+        }
+        //リレーが入る瞬間(音と同じ時刻)：小さく光って揺れる
+        if(t >= A && KAI_RELAY_FRAMES.indexOf(t - A) >= 0){
+            var kk = Math.min(1, (t - A)/KAI_BOOT_TIME);
+            fx.flare(cx, cy, 50 + 40*kk, "255,70,60", 8);
+            fx.ring(cx, cy, 55 + 30*kk, "255,110,90", 9, 2);
+            this.shake = Math.max(this.shake, 3 + 5*kk);
+        }
+        if(t >= B && _b && !_visual){
+            _b.mode = "idle";
+            special.bossLanded(_b);     //ドローン君改は kaiIgnite へ
+        }
+    },
+    //開幕：点火の閃光・衝撃波。暗闇が晴れ、名前を出して戦いが始まる(special.bossLanded から)
+    kaiIgnite:function(_e){
+        sound.play("kaiIgnite");
+        sound.music(null);
+        sound.music("boss");
+        if(_e.look) _e.look.tint = "190,20,30";
+        fx.flare(_e.x, _e.y, 220, "255,80,70", 26);
+        fx.ring(_e.x, _e.y, 300, "255,90,80", 30, 10);
+        fx.ring(_e.x, _e.y, 200, "130,190,255", 24, 6);
+        fx.sparks(_e.x, _e.y, 40, "255,120,90", 11, 4);
+        fx.shake(24);
+        this.flashT = FLASH_TIME;
+        this.hitStop = 6;
+        this.zoomT = ZOOM_TIME; this.zoomX = _e.x; this.zoomY = _e.y;
+        this.kaiDark = KAI_DARK_OUT;
+        this.bossIntro = BOSS_INTRO_TIME;
+        this.bossFreeze = false;
+        this.droneIn = DRONE_IN_TIME;
+        this.guard = Math.max(this.guard, 60);
+        fx.ring(drone.X, drone.Y, 46, "80,160,255", 22, 3);
+    },
+    //暗闇・鼓動の赤い脈・浮かび上がって色づく影(ゲームの層の一番上に描く)
+    drawKaiIntro:function(){
+        if(!this.isKaiWave()) return;
+        var dark;
+        if(this.state == "start") dark = Math.min(1, this.stateTime/60);
+        else if(this.bossFreeze) dark = 1;
+        else if(this.kaiDark > 0) dark = this.kaiDark/KAI_DARK_OUT;
+        else return;
+        ctx.fillStyle = "rgba(6,3,10," + (0.9*dark) + ")";
+        ctx.fillRect(-20,-20,CW + 40,CH + 40);
+        //鼓動：画面のふちが赤く脈打つ
+        if(this.beatT > 0){
+            var p = this.beatT/24;
+            var g = ctx.createRadialGradient(CW/2,CH/2,CH*0.25,CW/2,CH/2,CW*0.65);
+            g.addColorStop(0,"rgba(200,10,20,0)");
+            g.addColorStop(1,"rgba(200,10,20," + (0.55*p) + ")");
+            ctx.fillStyle = g;
+            ctx.fillRect(-20,-20,CW + 40,CH + 40);
+        }
+        if(!this.bossFreeze) return;
+        var b = null;
+        for(var i=0; i<enemies.length; i++) if(enemies[i].boss) b = enemies[i];
+        if(!b || !b.look) return;
+        //影：黒から少しずつ赤く(色は8段階。色ごとに絵を作って覚えておくので、細かくしすぎない)
+        var t = this.introT, A = KAI_APPEAR_TIME;
+        var k = t <= A ? 0 : Math.min(1, (t - A)/KAI_BOOT_TIME);
+        var q = Math.round(k*8)/8;
+        b.look.tint = Math.round(12 + 178*q) + "," + Math.round(12 + 8*q) + "," + Math.round(16 + 14*q);
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, t/A);
+        //始動中は後ろが赤く光る
+        if(k > 0){
+            var gl = ctx.createRadialGradient(b.x,b.y,0,b.x,b.y,90 + 60*k);
+            gl.addColorStop(0,"rgba(255,60,50," + (0.5*k) + ")");
+            gl.addColorStop(1,"rgba(255,60,50,0)");
+            ctx.fillStyle = gl;
+            ctx.beginPath(); ctx.arc(b.x,b.y,150,0,Math.PI*2); ctx.fill();
+        }
+        this.drawEnemy(b);
+        ctx.restore();
+    },
+
+    //「ゴゴゴ」の文字(画面の左右に増えていく。ッの瞬間に消える)
+    drawGogogo:function(){
+        if(!this.bossFreeze || this.introT > BOSS_DESCENT_TIME || this.isKaiWave()) return;
+        var k = this.introT/BOSS_DESCENT_TIME;
+        var n = Math.min(6, 1 + Math.floor(k*7));
+        ctx.save();
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.lineJoin = "round";
+        for(var side=0; side<2; side++){
+            for(var i=0; i<n; i++){
+                var x = side == 0 ? 90 + (i % 2)*38 : CW - 90 - (i % 2)*38;
+                var y = 120 + i*62;
+                var s = 46 + 10*k + Math.sin(this.clock*0.5 + i)*3;
+                ctx.save();
+                ctx.translate(x + (Math.random() - 0.5)*3*k, y + (Math.random() - 0.5)*3*k);
+                ctx.rotate((side == 0 ? -0.18 : 0.18) + Math.sin(i*1.7)*0.08);
+                ctx.font = "900 " + Math.round(s) + "px sans-serif";
+                ctx.globalAlpha = 0.55 + 0.4*k;
+                ctx.lineWidth = 7;
+                ctx.strokeStyle = "#fff";
+                ctx.strokeText("ゴ", 0, 0);
+                ctx.fillStyle = "#3b1352";
+                ctx.fillText("ゴ", 0, 0);
+                ctx.restore();
+            }
+        }
+        ctx.restore();
+    },
+    //着地の「ドンッ!!」(ぽんと大きく出て、少し縮んで、消える)
+    drawDon:function(){
+        if(this.donT <= 0) return;
+        var age = DON_TIME - this.donT;
+        var sc = age < 6 ? 1.4 - age*0.07 : 1;
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, this.donT/12);
+        ctx.translate(this.donX, this.donY);
+        ctx.rotate(-0.08);
+        ctx.scale(sc, sc);
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = "900 110px sans-serif";
+        ctx.lineJoin = "round";
+        ctx.lineWidth = 16;
+        ctx.strokeStyle = "#c22";
+        ctx.strokeText("ドンッ!!", 0, 0);
+        ctx.lineWidth = 7;
+        ctx.strokeStyle = "#fff";
+        ctx.strokeText("ドンッ!!", 0, 0);
+        ctx.fillStyle = "#111";
+        ctx.fillText("ドンッ!!", 0, 0);
+        ctx.restore();
     },
 
     //接近の警告：暗くなる画面・赤く脈打つ四隅・流れる危険表示の帯・ぶれる WARNING
@@ -1389,7 +1670,7 @@ var mainScreen = {
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         if(this.state == "start" && this.bossWave){
-            this.drawBossWarning();
+            if(!this.isKaiWave()) this.drawBossWarning();   //ドローン君改は暗闇と鼓動(drawKaiIntro)
         }else if(this.state == "start"){
             ctx.globalAlpha = Math.min(1, (60 - this.stateTime)/20);
             ctx.font = "bold 56px serif";
