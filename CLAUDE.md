@@ -149,7 +149,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
   - ゲストが抜けたら、ホストはひとりで続ける。ホストが抜けたら、ゲストはタイトルへ戻る。始まった後の途中参加はできない。
 - 通信部分(`createRoom`・`joinRoom`・`setupConn`・`update` の相方の読み取り・`send`)と、状態の作り方(`buildHost`/`buildGuest`/`readHost`/`readGuest`/`guestSync`)は分けてある。
 - 本物の通信の確認は、ヘッドレスEdgeを `--remote-debugging-port` で起動し、DevTools プロトコルで2つのウィンドウを操作して行った。ヘッドレスでは、裏に回ったタブの `requestAnimationFrame` が止まる。2つ目は `Target.createTarget`(`newWindow:true`)で別ウィンドウとして開く。
-- 協力プレイは GitHub Pages 版だけ。Artifact の中では外部との通信も WebRTC も止められているため、PeerJS は使えない(Artifact 版に載っている協力プレイは古い room 方式のままで、実際にはつながらない)。
+- 協力プレイは GitHub Pages 版だけ。claude.ai の Artifact の中では外部との通信も WebRTC も止められているため、PeerJS は使えない(以前あった Artifact 版は 2026-10-03 に削除した)。
 
 ## 対戦(versus.js)
 
@@ -180,8 +180,3 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 - Releases の作成には `gh`(GitHub CLI。`gh auth login` 済み)が要る。
 - 公開版の一覧は `git tag -n9`・`gh release list`・GitHub の Releases のページ。2つの公開版の差は `git log --oneline v2026.10.02..v2026.10.03`。
 - 昔の公開版で遊ぶ・協力プレイするとき：タグからブランチを作って push し(`git branch release/v2026.10.02 v2026.10.02`)、GitHub Pages の公開ブランチをそれに切り替える。終わったら `main` に戻す。切り替えている間は公開サイトがその版になり、今の版とセーブ(`localStorage`)を共有する。
-
-## Artifact 版
-
-claude.ai の Artifact(https://claude.ai/artifact/7cWhxfs3eZsDrw7jDLmNWX)でも1人用を公開している。
-Artifact に載せるページは `index.html` から `<!DOCTYPE>`・`<html>`・`<head>`・`<body>` の枠を取り除いたもの(Artifact 側が枠を付けるため)で、スクリプトと画像は同じパスで一緒に公開する。
