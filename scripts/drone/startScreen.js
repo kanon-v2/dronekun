@@ -452,7 +452,9 @@ var startScreen = {
             if(sh){
                 var col = Math.floor(this.t*sh.yaws/224) % sh.yaws;   //どの見た目も同じ速さで回す(1周約4秒)
                 var bob = Math.round(Math.sin(this.t*0.08)*2);
-                var src = sh.pixel ? sh[0] : sh[1], f = sh.pixel ? DRONE_SIZE : DRONE_SIZE*2;
+                //2倍で描くので、画面の細かさも合わせて近い大きさの絵を使う(ドット絵は等倍の絵を拡大)
+                var lv = sh.pixel ? 0 : (2*renderScale <= 2.5 ? 1 : 2);
+                var src = sh[lv], f = DRONE_SIZE << lv;
                 ctx.imageSmoothingEnabled = !sh.pixel;
                 ctx.drawImage(src, col*f, (sh.elevs - 1)/2*f, f, f, c.X + c.width/2 - 40, c.Y + 22 + bob, 80, 80);
                 ctx.imageSmoothingEnabled = false;

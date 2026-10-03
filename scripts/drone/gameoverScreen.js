@@ -1,8 +1,8 @@
 //------------------------------------------------------------------------------
 //  ゲームオーバー画面のボタン
 //------------------------------------------------------------------------------
-var retryButton = new drawRect(canvas.width/2,GS*11,GS*14,GS*2.4);
-var gameoverTitleButton = new drawRect(canvas.width/2,GS*14,GS*14,GS*2.4);
+var retryButton = new drawRect(CW/2,GS*11,GS*14,GS*2.4);
+var gameoverTitleButton = new drawRect(CW/2,GS*14,GS*14,GS*2.4);
 
 //------------------------------------------------------------------------------
 //  ゲームオーバー画面処理

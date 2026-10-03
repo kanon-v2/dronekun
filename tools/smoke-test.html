@@ -165,6 +165,20 @@ try{
     }
     check("雑魚敵9種類を新しい絵で描ける(被弾・撃つ直前・自爆直前など)", artOk.length == artTypes.length && errors.length == artErr, artOk.length + "/" + artTypes.length + "種類");
 
+    //画面の細かさ：表示が大きいと細かく描き(座標はそのまま)、フレームレートが低い秒が続くと1段下げる
+    var keepCssW = canvas.style.width, keepCssH = canvas.style.height, keepFps = { count:fps.count, last:fps.last, value:fps.value, low:fps.low };
+    canvas.style.width = "3840px"; canvas.style.height = "2160px"; renderCap = RENDER_MAX; fitCanvas();
+    var hiRes = renderScale == 4 && canvas.width == 3840 && ctx.getTransform().a == 4;
+    page.change(0); draw1();
+    var ft = 100000; fps.last = ft; fps.count = 0; fps.low = 0;
+    for(var sec=0; sec<RENDER_DROP_SEC; sec++) for(var i=0; i<20; i++){ ft += 50; fps.tick(ft); }     //1秒に20回しか描けない
+    var dropped = renderScale == 3 && canvas.width == 2880 && ctx.getTransform().a == 3;
+    draw1();
+    check("大きな表示では細かく描き、重いと1段下げる", hiRes && dropped, "×" + renderScale);
+    renderCap = RENDER_MAX; canvas.style.width = "960px"; canvas.style.height = "540px"; fitCanvas();
+    canvas.style.width = keepCssW; canvas.style.height = keepCssH;
+    fps.count = keepFps.count; fps.last = keepFps.last; fps.value = keepFps.value; fps.low = keepFps.low;
+
     //戦闘画面の右下：当たり判定・ポインタの表示ボタン
     var keepView = localStorage.getItem(viewOpt.KEY), keepHit = viewOpt.hitbox, keepPtr = viewOpt.pointer;
     viewOpt.hitbox = true; viewOpt.pointer = true;

@@ -57,6 +57,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 ## 仕組み
 
 - キャンバスは 960×540 固定(32×18 マスで `GS = 30px`)。CSSで縮めても座標はこの大きさのまま。
+- 画面の細かさ(`common.js` の `fitCanvas`)：大きなモニター・全画面でぼやけないよう、キャンバスの実際の大きさを「表示される大きさ×画素の密度」に合わせ(最大 `RENDER_MAX` = 4倍)、`ctx.setTransform` で全体を拡大して描く。座標はいつも 960×540 のままなので、ふだんのコードは気にしなくてよい。ただし `canvas.width`/`canvas.height` はゲームの大きさではない(`CW`/`CH` を使う)。キャンバス自身を写し取るときは、元の位置に `renderScale` を掛ける。フレームレートが `RENDER_FPS_LOW` を下回る秒が `RENDER_DROP_SEC` 続くと、細かさを1段下げる(`draw.js` の `fps`。画面上部の表示に「×倍率」が出る)。
 - 画面(page)の番号: 0 タイトル / 1 戦闘 / 2 強化 / 3 ゲームオーバー / 4 ストーリー / 5 エンディング / 6 協力プレイ・対戦の部屋選び / 7 対戦。
   各画面は `{ enter(), update(), draw() }` を持つオブジェクトで、`draw.js` の `screens` 配列に並ぶ。切り替えは `page.change(n)`。
 - 更新は `draw.js` で1/60秒ごと(画面のリフレッシュレートに依存しない)。`update()` が1コマ、`draw()` が描画。
@@ -96,6 +97,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | BGM | `sound.js` の `TRACKS` |
 | 対戦の耐久・装備ごとのダメージ倍率 | `versus.js` の `VS_HP`・`VS_DAMAGE_MUL` |
 | ドローン君の色・振り向き・傾き | `common.js` の `FLAT_COLOR`・`FLAT_YAWS`・`FLAT_ELEVS`・`TURN_*`・`TILT_*` |
+| 画面の細かさの上限・重いときに下げる条件 | `common.js` の `RENDER_MAX`・`RENDER_FPS_LOW`・`RENDER_DROP_SEC` |
 
 難易度は「プレイヤーを弱くする方向」と「敵の弾幕を増やす方向」で上げてきた経緯がある。敵の体力を上げる調整は控えめにする。
 

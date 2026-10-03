@@ -9,6 +9,45 @@ ctx.imageSmoothingEnabled = false;  //ドット絵をくっきり
 //16:9画面を32:18分割してグリッド単位で管理
 const GS = CW/32;  //=30px Grid-Size
 
+//------------------------------------------------------------------------------
+//  画面の細かさ(大きなモニター・高解像度の画面・全画面でもぼやけないように)
+//  ゲームの座標はいつも CW×CH のまま。キャンバスの実際の大きさだけを「表示される大きさ×画素の密度」に合わせ、
+//  描くときに全体を拡大する(ctx.setTransform)。キャンバスの中身を写し取るときは、元の位置に renderScale を掛ける。
+//  細かさには上限があり(RENDER_MAX)、フレームレートがしばらく低いと1段ずつ下げる(draw.js の fps)
+//------------------------------------------------------------------------------
+const RENDER_MAX = 4;       //細かさの上限(ゲームの大きさの何倍で描くか。4で4Kの全画面)
+const RENDER_FPS_LOW = 45;  //フレームレートがこれを下回る秒が
+const RENDER_DROP_SEC = 3;  //この秒数続くと、細かさを1段下げる
+var renderScale = 1;        //今の細かさ
+var renderCap = RENDER_MAX; //今の上限(フレームレートが低いと下がる。ページを開き直すと戻る)
+function fitCanvas(){
+    var rect = canvas.getBoundingClientRect();
+    var want = rect.width > 0 ? rect.width*(window.devicePixelRatio || 1)/CW : 1;
+    var s = Math.max(1, Math.min(renderCap, Math.round(want*4)/4));    //細かく変えすぎない(1/4刻み)
+    if(s == renderScale && canvas.width == Math.round(CW*s)) return;
+    renderScale = s;
+    canvas.width = Math.round(CW*s);    //大きさを変えると、描いた中身と ctx の設定が消えるので設定し直す
+    canvas.height = Math.round(CH*s);
+    ctx.setTransform(canvas.width/CW,0,0,canvas.height/CH,0,0);
+    ctx.imageSmoothingEnabled = false;
+    //CSS で大きさを決めていないページ(テスト用など)では、キャンバスの大きさがそのまま表示の大きさになって
+    //広がり続けるので、表示の大きさを変える前のまま固定する
+    if(rect.width > 0 && Math.abs(canvas.getBoundingClientRect().width - rect.width) > 1){
+        canvas.style.width = rect.width + "px";
+        canvas.style.height = rect.width*CH/CW + "px";
+    }
+}
+//細かさの上限を1段下げる(フレームレートが低いとき。draw.js から)
+function lowerRender(){
+    if(renderScale <= 1) return false;
+    renderCap = Math.max(1, Math.ceil(renderScale) - 1);
+    fitCanvas();
+    return true;
+}
+window.addEventListener("resize", fitCanvas);
+document.addEventListener("fullscreenchange", fitCanvas);
+fitCanvas();
+
 const DEBUG = false;  //trueでマウス座標などを左上に表示
 
 //------------------------------------------------------------------------------
@@ -36,8 +75,8 @@ var time = 0;
 //  タッチ：戦闘中は画面のどこをドラッグしても、指の動いた分だけ目標が動く
 //          (指でドローン君が隠れないように)。衝撃波は右下のボタン。それ以外の画面はタップ
 //------------------------------------------------------------------------------
-var MouseX=canvas.width/2;      //ドローン君が向かう目標の座標
-var MouseY=canvas.height/2;
+var MouseX=CW/2;      //ドローン君が向かう目標の座標
+var MouseY=CH/2;
 var MouseIn=false;              //操作中か(マウスがキャンバスの外に出たら一時停止)
 var Click=0;                    //このフレームでクリック・タップされたか
 var inputMode="mouse";          //最後に使った操作方法："mouse"か"touch"
@@ -48,8 +87,8 @@ var drag = { id:null, x:0, y:0 };
 function toCanvasPos(e){
     var rect = canvas.getBoundingClientRect();
     return {
-        x:(e.clientX - rect.left) * canvas.width / rect.width,
-        y:(e.clientY - rect.top) * canvas.height / rect.height
+        x:(e.clientX - rect.left) * CW / rect.width,
+        y:(e.clientY - rect.top) * CH / rect.height
     };
 }
 //戦闘中のタッチはドラッグ操作になる
@@ -740,7 +779,8 @@ DroneLook.prototype = {
         var k = _scale || 1;
         //描く大きさに近い絵を使う(等倍・2倍・4倍)。ドット絵は等倍の絵をそのまま拡大する
         var pix = sh.pixel;
-        var lv = pix ? 0 : k <= 1.25 ? 0 : k <= 2.5 ? 1 : 2;
+        var kk = k*renderScale;     //画面の上での実際の大きさ(大きなモニターでは細かく描く)
+        var lv = pix ? 0 : kk <= 1.25 ? 0 : kk <= 2.5 ? 1 : 2;
         var f = DRONE_SIZE << lv;
         //角度にいちばん近いコマ(段の数は見た目ごとに違う)
         var col = ((Math.round(this.yaw/360*sh.yaws) % sh.yaws) + sh.yaws) % sh.yaws;
@@ -753,7 +793,7 @@ DroneLook.prototype = {
         var squash = 1 - TURN_SQUASH*Math.min(1, Math.abs(this.yawV)/TURN_SQUASH_SPEED);
         ctx.save();
         //ドット絵は、傾かず・縮まず・整数倍で描くときはくっきり描く(元の描き方と同じ)
-        var smooth = !pix || Math.abs(this.tilt) > 0.02 || squash < 0.99 || k != Math.round(k);
+        var smooth = !pix || Math.abs(this.tilt) > 0.02 || squash < 0.99 || kk != Math.round(kk);
         if(pix) ctx.translate(Math.round(_x), Math.round(_y + bob*k));
         else ctx.translate(_x, _y + bob*k);
         ctx.rotate(this.tilt);
@@ -865,7 +905,10 @@ var pointer = {
     },
     draw: function(){
         if(!viewOpt.showPointer()) return;
+        //ぼんやり光る絵なので、拡大するときはなめらかに(大きなモニターでカクカクしないように)
+        ctx.imageSmoothingEnabled = true;
         ctx.drawImage(Pointer,this.X,this.Y);
+        ctx.imageSmoothingEnabled = false;
     }
 };
 

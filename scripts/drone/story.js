@@ -254,7 +254,8 @@ var storyScreen = {
         if(L.fx == "glitch" && (this.lineT < 40 || Math.random() < 0.08)){
             for(var i=0; i<7; i++){
                 var y = Math.floor(Math.random()*360), h = 4 + Math.floor(Math.random()*24);
-                ctx.drawImage(canvas,0,y,CW,h,(Math.random()-0.5)*50,y,CW,h);
+                //写し取る元はキャンバスの実際の画素で指定する(細かさの分を掛ける)
+                ctx.drawImage(canvas,0,y*renderScale,canvas.width,h*renderScale,(Math.random()-0.5)*50,y,CW,h);
             }
             ctx.fillStyle = "rgba(255,0,60,0.12)";
             ctx.fillRect(0,Math.random()*360,CW,6);

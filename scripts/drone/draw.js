@@ -15,15 +15,22 @@ const FPS_WARN = 50;    //これを下回るとオレンジ
 const FPS_BAD  = 30;    //これを下回ると赤
 var fps = {
     count:0,
+    low:0,          //フレームレートが低い秒が続いている数
     last:0,
     value:0,
     tick:function(_now){
         this.count++;
         if(this.last == 0) this.last = _now;
         if(_now - this.last >= 1000){
+            //タブを裏に回していた間などは数えない(描いていないだけで、重いわけではない)
+            var gap = _now - this.last > 2000;
             this.value = Math.round(this.count*1000/(_now - this.last));
             this.count = 0;
             this.last = _now;
+            //細かく描きすぎて重いときは、細かさを1段下げる(common.js の fitCanvas)
+            if(!gap && this.value < RENDER_FPS_LOW && renderScale > 1){
+                if(++this.low >= RENDER_DROP_SEC){ this.low = 0; lowerRender(); }
+            }else this.low = 0;
         }
     },
     draw:function(){
@@ -32,7 +39,8 @@ var fps = {
         ctx.textBaseline = "middle";
         ctx.font = "bold 11px sans-serif";
         ctx.fillStyle = this.value < FPS_BAD ? "#d22" : (this.value < FPS_WARN ? "#e08000" : "#999");
-        ctx.fillText("FPS " + this.value, CW/2, 8);
+        //細かく描いているときは倍率も出す(重くて下げたときにわかるように)
+        ctx.fillText("FPS " + this.value + (renderScale > 1 ? "  ×" + renderScale : ""), CW/2, 8);
         ctx.fillStyle = "#000";
     }
 };
@@ -56,7 +64,7 @@ function draw(now){
     }
 
     ctx.fillStyle = "white";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, CW, CH);
     screens[page.number].draw();
     sound.draw();
     fps.draw();
