@@ -116,6 +116,45 @@ try{
     check("能力リセットでパーツ返却", game.level.speed == 1 && refund > 0, "返却 " + refund);
     upgradeScreen.tab = "equip"; draw1();
 
+    // ショップ：パーツで装備を買う。同じWAVEの間は品ぞろえが変わらず、次のWAVEで入れ替わる
+    setup(6, { gun:1, laser:3 }, ["gun",null,null], 3); game.slotCount = 2; game.parts = 100;
+    page.change(2); upgradeScreen.tab = "shop"; draw1();
+    var items = game.shop.items.slice(), id0 = items[0], lv0 = game.owned[id0] || 0, price0 = upgradeScreen.shopPrice(id0);
+    var noMax = items.length == SHOP_ITEMS && items.indexOf("laser") < 0;
+    var buy0 = function(){ MouseX = shopBuyButtons[0].X + 10; MouseY = shopBuyButtons[0].Y + 10; Click = 1; upgradeScreen.update(); Click = 0; };
+    buy0();
+    var bought = game.owned[id0] == lv0 + 1 && game.parts == 100 - price0 && game.shop.sold[0] && (lv0 > 0 || game.slots[1] == id0);
+    buy0();
+    var once = game.owned[id0] == lv0 + 1 && game.parts == 100 - price0;
+    draw1();
+    save.load(); page.change(2);
+    var kept = game.shop.items.join() == items.join() && game.shop.sold[0];
+    game.wave++; page.change(2);
+    var restock = game.shop.wave == game.wave && !game.shop.sold[0];
+    check("ショップ：パーツで装備を買い、売り切れになる・同じWAVEでは品ぞろえが変わらず、次のWAVEで入れ替わる",
+          noMax && bought && once && kept && restock, items.join(",") + " " + id0 + " Lv" + lv0 + "→" + game.owned[id0] + " -" + price0 + " " + [noMax,bought,once,kept,restock].join(""));
+
+    // ショップのバフ：買うと能力・ダメージに効き、セーブに残る。買える回数には上限があり、はじめからで消える
+    setup(6, { gun:1 }, ["gun",null,null], 3); game.parts = 500;
+    page.change(2); upgradeScreen.tab = "shop"; draw1();
+    var armor0 = game.stat("armor"), fuel0 = game.stat("fuel"), rate0 = arms.rate();
+    var tapBuff = function(k){ var i = BUFFS.map(function(b){ return b.key; }).indexOf(k); MouseX = buffCards[i].X + 10; MouseY = buffCards[i].Y + 10; Click = 1; upgradeScreen.update(); Click = 0; };
+    tapBuff("power"); tapBuff("rapid"); tapBuff("plate"); tapBuff("tank");
+    for(var i=0; i<5; i++) tapBuff("plate");    //上限より多く押しても増えない
+    var spent = 500 - game.parts, maxPlate = BUFFS[2].cost.length;
+    var statsUp = game.stat("armor") == armor0 + BUFF_PLATE*maxPlate && game.stat("fuel") == fuel0 + BUFF_TANK && arms.rate() < rate0;
+    draw1();
+    page.change(1);
+    var tgt = { hp:10, maxHp:10, x:100, y:100, r:10 }; mainScreen.hitEnemy(tgt, 1, "gun");
+    var dmgUp = Math.abs(tgt.hp - (10 - (1 + BUFF_POWER))) < 1e-9;
+    var hpUp = mainScreen.maxHp == armor0 + BUFF_PLATE*maxPlate;
+    save.load();
+    var keptBuff = game.buff("power") == 1 && game.buff("plate") == maxPlate;
+    game.reset();
+    check("ショップのバフ：能力・ダメージに効き、上限まで買え、セーブに残り、はじめからで消える",
+          statsUp && dmgUp && hpUp && keptBuff && game.buff("power") == 0 && spent == 30 + 30 + 40 + 70 + 15,
+          "使ったパーツ" + spent + " " + [statsUp,dmgUp,hpUp,keptBuff].join(""));
+
     // 5・6. デバッグのメニュー(入口は #debug のリンクだけ。キーボードの操作はない)
     var tap = function(_r){ inputMode = "mouse"; MouseIn = true; MouseX = _r.X + _r.width/2; MouseY = _r.Y + _r.height/2; Click = 1; if(!sound.handleClick()) screens[page.number].update(); Click = 0; };
     //「DEBUG：戻る」の位置は、出ているボタンに合わせて shown() で決まる(画面では毎フレーム描くときに決まる)

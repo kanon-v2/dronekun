@@ -285,6 +285,19 @@ const STATS = [
 const MAX_LEVEL = 5;
 const UPGRADE_COST = [0,5,10,16,24];  //レベルL→L+1に必要なパーツ数 = UPGRADE_COST[L]
 
+//ショップで買えるバフ。そのストーリーの間ずっと効く(セーブに残る。はじめからやり直すと消える)
+//cost の長さが買える回数。n回目の値段 = cost[n-1](パーツ)
+const BUFF_POWER = 0.10;    //強化弾頭1つあたりのダメージの増え方(割合)
+const BUFF_RAPID = 0.08;    //冷却装置1つあたりの攻撃間隔の縮み方(割合)
+const BUFF_PLATE = 1;       //予備装甲1つあたりの最大耐久の増え方
+const BUFF_TANK  = 20;      //増設タンク1つあたりの燃料の増え方
+const BUFFS = [
+    { key:"power", name:"強化弾頭",   desc:"全装備のダメージ+" + BUFF_POWER*100 + "%", cost:[30,45,60] },
+    { key:"rapid", name:"冷却装置",   desc:"全装備の攻撃間隔-" + BUFF_RAPID*100 + "%", cost:[30,45,60] },
+    { key:"plate", name:"予備装甲",   desc:"耐えられる被弾数+" + BUFF_PLATE,                cost:[40,70] },
+    { key:"tank",  name:"増設タンク", desc:"燃料タンク+" + BUFF_TANK,                       cost:[15,25,35] }
+];
+
 //------------------------------------------------------------------------------
 //  ゲームの進行状況
 //------------------------------------------------------------------------------
@@ -301,7 +314,11 @@ var game = {
     slotCount:1,            //解放済みの装備枠の数
     pendingReward:0,        //まだ選んでいない報酬の回数
     seen:{},                //見終わったストーリー {prologue:true, ...}
+    shop:null,              //ショップの品ぞろえ { wave:そろえたWAVE, items:[装備のid], sold:[売り切れか] }
+    buffs:{},               //ショップで買ったバフの数 {power:1, ...}
     reset:function(){
+        this.shop = null;
+        this.buffs = {};
         this.seen = {};
         this.wave = 1;
         this.parts = 0;
@@ -314,9 +331,16 @@ var game = {
     },
     //能力の現在値
     stat:function(_key){
+        var bonus = 0;      //ショップのバフの分
+        if(_key == "armor") bonus = this.buff("plate")*BUFF_PLATE;
+        if(_key == "fuel")  bonus = this.buff("tank")*BUFF_TANK;
         for(var i=0; i<STATS.length; i++){
-            if(STATS[i].key == _key) return STATS[i].values[this.level[_key]-1];
+            if(STATS[i].key == _key) return STATS[i].values[this.level[_key]-1] + bonus;
         }
+    },
+    //買ったバフの数
+    buff:function(_key){
+        return this.buffs[_key] || 0;
     },
     //自動攻撃の射程
     range:function(){
@@ -336,7 +360,7 @@ var save = {
         return JSON.stringify({
             wave:game.wave, parts:game.parts, score:game.score, level:game.level,
             owned:game.owned, slots:game.slots, slotCount:game.slotCount, pendingReward:game.pendingReward,
-            seen:game.seen
+            seen:game.seen, shop:game.shop, buffs:game.buffs
         });
     },
     write:function(){
@@ -377,6 +401,8 @@ var save = {
             //古いセーブデータではtrue/falseなので回数に直す
             game.pendingReward = Number(d.pendingReward) || 0;
             game.seen = d.seen || {};
+            game.shop = d.shop || null;     //同じWAVEで読み直しても品ぞろえは変わらない
+            game.buffs = d.buffs || {};
             return true;
         }catch(e){ return false; }
     },

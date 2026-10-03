@@ -68,8 +68,9 @@ var nextButton = new drawRect(GS*22 , GS*14.4 , GS*14 , GS*2.4);
 var toTitleButton = new drawRect(GS*5 , GS*15 , GS*8 , GS*1.6);
 
 //タブ
-var tabStats = new drawRect(380 , 72 , 160 , 32);
-var tabEquip = new drawRect(545 , 72 , 160 , 32);
+var tabStats = new drawRect(365 , 72 , 130 , 32);
+var tabEquip = new drawRect(500 , 72 , 130 , 32);
+var tabShop  = new drawRect(635 , 72 , 130 , 32);
 
 //能力強化タブ
 var resetButton = new drawRect(825 , 72 , 210 , 32);
@@ -94,6 +95,18 @@ for(var i=0; i<WEAPON_IDS.length; i++){
     itemRects.push(new drawRect(300 + (i%5)*128 + 59 , 206 + Math.floor(i/5)*39 , 118 , 35));
 }
 var infoRect = new drawRect(615 , 324 , 630 , 102);
+
+//ショップタブ：上の段に装備のカードと買うボタン、下の段にバフ(下の説明欄は装備タブと同じ場所)
+var shopCards = [];
+var shopBuyButtons = [];
+for(var i=0; i<SHOP_ITEMS; i++){
+    shopCards.push(new drawRect(405 + i*210 , 112 , 200 , 136));
+    shopBuyButtons.push(new drawRect(405 + i*210 , 210 , 176 , 30));
+}
+var buffCards = [];     //カードそのものが買うボタン
+for(var i=0; i<BUFFS.length; i++){
+    buffCards.push(new drawRect(375 + i*160 , 256 , 150 , 62));
+}
 
 //報酬のカード
 var rewardCards = [];
@@ -122,6 +135,7 @@ var upgradeScreen = {
         this.msgTime = 0;
         this.resetConfirm = 0;
         this.resetMsgTime = 0;
+        this.stockShop();
         if(game.pendingReward){
             this.makeOffers();
             this.state = "reward";
@@ -135,26 +149,32 @@ var upgradeScreen = {
 
     //まだ最大レベルでない装備から3つ選ぶ。足りなければパーツで埋める
     makeOffers:function(){
+        this.offers = this.upgradable().slice(0,3);
+        while(this.offers.length < 3) this.offers.push("parts");
+    },
+    //まだ最大レベルでない装備(順番はばらばら)
+    upgradable:function(){
         var pool = WEAPON_IDS.filter(function(id){ return (game.owned[id] || 0) < MAX_WEAPON_LEVEL; });
         for(var i=pool.length-1; i>0; i--){
             var j = Math.floor(Math.random()*(i+1));
             var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp;
         }
-        this.offers = pool.slice(0,3);
-        while(this.offers.length < 3) this.offers.push("parts");
+        return pool;
     },
-
-    takeReward:function(_id){
-        if(_id == "parts"){
-            game.parts += 5;
-        }else if(game.owned[_id]){
+    //装備を1つ手に入れる(持っていればレベルアップ。新しい装備は空いている装備枠に自動で入る)
+    gainWeapon:function(_id){
+        if(game.owned[_id]){
             game.owned[_id]++;
         }else{
             game.owned[_id] = 1;
-            //空いている装備枠があれば自動で装備
             var k = this.emptySlot();
             if(k >= 0) game.slots[k] = _id;
         }
+    },
+
+    takeReward:function(_id){
+        if(_id == "parts") game.parts += 5;
+        else this.gainWeapon(_id);
         game.pendingReward--;
         save.write();
         sound.play("reward");
@@ -165,6 +185,45 @@ var upgradeScreen = {
         }
         this.state = "main";
         this.tab = "equip";
+    },
+
+    //ショップ：WAVEが進んでいたら品ぞろえを入れ替える(同じWAVEの間は、読み直しても変わらない)
+    stockShop:function(){
+        if(game.shop && game.shop.wave == game.wave) return;
+        var items = this.upgradable().slice(0,SHOP_ITEMS);
+        game.shop = { wave:game.wave, items:items, sold:items.map(function(){ return false; }) };
+        save.write();
+    },
+    shopPrice:function(_id){
+        var lv = game.owned[_id] || 0;
+        return lv == 0 ? SHOP_NEW_COST : SHOP_LEVEL_COST[lv];
+    },
+    //その品物を今買えるか(売り切れ・最大レベル・パーツ不足でない)
+    canShop:function(_i){
+        var id = game.shop.items[_i];
+        return !game.shop.sold[_i] && (game.owned[id] || 0) < MAX_WEAPON_LEVEL && game.parts >= this.shopPrice(id);
+    },
+    //バフ：まだ買える回数が残っていれば次の値段、残っていなければ0
+    buffPrice:function(_b){
+        var n = game.buff(_b.key);
+        return n < _b.cost.length ? _b.cost[n] : 0;
+    },
+    canBuff:function(_b){
+        return game.buff(_b.key) < _b.cost.length && game.parts >= this.buffPrice(_b);
+    },
+    buyBuff:function(_b){
+        game.parts -= this.buffPrice(_b);
+        game.buffs[_b.key] = game.buff(_b.key) + 1;
+        save.write();
+        sound.play("buy");
+    },
+    buyShop:function(_i){
+        var id = game.shop.items[_i];
+        game.parts -= this.shopPrice(id);
+        this.gainWeapon(id);
+        game.shop.sold[_i] = true;
+        save.write();
+        sound.play("buy");
     },
 
     emptySlot:function(){
@@ -255,6 +314,7 @@ var upgradeScreen = {
 
         if(tabStats.clicked() && this.tab != "stats"){ this.tab = "stats"; sound.play("click"); }
         if(tabEquip.clicked() && this.tab != "equip"){ this.tab = "equip"; sound.play("click"); this.resetConfirm = 0; }
+        if(tabShop.clicked() && this.tab != "shop"){ this.tab = "shop"; sound.play("click"); this.resetConfirm = 0; }
         if(this.resetConfirm > 0) this.resetConfirm--;
         if(this.resetMsgTime > 0) this.resetMsgTime--;
 
@@ -278,6 +338,13 @@ var upgradeScreen = {
                     save.write();
                     sound.play("buy");
                 }
+            }
+        }else if(this.tab == "shop"){
+            for(var i=0; i<game.shop.items.length; i++){
+                if(shopBuyButtons[i].clicked() && this.canShop(i)) this.buyShop(i);
+            }
+            for(var i=0; i<BUFFS.length; i++){
+                if(buffCards[i].clicked() && this.canBuff(BUFFS[i])) this.buyBuff(BUFFS[i]);
             }
         }else{
             //装備枠の解放
@@ -359,10 +426,13 @@ var upgradeScreen = {
         //タブ
         ctx.font = "bold 16px sans-serif";
         this.drawTab(tabStats,"能力強化",this.tab == "stats");
-        this.drawTab(tabEquip,"装備",this.tab == "equip");        ctx.strokeStyle = "#000";
+        this.drawTab(tabEquip,"装備",this.tab == "equip");
+        this.drawTab(tabShop,"ショップ",this.tab == "shop");
+        ctx.strokeStyle = "#000";
         ctx.beginPath(); ctx.moveTo(300,104.5); ctx.lineTo(930,104.5); ctx.stroke();
 
         if(this.tab == "stats") this.drawStats();
+        else if(this.tab == "shop") this.drawShop();
         else this.drawEquip();
 
         ctx.font = "bold 26px serif";
@@ -579,6 +649,122 @@ var upgradeScreen = {
             ctx.fillStyle = "#c33";
             ctx.font = "bold 13px sans-serif";
             ctx.fillText(this.msg,infoRect.X + infoRect.width - 10,infoRect.Y - 12);
+        }
+        ctx.fillStyle = "#000";
+    },
+
+    drawShop:function(){
+        var hover = null, hoverBuff = null;
+        var shop = game.shop;
+        ctx.textBaseline = "middle";
+        if(shop.items.length == 0){
+            ctx.textAlign = "center";
+            ctx.fillStyle = "#777";
+            ctx.font = "15px sans-serif";
+            ctx.fillText("すべての装備が最大レベルです",615,180);
+        }
+        //装備(WAVEごとに入れ替わる)
+        for(var i=0; i<shop.items.length; i++){
+            var r = shopCards[i];
+            var id = shop.items[i];
+            var w = WEAPONS[id];
+            var lv = game.owned[id] || 0;
+            var sold = shop.sold[i];
+            if(r.contains(MouseX,MouseY)){
+                if(!sold) r.fill("#f4f4f4");
+                hover = id;
+            }
+            ctx.strokeStyle = sold ? "#bbb" : "#000";
+            ctx.lineWidth = sold ? 1 : 2;
+            ctx.strokeRect(r.X,r.Y,r.width,r.height);
+            ctx.lineWidth = 1;
+            drawWeaponIcon(id,r.X + 10,r.Y + 10,40);
+            ctx.textAlign = "left";
+            ctx.fillStyle = "#000";
+            ctx.font = "bold 17px sans-serif";
+            ctx.fillText(w.name,r.X + 58,r.Y + 22);
+            ctx.font = "bold 13px sans-serif";
+            if(lv == 0){
+                ctx.fillStyle = "#c33";
+                ctx.fillText("NEW！",r.X + 58,r.Y + 42);
+            }else if(lv >= MAX_WEAPON_LEVEL){
+                ctx.fillText("Lv." + lv + "（最大）",r.X + 58,r.Y + 42);
+            }else{
+                ctx.fillText("Lv." + lv + " → Lv." + (lv + 1),r.X + 58,r.Y + 42);
+            }
+            if(lv < MAX_WEAPON_LEVEL){
+                ctx.fillStyle = "#333";
+                ctx.font = "12px sans-serif";
+                fillWrapText("▶ " + w.lvText[lv],r.X + 10,r.Y + 68,r.width - 20,15);
+            }
+            ctx.font = "bold 15px sans-serif";
+            if(sold){
+                r.fill("rgba(255,255,255,0.55)");   //売り切れは薄くする
+                ctx.font = "bold 15px sans-serif";
+                ctx.fillStyle = "#999";
+                shopBuyButtons[i].text("売り切れ");
+            }else if(lv >= MAX_WEAPON_LEVEL){
+                shopBuyButtons[i].button("最大レベル",false);
+            }else{
+                shopBuyButtons[i].button("買う　パーツ" + this.shopPrice(id),this.canShop(i));
+            }
+        }
+
+        //バフ(いつも並ぶ。そのストーリーの間ずっと効く)
+        for(var i=0; i<BUFFS.length; i++){
+            var b = BUFFS[i], r = buffCards[i];
+            var n = game.buff(b.key), full = n >= b.cost.length, ok = this.canBuff(b);
+            if(r.contains(MouseX,MouseY)){
+                if(ok) r.fill("#eee");
+                hoverBuff = b;
+            }
+            ctx.strokeStyle = ok ? "#000" : "#bbb";
+            ctx.strokeRect(r.X + 0.5,r.Y + 0.5,r.width,r.height);
+            ctx.textAlign = "left";
+            ctx.fillStyle = "#000";
+            ctx.font = "bold 14px sans-serif";
+            ctx.fillText(b.name,r.X + 8,r.Y + 13);
+            //買った数の目盛り
+            for(var j=0; j<b.cost.length; j++){
+                var mx = r.X + r.width - 10 - (b.cost.length - j)*12;
+                if(j < n){ ctx.fillStyle = "#333"; ctx.fillRect(mx,r.Y + 8,9,9); }
+                else { ctx.strokeStyle = "#999"; ctx.strokeRect(mx + 0.5,r.Y + 8.5,8,8); }
+            }
+            ctx.fillStyle = "#444";
+            ctx.font = "11px sans-serif";
+            ctx.fillText(b.desc,r.X + 8,r.Y + 32);
+            ctx.font = "bold 12px sans-serif";
+            ctx.fillStyle = full ? "#999" : (ok ? "#c33" : "#999");
+            ctx.fillText(full ? "最大まで購入済み" : "買う　パーツ" + this.buffPrice(b),r.X + 8,r.Y + 50);
+        }
+
+        //説明欄：マウスを乗せた品物の説明(乗せていなければショップの説明)
+        ctx.strokeStyle = "#ccc";
+        ctx.strokeRect(infoRect.X + 0.5,infoRect.Y + 0.5,infoRect.width,infoRect.height);
+        var x = infoRect.X + 12, y = infoRect.Y + 16;
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#000";
+        ctx.font = "bold 15px sans-serif";
+        if(hover){
+            ctx.fillText(WEAPONS[hover].name,x,y);
+            ctx.font = "13px sans-serif";
+            ctx.fillStyle = "#444";
+            ctx.fillText(WEAPONS[hover].desc,x,y + 18);
+            this.drawSynergyLines(hover,x,y + 35);
+        }else if(hoverBuff){
+            var n = game.buff(hoverBuff.key);
+            ctx.fillText(hoverBuff.name + "（" + n + "/" + hoverBuff.cost.length + "）",x,y);
+            ctx.font = "13px sans-serif";
+            ctx.fillStyle = "#444";
+            ctx.fillText(hoverBuff.desc + "。重ねて買うほど効果が大きくなります",x,y + 22);
+            ctx.fillText("このストーリーの間ずっと効きます（はじめからやり直すと消えます）",x,y + 42);
+        }else{
+            ctx.fillText("ショップ",x,y);
+            ctx.font = "13px sans-serif";
+            ctx.fillStyle = "#444";
+            ctx.fillText("上の段：装備。品ぞろえはWAVEごとに入れ替わり、1つにつき1回だけ買えます",x,y + 22);
+            ctx.fillText("　持っていない装備はパーツ" + SHOP_NEW_COST + "、持っている装備はレベルアップ（Lv.2へ" + SHOP_LEVEL_COST[1] + "・Lv.3へ" + SHOP_LEVEL_COST[2] + "）",x,y + 42);
+            ctx.fillText("下の段：バフ。このストーリーの間ずっと効きます。重ねて買うと値段が上がります",x,y + 62);
         }
         ctx.fillStyle = "#000";
     },

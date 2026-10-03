@@ -43,6 +43,10 @@ const WEAPONS = {
 const WEAPON_IDS = Object.keys(WEAPONS);
 const MAX_WEAPON_LEVEL = 3;
 const SLOT_COST = [0,8,16];     //装備枠を解放するのに必要なパーツ数(1枠目は最初から)
+//ショップ(強化画面)：WAVEごとに品ぞろえが変わり、装備をパーツで買える。1WAVEで拾うパーツは序盤10〜30・終盤60〜90くらい
+const SHOP_ITEMS = 3;               //並ぶ装備の数
+const SHOP_NEW_COST = 20;           //持っていない装備を買う値段(パーツ)
+const SHOP_LEVEL_COST = [0,15,25];  //持っている装備をLv.L→L+1にする値段 = SHOP_LEVEL_COST[L]
 //撃ったときの効果音(電撃・虫射出はchain・spawnBugの中で鳴らす)
 const FIRE_SE = { gun:"shot", missile:"missile", laser:"laser", mine:"mine", emp:"emp", water:"water" };
 const WATER_DMG   = 0.35;   //水1滴のダメージ
@@ -210,7 +214,7 @@ var arms = {
     },
     //賢さによる攻撃間隔の倍率(Lv1:1.0 ～ Lv5:0.84)
     rate:function(){
-        return 0.6 + 0.4 * game.stat("brain") / 70;
+        return (0.6 + 0.4 * game.stat("brain") / 70) * (1 - BUFF_RAPID*game.buff("rapid"));
     },
     cooldown:function(_id){
         var c = WEAPONS[_id].cd[this.level(_id)-1] * this.rate();

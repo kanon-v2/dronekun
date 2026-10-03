@@ -547,6 +547,8 @@ var mainScreen = {
 
     //_src：何で攻撃したか("gun","missile"など。シナジーの判定に使う)
     hitEnemy:function(_e,_dmg,_src){
+        //ショップのバフ(強化弾頭)。相方の攻撃は相方の画面でもうかけてある
+        if(_src != "partner") _dmg *= 1 + BUFF_POWER*game.buff("power");
         //凍った敵：次の一撃が2倍で、氷が砕ける(冷凍。armsExtra.js。ゲストの攻撃はホストに届いてから数える)
         if(_e.frozen > 0 && _src != "freeze" && !coop.isGuest()){
             _dmg *= 2;
