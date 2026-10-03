@@ -146,14 +146,20 @@ try{
     if(keepSave) localStorage.setItem("dronekun_save", keepSave);
     if(keepBest) localStorage.setItem("dronekun_best", keepBest);
     if(keepClear) localStorage.setItem("dronekun_cleared", keepClear); else localStorage.removeItem("dronekun_cleared");
-    //ドローン君の振り向き：左から右へは正面を通って回り、止まると目標の向きの絵になる
-    var lk = new DroneLook(), passFront = false;
-    for(var i=0; i<60; i++) lk.update(3,0);
-    var atLeft = Math.round(lk.yaw) == DIR_YAW[3] && Math.round(lk.elev) == DIR_ELEV[3];
-    for(var i=0; i<60; i++){ lk.update(4,0); if(Math.round(lk.yaw) == 0) passFront = true; }
-    check("振り向き：左 → 正面を通って右", atLeft && passFront && Math.round(lk.yaw) == DIR_YAW[4], "yaw " + lk.yaw.toFixed(2));
-    for(var i=0; i<60; i++) lk.update(1,0);
-    check("振り向き：上を向くと見上げる高さの絵", Math.round(lk.elev) == DIR_ELEV[1] && Math.round(lk.yaw) == 0);
+    //ドローン君の振り向き：左から右へは正面を通って回り、止まると目標の向きになる(ばねなので少し行きすぎてから落ち着く)
+    var lk = new DroneLook(), passFront = false, over = false;
+    for(var i=0; i<90; i++){ lk.update(3,0); if(lk.yaw > DIR_YAW[3] + 1) over = true; }
+    var atLeft = Math.abs(lk.yaw - DIR_YAW[3]) < 1 && Math.abs(lk.elev - DIR_ELEV[3]) < 0.05;
+    for(var i=0; i<90; i++){ lk.update(4,0); if(Math.abs(lk.yaw) < 10) passFront = true; }
+    check("振り向き：左 → 正面を通って右", atLeft && over && passFront && Math.abs(lk.yaw - DIR_YAW[4]) < 1, "yaw " + lk.yaw.toFixed(2));
+    for(var i=0; i<90; i++) lk.update(1,0);
+    check("振り向き：上を向くと見上げる高さ", Math.abs(lk.elev - DIR_ELEV[1]) < 0.05 && Math.abs(lk.yaw) < 1);
+    //速さを渡すと、斜めに動けば横を向きつつ見下ろす。遅い動きでは向きを変えない
+    var lk4 = new DroneLook();
+    for(var i=0; i<90; i++) lk4.update(4, 2, 2);
+    var diag = lk4.yaw < -40 && lk4.yaw > -55 && lk4.elev > 0.6 && lk4.elev < 0.8;
+    for(var i=0; i<30; i++) lk4.update(4, 0.01, -0.01);
+    check("振り向き：斜めに動くと斜めを向く", diag && lk4.elev > 0.6, "yaw " + lk4.yaw.toFixed(1) + " elev " + lk4.elev.toFixed(2));
 }catch(e){ fails++; L("NG   例外 " + e.stack); }
 
 //ドローン君の絵の用意を待ってから確かめるもの
@@ -161,8 +167,8 @@ var keepSkin = null;
 try{ keepSkin = localStorage.getItem(droneSkin.KEY); }catch(e){}
 function checkSheets(_name){
     check(_name, droneSheets.length == 3 && droneSheets[0].width*4 == droneSheets[2].width
-        && droneSheets[2].width == DRONE_FRAME*DRONE_YAWS && droneSheets[2].height == DRONE_FRAME*DRONE_ELEVS && Drone_front.width == DRONE_SIZE*2,
-        droneSheets.id + " " + droneSheets[2].width + "x" + droneSheets[2].height);
+        && droneSheets[2].width == DRONE_SIZE*4*droneSheets.yaws && droneSheets[2].height == DRONE_SIZE*4*droneSheets.elevs && droneSheets.elevs % 2 == 1 && Drone_front.width == DRONE_SIZE*2,
+        droneSheets.id + " " + droneSheets.yaws + "x" + droneSheets.elevs + "段");
 }
 function clickAt(_r){ MouseIn = true; MouseX = _r.X + _r.width/2; MouseY = _r.Y + _r.height/2; Click = 1; startScreen.update(); Click = 0; }
 function finish(){
@@ -170,8 +176,9 @@ function finish(){
         checkSheets("ドローン君の絵を用意する(等倍・2倍・4倍)");
         var lk2 = new DroneLook(); lk2.tint = "190,20,30";
         for(var i=0; i<20; i++){ lk2.update(i % 6,0); lk2.draw(100,100,i % 4 + 1); }
-        var lv = droneSheets.pixel ? 0 : 1;
-        check("色違い・拡大して描ける", !!tintCache["drone" + droneSheets.id + "/" + lv + "|" + droneSheets[lv].width + "|190,20,30"]);
+        var lv = droneSheets.pixel ? 0 : 1, tk = 0, oneFrame = true;
+        for(var key in tintFrames) if(key.indexOf("drone" + droneSheets.id + "/" + lv + "|") == 0 && key.indexOf("|190,20,30") > 0){ tk++; if(tintFrames[key].width != DRONE_SIZE << lv) oneFrame = false; }
+        check("色違い・拡大して描ける(色違いは使ったコマだけ1コマずつ作る)", tk > 0 && oneFrame, tk + "コマ");
         //タイトルの設定：開く → クラシックを選ぶ
         page.change(0);
         clickAt(settingsButton);

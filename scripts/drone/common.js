@@ -327,11 +327,13 @@ var save = {
 //  ・開発用：index.html#art=A のように選ぶと、tools/drone-art.html の3Dの絵を tools/bake-drone.ps1 で
 //    書き出した images/game/Drone/drone_A.png を使う(案A～Dは feature/drone-art-3d-candidates ブランチに保管)
 //------------------------------------------------------------------------------
-const DRONE_FRAME = 160;    //シートの1コマの大きさ(px。等倍の4倍)
+const DRONE_FRAME = 160;    //書き出した画像のシートの1コマの大きさ(px。等倍の4倍)
 const DRONE_SIZE = 40;      //ゲームでの等倍の大きさ(px)
-const DRONE_YAWS = 16;      //水平の向きの段数
-const DRONE_ELEVS = 5;      //高さの段数
-const DRONE_ELEV_LEVEL = 2; //ふだんの高さの段(正面・左右・後ろ)
+//段の数はシートごとに持つ(sheets.yaws・sheets.elevs)。高さは、まんなかの段がふだんの高さ
+const DRONE_YAWS = 16;      //画像の見た目(クラシック・書き出した3Dの絵)の水平の向きの段数
+const DRONE_ELEVS = 5;      //同じく高さの段数
+const FLAT_YAWS = 24;       //標準(図形で描く)の水平の向きの段数(15度ずつ)
+const FLAT_ELEVS = 7;       //同じく高さの段数
 const DRONE_ART_DEFAULT = "E";
 
 //案Eの色(元の絵に合わせた灰色と黒)
@@ -460,23 +462,24 @@ function drawFlatDrone(_g,_yaw,_pitch){
 
 //標準(E)のシートを、等倍・2倍・4倍それぞれの大きさで直接描く(縮めないので、どの大きさでもくっきり)
 function buildFlatSheets(){
-    var list = [];
+    var list = [], mid = (FLAT_ELEVS - 1)/2;
     for(var lv=0; lv<3; lv++){
         var k = 1 << lv, f = DRONE_SIZE*k;
         var c = document.createElement("canvas");
-        c.width = f*DRONE_YAWS; c.height = f*DRONE_ELEVS;
+        c.width = f*FLAT_YAWS; c.height = f*FLAT_ELEVS;
         var g = c.getContext("2d");
-        for(var r=0; r<DRONE_ELEVS; r++){
-            for(var y=0; y<DRONE_YAWS; y++){
+        for(var r=0; r<FLAT_ELEVS; r++){
+            for(var y=0; y<FLAT_YAWS; y++){
                 g.save();
                 g.translate(y*f, r*f);
                 g.scale(k,k);
-                drawFlatDrone(g, y*360/DRONE_YAWS, (r - DRONE_ELEV_LEVEL)/DRONE_ELEV_LEVEL);
+                drawFlatDrone(g, y*360/FLAT_YAWS, (r - mid)/mid);
                 g.restore();
             }
         }
         list.push(c);
     }
+    list.yaws = FLAT_YAWS; list.elevs = FLAT_ELEVS;
     return list;
 }
 
@@ -506,6 +509,7 @@ function buildOrigSheets(_imgs){
         list.push(c);
     }
     list.pixel = true;
+    list.yaws = DRONE_YAWS; list.elevs = DRONE_ELEVS;
     return list;
 }
 
@@ -521,6 +525,9 @@ function buildBakedSheets(_img){
         g.drawImage(src,0,0,c.width,c.height);
         list.unshift(c);
     }
+    //段の数は画像の大きさから(書き出すときに段を増やしても、そのまま使える)
+    list.yaws = Math.round((_img.naturalWidth || _img.width)/DRONE_FRAME);
+    list.elevs = Math.round((_img.naturalHeight || _img.height)/DRONE_FRAME);
     return list;
 }
 
@@ -537,7 +544,7 @@ function useDroneSheets(_list){
     Drone_front._key = "droneFront" + _list.id;   //色違いの覚えを、見た目ごとに分ける
     var g = Drone_front.getContext("2d");
     g.imageSmoothingEnabled = !_list.pixel;
-    g.drawImage(_list[1],0,DRONE_ELEV_LEVEL*f,f,f,0,0,f,f);
+    g.drawImage(_list[1],0,(_list.elevs - 1)/2*f,f,f,0,0,f,f);
 }
 
 //------------------------------------------------------------------------------
@@ -622,16 +629,22 @@ var t=0;
 
 //------------------------------------------------------------------------------
 //  ドローン君の見た目の動き
-//  ・振り向き：向きの角度を少しずつ目標へ近づけ、いちばん近い角度の絵を出す(本当に回って見える)
+//  ・振り向き：向きの角度(水平・高さ)をばねで目標へ近づけ、いちばん近い角度のコマを出す(本当に回って見える)。
+//    ふわっと回り始め、少し行きすぎてから落ち着く。回っている間は機体を少し横に縮め、コマの切り替わりをなじませる
+//  ・自分のドローン君は、動く向きそのものに向く(斜めに動けば、横を向きつつ見上げる・見下ろす)
 //  ・傾き：横に動く方向へ機体を傾け、止まるとばねのように揺れ戻る
 //  ・浮遊：ホバリングしているように少し上下にゆれる
 //------------------------------------------------------------------------------
-const TURN_RATE = 0.22;     //振り向きの速さ(1フレームで残りの角度の何割を回るか)
+const TURN_SPRING = 0.07;   //振り向きのばねの強さ(大きいほど速く回る)
+const TURN_DAMP = 0.7;      //振り向きの勢いの残り方(小さいほど行きすぎない)
+const TURN_SQUASH = 0.12;   //いちばん速く回っているときに横に縮む割合
+const TURN_SQUASH_SPEED = 12;   //縮みがいちばん大きくなる回る速さ(度/フレーム)
+const TURN_MIN_SPEED = 0.3; //これより遅い動きでは、向く方向を変えない(px/フレーム)
 const TILT_PER_SPEED = 0.06; //横の速さ1px/フレームあたりの傾き(ラジアン)
 const TILT_MAX = 0.4;       //最大の傾き(約23度)
-//向き(0:正面 1:上 2:下 3:左 4:右 5:後ろ)ごとの、水平の向き(段)とカメラの高さ(段)
-const DIR_YAW = [0, 0, 0, 3, -3, 8];
-const DIR_ELEV = [2, 0, 4, 2, 2, 2];
+//向き(0:正面 1:上 2:下 3:左 4:右 5:後ろ)ごとの、水平の向き(度。正で左)と高さ(-1：見上げる ～ 1：見下ろす)
+const DIR_YAW = [0, 0, 0, 67.5, -67.5, 180];
+const DIR_ELEV = [0, -1, 1, 0, 0, 0];
 
 //色違いのドローン君(同胞・ドローン君改)用に、絵に色を重ねたものを作って覚えておく
 //(getImageDataを使わない方法なので、ローカルで開いても動く)
@@ -653,6 +666,24 @@ function tintedImage(_img,_color){
     tintCache[key] = c;
     return c;
 }
+//シートの1コマだけに色を重ねたもの(シートまるごとより軽い。使ったコマだけ作る)
+const TINT_FRAME_MAX = 2000;    //覚えておくコマの数の上限(超えたら忘れて作り直す)
+var tintFrames = {}, tintFrameCount = 0;
+function tintedFrame(_sheet,_col,_row,_f,_color){
+    var key = _sheet._key + "|" + _col + "," + _row + "|" + _color;
+    var c = tintFrames[key];
+    if(c) return c;
+    if(++tintFrameCount > TINT_FRAME_MAX){ tintFrames = {}; tintFrameCount = 1; }
+    c = document.createElement("canvas");
+    c.width = c.height = _f;
+    var g = c.getContext("2d");
+    g.drawImage(_sheet, _col*_f, _row*_f, _f, _f, 0, 0, _f, _f);
+    g.globalCompositeOperation = "source-atop";
+    g.fillStyle = "rgba(" + _color + ",0.6)";
+    g.fillRect(0,0,_f,_f);
+    tintFrames[key] = c;
+    return c;
+}
 
 //速度から向き(0:正面 1:上 2:下 3:左 4:右)を決める
 function dirFromVel(_vx,_vy){
@@ -663,23 +694,39 @@ function dirFromVel(_vx,_vy){
 
 var DroneLook = function(){
     this.shown = 0;     //向かっている向き(協力プレイ・対戦では相方へこれを送る)
-    this.yaw = 0;       //今の水平の向き(段。小数)
-    this.elev = DRONE_ELEV_LEVEL;   //今のカメラの高さ(段。小数)
+    this.yaw = 0;       //今の水平の向き(度。正で左)
+    this.elev = 0;      //今の高さ(-1：見上げる ～ 1：見下ろす)
+    this.yawV = 0;      //回る勢い
+    this.elevV = 0;
+    this.aimX = 0;      //動く向き(速さを渡されたとき。最後に十分速く動いた向きを覚える)
+    this.aimY = 0;
     this.tilt = 0;
     this.tiltV = 0;
     this.t = Math.random()*100;
     this.tint = null;   //色違いにするときの色("r,g,b")
 };
 DroneLook.prototype = {
-    //_dir：移動方向から決めた向き　_speedX：横の速さ
-    update:function(_dir,_speedX){
+    //_dir：移動方向から決めた向き　_speedX：横の速さ　_speedY：縦の速さ(渡すと、動く向きそのものに向く)
+    update:function(_dir,_speedX,_speedY){
         this.t++;
         this.shown = _dir;
-        //近いほうの回り方で目標の向きへ(左から右へは正面を通って回る)
-        var d = DIR_YAW[_dir] - this.yaw;
-        d -= Math.round(d/DRONE_YAWS)*DRONE_YAWS;
-        this.yaw += Math.abs(d) < 0.05 ? d : d*TURN_RATE;
-        this.elev += (DIR_ELEV[_dir] - this.elev)*TURN_RATE;
+        var ty = DIR_YAW[_dir], te = DIR_ELEV[_dir];
+        if(_speedY !== undefined && _dir >= 1 && _dir <= 4){
+            var s = Math.hypot(_speedX,_speedY);
+            if(s > TURN_MIN_SPEED){ this.aimX = _speedX/s; this.aimY = _speedY/s; }
+            if(this.aimX || this.aimY){
+                ty = -this.aimX*DIR_YAW[3];
+                te = this.aimY;
+            }
+        }
+        //ばねで目標の向きへ(左から右へは、近いほうの回り方で正面を通る)
+        var d = ty - this.yaw;
+        d -= Math.round(d/360)*360;
+        this.yawV = (this.yawV + d*TURN_SPRING)*TURN_DAMP;
+        this.yaw += this.yawV;
+        this.yaw -= Math.round(this.yaw/360)*360;
+        this.elevV = (this.elevV + (te - this.elev)*TURN_SPRING)*TURN_DAMP;
+        this.elev += this.elevV;
         //傾きはばね：目標の角度へ引っぱられ、行きすぎて揺れながら落ち着く
         var target = Math.max(-TILT_MAX, Math.min(TILT_MAX, _speedX*TILT_PER_SPEED));
         this.tiltV += (target - this.tilt)*0.12;
@@ -688,25 +735,31 @@ DroneLook.prototype = {
     },
     //(_x,_y)を中心に描く。_scaleで拡大(省略時は等倍)
     draw:function(_x,_y,_scale){
-        if(!droneSheets.length) return;
+        var sh = droneSheets;
+        if(!sh.length) return;
         var k = _scale || 1;
-        //描く大きさに近い絵を使う(等倍なら1/4、2倍なら1/2)。ドット絵は等倍の絵をそのまま拡大する
-        var pix = droneSheets.pixel;
+        //描く大きさに近い絵を使う(等倍・2倍・4倍)。ドット絵は等倍の絵をそのまま拡大する
+        var pix = sh.pixel;
         var lv = pix ? 0 : k <= 1.25 ? 0 : k <= 2.5 ? 1 : 2;
-        var img = tintedImage(droneSheets[lv], this.tint);
-        var f = DRONE_FRAME >> (2 - lv);
-        var col = ((Math.round(this.yaw) % DRONE_YAWS) + DRONE_YAWS) % DRONE_YAWS;
-        var row = Math.max(0, Math.min(DRONE_ELEVS - 1, Math.round(this.elev)));
+        var f = DRONE_SIZE << lv;
+        //角度にいちばん近いコマ(段の数は見た目ごとに違う)
+        var col = ((Math.round(this.yaw/360*sh.yaws) % sh.yaws) + sh.yaws) % sh.yaws;
+        var row = Math.max(0, Math.min(sh.elevs - 1, Math.round((this.elev + 1)/2*(sh.elevs - 1))));
+        var img = sh[lv], sx = col*f, sy = row*f;
+        if(this.tint){ img = tintedFrame(sh[lv], col, row, f, this.tint); sx = sy = 0; }
         var bob = Math.sin(this.t*0.08)*1.5;
         var s = DRONE_SIZE*k;
+        //回っている間は、少し横に縮む
+        var squash = 1 - TURN_SQUASH*Math.min(1, Math.abs(this.yawV)/TURN_SQUASH_SPEED);
         ctx.save();
-        //ドット絵は、傾いておらず整数倍で描くときはくっきり描く(元の描き方と同じ)
-        var smooth = !pix || Math.abs(this.tilt) > 0.02 || k != Math.round(k);
+        //ドット絵は、傾かず・縮まず・整数倍で描くときはくっきり描く(元の描き方と同じ)
+        var smooth = !pix || Math.abs(this.tilt) > 0.02 || squash < 0.99 || k != Math.round(k);
         if(pix) ctx.translate(Math.round(_x), Math.round(_y + bob*k));
         else ctx.translate(_x, _y + bob*k);
         ctx.rotate(this.tilt);
+        ctx.scale(squash, 1);
         ctx.imageSmoothingEnabled = smooth;
-        ctx.drawImage(img, col*f, row*f, f, f, -s/2, -s/2, s, s);
+        ctx.drawImage(img, sx, sy, f, f, -s/2, -s/2, s, s);
         ctx.restore();
         ctx.imageSmoothingEnabled = false;
     }
@@ -791,7 +844,7 @@ var drone = {
         this.calcXY();
         this.calcSpeed();
         this.getDirection();
-        this.look.update(this.Direction, this.SpeedX);
+        this.look.update(this.Direction, this.SpeedX, this.SpeedY);   //縦の速さも渡して、斜めにも向く
     },
     draw: function(){
         this.look.draw(this.X, this.Y);

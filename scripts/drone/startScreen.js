@@ -427,11 +427,11 @@ var startScreen = {
             ctx.lineWidth = 1;
             var sh = droneSkin.sheets[s.id];
             if(sh){
-                var col = Math.floor(this.t/14) % DRONE_YAWS;
+                var col = Math.floor(this.t*sh.yaws/224) % sh.yaws;   //どの見た目も同じ速さで回す(1周約4秒)
                 var bob = Math.round(Math.sin(this.t*0.08)*2);
                 var src = sh.pixel ? sh[0] : sh[1], f = sh.pixel ? DRONE_SIZE : DRONE_SIZE*2;
                 ctx.imageSmoothingEnabled = !sh.pixel;
-                ctx.drawImage(src, col*f, DRONE_ELEV_LEVEL*f, f, f, c.X + c.width/2 - 40, c.Y + 22 + bob, 80, 80);
+                ctx.drawImage(src, col*f, (sh.elevs - 1)/2*f, f, f, c.X + c.width/2 - 40, c.Y + 22 + bob, 80, 80);
                 ctx.imageSmoothingEnabled = false;
             }
             ctx.textAlign = "center";
