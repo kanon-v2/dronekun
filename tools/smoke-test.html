@@ -141,6 +141,29 @@ try{
     bossDebug.god = false; bossDebug.gear = 1;
     check("Escでメニューを閉じる", !bossDebug.menu);
 
+    //戦闘画面の右下：当たり判定・ポインタの表示ボタン
+    var keepView = localStorage.getItem(viewOpt.KEY), keepHit = viewOpt.hitbox, keepPtr = viewOpt.pointer;
+    viewOpt.hitbox = true; viewOpt.pointer = true;
+    var btn = function(_key){ for(var i=0; i<sound.buttons.length; i++) if(sound.buttons[i].key == _key) return sound.buttons[i]; };
+    var press = function(_key){ var r = btn(_key).rect; inputMode = "mouse"; MouseX = r.X + r.width/2; MouseY = r.Y + r.height/2; Click = 1; var ok = sound.handleClick(); Click = 0; return ok; };
+    page.change(0);
+    var titleHidden = sound.shown().indexOf(btn("hitbox")) < 0 && sound.shown().indexOf(btn("pointer")) < 0;
+    setup(3, game.owned, game.slots, 1); page.change(1); draw1();
+    var shownInBattle = sound.shown().length == 4;
+    var hitOff = press("hitbox") && !viewOpt.hitbox && btn("hitbox").label() == "当たり判定：非表示";
+    var ptrOff = press("pointer") && !viewOpt.pointer && !viewOpt.showPointer();
+    draw1();
+    var saved = JSON.parse(localStorage.getItem(viewOpt.KEY) || "{}");
+    check("戦闘画面の右下で当たり判定・ポインタを非表示にする", titleHidden && shownInBattle && hitOff && ptrOff && saved.hitbox === false && saved.pointer === false);
+    page.change(0);
+    var ptrMenu = viewOpt.showPointer();
+    page.change(1);
+    press("hitbox"); press("pointer");
+    check("ポインタはメニューでは出す・もう一度押すと表示に戻る", ptrMenu && viewOpt.hitbox && viewOpt.pointer && viewOpt.showPointer());
+    //テスト前の設定に戻す
+    viewOpt.hitbox = keepHit; viewOpt.pointer = keepPtr;
+    if(keepView) localStorage.setItem(viewOpt.KEY, keepView); else localStorage.removeItem(viewOpt.KEY);
+    page.change(0);
     //テスト前のセーブ等を戻す
     save.clear();
     if(keepSave) localStorage.setItem("dronekun_save", keepSave);

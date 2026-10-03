@@ -864,6 +864,40 @@ var pointer = {
         this.Y = MouseY-Pointer.naturalHeight/2;
     },
     draw: function(){
+        if(!viewOpt.showPointer()) return;
         ctx.drawImage(Pointer,this.X,this.Y);
     }
 };
+
+//------------------------------------------------------------------------------
+//  戦闘画面の表示の設定(右下のボタンで切り替える。localStorage に覚える)
+//  ・hitbox：ドローン君の中心の当たり判定の点
+//  ・pointer：ポインタ(戦闘中だけ隠す。メニューなどの画面では操作に要るので出す)
+//------------------------------------------------------------------------------
+var viewOpt = {
+    KEY:"dronekun_view",
+    hitbox:true,
+    pointer:true,
+    load:function(){
+        try{
+            var d = JSON.parse(localStorage.getItem(this.KEY) || "{}");
+            if(d.hitbox === false) this.hitbox = false;
+            if(d.pointer === false) this.pointer = false;
+        }catch(e){}
+    },
+    save:function(){
+        try{ localStorage.setItem(this.KEY, JSON.stringify({ hitbox:this.hitbox, pointer:this.pointer })); }catch(e){}
+    },
+    toggle:function(_key){
+        this[_key] = !this[_key];
+        this.save();
+    },
+    //戦闘中か(戦闘画面と、対戦の戦闘中)
+    inBattle:function(){
+        return page.number == 1 || (page.number == 7 && versus.dragging());
+    },
+    showPointer:function(){
+        return this.pointer || !this.inBattle();
+    }
+};
+viewOpt.load();

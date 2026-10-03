@@ -61,6 +61,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 - 更新は `draw.js` で1/60秒ごと(画面のリフレッシュレートに依存しない)。`update()` が1コマ、`draw()` が描画。
 - クリックは `Click == 1` が1コマだけ立つ。ボタンは `drawRect` の `clicked()` / `button()` を使う。
 - セーブは `localStorage`(`dronekun_save`・ハイスコア `dronekun_best`・クリア済み `dronekun_cleared`)。強化画面に入ったときに自動セーブ。
+- 画面右下のボタン(`sound.js` の `sound.buttons`)：BGM・SEはいつでも、「当たり判定」「ポインタ」の表示/非表示は戦闘中だけ出す(`when`)。表示の設定は `common.js` の `viewOpt`(`localStorage` の `dronekun_view`)。ポインタを隠すのは戦闘中だけ(メニューでは操作に要るので出す)。
 - 全20WAVE(`FINAL_WAVE`)。5WAVEごとにボス。WAVE15(`REVEAL_WAVE`)のボス後に真実が明かされ、WAVE16からは人間の兵器が敵になる。
 
 ## 書き方の決まり

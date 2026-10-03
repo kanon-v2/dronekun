@@ -914,8 +914,8 @@ var mainScreen = {
             drone.draw();
             ctx.globalAlpha = 1;
         }
-        //敵の弾に対する当たり判定(中心の点)
-        if(showMe){
+        //敵の弾に対する当たり判定(中心の点。右下のボタンで隠せる)
+        if(showMe && viewOpt.hitbox){
             ctx.fillStyle = "#fff";
             ctx.beginPath(); ctx.arc(drone.X,drone.Y,HIT_CORE*0.75 + 1.5,0,Math.PI*2); ctx.fill();
             ctx.fillStyle = "#e22";

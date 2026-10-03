@@ -618,15 +618,33 @@ var sound = {
     },
 
     //------------------------------------------------------------ 画面右下のON/OFFボタン
+    //BGM・SEはいつでも。当たり判定・ポインタは戦闘中だけ出す(when)。on：ONか　label：文字(関数なら今の状態で変わる)
     buttons:[
-        { key:"bgm", label:"BGM", rect:new drawRect(CW - 102, CH - 30, 50, 22) },
-        { key:"se",  label:"SE",  rect:new drawRect(CW - 44,  CH - 30, 40, 22) }
+        { key:"hitbox", rect:new drawRect(CW - 289, CH - 30, 112, 22),
+          label:function(){ return "当たり判定：" + (viewOpt.hitbox ? "表示" : "非表示"); },
+          on:function(){ return viewOpt.hitbox; },
+          toggle:function(){ viewOpt.toggle("hitbox"); },
+          when:function(){ return page.number == 1; } },    //対戦には当たり判定の点がない
+        { key:"pointer", rect:new drawRect(CW - 179, CH - 30, 96, 22),
+          label:function(){ return "ポインタ：" + (viewOpt.pointer ? "表示" : "非表示"); },
+          on:function(){ return viewOpt.pointer; },
+          toggle:function(){ viewOpt.toggle("pointer"); },
+          when:function(){ return viewOpt.inBattle(); } },
+        { key:"bgm", label:"BGM", rect:new drawRect(CW - 102, CH - 30, 50, 22),
+          on:function(){ return sound.bgmOn; }, toggle:function(){ sound.toggle("bgm"); } },
+        { key:"se",  label:"SE",  rect:new drawRect(CW - 44,  CH - 30, 40, 22),
+          on:function(){ return sound.seOn; }, toggle:function(){ sound.toggle("se"); } }
     ],
+    //今の画面に出しているボタン
+    shown:function(){
+        return this.buttons.filter(function(b){ return !b.when || b.when(); });
+    },
     //戦闘中のタッチ用：座標がボタンの上ならON/OFFしてtrue
     tapButton:function(_x,_y){
-        for(var i=0; i<this.buttons.length; i++){
-            if(this.buttons[i].rect.contains(_x,_y)){
-                this.toggle(this.buttons[i].key);
+        var list = this.shown();
+        for(var i=0; i<list.length; i++){
+            if(list[i].rect.contains(_x,_y)){
+                list[i].toggle();
                 return true;
             }
         }
@@ -636,9 +654,10 @@ var sound = {
     handleClick:function(){
         //戦闘中のタッチはtapButtonで処理済み(MouseXは指の位置ではないので見ない)
         if(isTouchDrag()) return false;
-        for(var i=0; i<this.buttons.length; i++){
-            if(this.buttons[i].rect.clicked()){
-                this.toggle(this.buttons[i].key);
+        var list = this.shown();
+        for(var i=0; i<list.length; i++){
+            if(list[i].rect.clicked()){
+                list[i].toggle();
                 return true;
             }
         }
@@ -648,16 +667,18 @@ var sound = {
         ctx.font = "bold 11px sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        for(var i=0; i<this.buttons.length; i++){
-            var b = this.buttons[i], r = b.rect;
-            var on = b.key == "bgm" ? this.bgmOn : this.seOn;
+        var list = this.shown(), left = CW;
+        for(var i=0; i<list.length; i++){
+            var b = list[i], r = b.rect;
+            var on = b.on();
             var hover = r.contains(MouseX,MouseY);
+            left = Math.min(left, r.X);
             ctx.fillStyle = on ? (hover ? "#555" : "#333") : (hover ? "#eee" : "rgba(255,255,255,0.8)");
             ctx.fillRect(r.X, r.Y, r.width, r.height);
             ctx.strokeStyle = on ? "#333" : "#aaa";
             ctx.strokeRect(r.X + 0.5, r.Y + 0.5, r.width - 1, r.height - 1);
             ctx.fillStyle = on ? "#fff" : "#aaa";
-            ctx.fillText(b.label, r.X + r.width/2, r.Y + r.height/2 + 1);
+            ctx.fillText(typeof b.label == "function" ? b.label() : b.label, r.X + r.width/2, r.Y + r.height/2 + 1);
             if(!on){
                 ctx.strokeStyle = "#aaa";
                 ctx.beginPath();
@@ -666,11 +687,11 @@ var sound = {
                 ctx.stroke();
             }
         }
-        //まだ音が出せない(一度もクリックしていない)ときの案内
+        //まだ音が出せない(一度もクリックしていない)ときの案内(ボタンの左に)
         if(!this.ready() && (this.bgmOn || this.seOn)){
             ctx.textAlign = "right";
             ctx.fillStyle = "#888";
-            ctx.fillText(inputMode == "touch" ? "タップで音が鳴ります" : "クリックで音が鳴ります", CW - 140, CH - 19);
+            ctx.fillText(inputMode == "touch" ? "タップで音が鳴ります" : "クリックで音が鳴ります", left - 12, CH - 19);
         }
         ctx.fillStyle = "#000";
     }
