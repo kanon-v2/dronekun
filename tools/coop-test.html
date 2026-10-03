@@ -85,7 +85,8 @@ var steps = [
     },
     function(next){
         cmd("host", { cmd:"auto", unarmed:true });   //ホストは武器なし：敵を倒せるのはゲストの攻撃だけにする
-         cmd("guest", { cmd:"auto" });
+        cmd("guest", { cmd:"gear", w:["gun","gravity","tesla"] });   //重力弾の渦がホストの敵を吸い寄せるかも見る
+        cmd("guest", { cmd:"auto" });
         waitFor(function(){ return both(function(s){ return s.page == 1 && s.wave == 1; }); }, 20000, function(ok){
             check("強化画面 → ふたりとも準備完了で出撃", ok, desc()); next();
         });
@@ -99,6 +100,7 @@ var steps = [
         waitFor(function(){ return both(function(s){ return s.wave >= 2; }); }, 150000, function(ok, ms){
             check("WAVE1クリアがそろう", ok, desc() + " " + Math.round(ms/1000) + "秒");
             check("ゲストの攻撃がホストの敵に当たる", st.host.partnerHits > 0, st.host.partnerHits + "回");
+            check("ゲストの重力弾の渦がホストの敵を吸い寄せる", st.host.extra.pull > 0, st.host.extra.pull + "回");
             next();
         });
     },
@@ -119,6 +121,8 @@ var steps = [
         });
     },
     function(next){
+        //やり直すWAVE2では、ゲストは追加の装備(燃やす・凍らせる・弾を防ぐ)を付ける
+        cmd("guest", { cmd:"gear", w:["fire","freeze","barrier"] });
         //片方だけ押しても始まらない
         cmd("guest", { cmd:"continue" });
         setTimeout(function(){
@@ -128,6 +132,17 @@ var steps = [
                 check("コンティニュー：ふたりとも押すとWAVE2からやり直す", waiting && ok, (waiting ? "" : "片方だけで始まった ") + desc()); next();
             });
         }, 1000);
+    },
+    function(next){
+        var h0 = st.host.partnerHits;
+        cmd("host", { cmd:"shoot", on:true });   //よける自動プレイでもバリアに当たるよう、ホストがゲストのすぐそばから撃つ
+        waitFor(function(){ var x = st.host.extra; return x.burn > 0 && x.freeze > 0 && x.block > 0; }, 60000, function(ok, ms){
+            var x = st.host.extra;
+            cmd("host", { cmd:"shoot", on:false });
+            check("ゲストの火炎放射・冷凍・バリアがホストに届く", ok && st.host.partnerHits > h0,
+                  "燃やした" + x.burn + "・凍らせた" + x.freeze + "・バリアで消えた弾" + x.block + "(ゲストが防いだ" + st.guest.blocked + ")・当たった" + (st.host.partnerHits - h0) + "回 " + Math.round(ms/1000) + "秒");
+            next();
+        });
     },
     function(next){
         cmd("guest", { cmd:"leave" });
