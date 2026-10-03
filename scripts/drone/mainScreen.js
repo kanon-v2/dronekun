@@ -426,7 +426,7 @@ var mainScreen = {
             return;
         }
 
-        //衝撃波の直後は、ドローン君と龍以外が1フレームおきにしか動かない(スローモーション)
+        //衝撃波の直後は、ドローン君以外が1フレームおきにしか動かない(スローモーション)
         var frozen = false;
         if(this.slowmo > 0){
             this.slowmo--;
@@ -1047,7 +1047,6 @@ var mainScreen = {
 
         //ドローンの装備(弾・ミサイル・虫など)
         arms.draw(this.state != "over");
-        //五龍の衝撃波
 
         //敵の弾(種類ごとに色と大きさが違う。白い芯で見やすく)
         for(var i=0; i<enemyShots.length; i++){
@@ -1445,9 +1444,9 @@ var mainScreen = {
             ctx.font = "13px sans-serif";
             ctx.fillStyle = "#777";
             if(touch){
-                ctx.fillText("画面のどこでもドラッグで移動（指の動いた分だけ動く）　／　右下のボタン：衝撃波（燃料" + BLAST_COST + "・弾も消す）",14,CH - 36);
+                ctx.fillText("画面のどこでもドラッグで移動（指の動いた分だけ）　／　右下のボタン：衝撃波（燃料" + BLAST_COST + "・弾を消して近くの敵を攻撃）",14,CH - 36);
             }else{
-                ctx.fillText("敵には自動で攻撃します　／　クリック：衝撃波（燃料" + BLAST_COST + "・弾も消す）　／　動くと燃料を使い、止まると回復",14,CH - 36);
+                ctx.fillText("敵には自動で攻撃します　／　クリック：衝撃波（燃料" + BLAST_COST + "・弾を消して近くの敵を攻撃）　／　動くと燃料を使い、止まると回復",14,CH - 36);
             }
             ctx.fillText("弾は中心の赤い点に当たらなければ大丈夫。すれすれでかすると燃料が回復",14,CH - 16);
         }else if(game.wave <= 4 && this.just == 0){

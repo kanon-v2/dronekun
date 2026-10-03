@@ -74,7 +74,7 @@ var coop = {
     gotDone:{},
     blastDone:0,
     blockDone:0,        //ホスト：ゲストのバリアが防いだ弾を、何個目まで消したか
-    //出来事(龍の大技・ボス撃破)
+    //出来事(衝撃波・ボス撃破・ジャスト衝撃波)
     events:[],
     evSeq:0,
     evSeen:0,

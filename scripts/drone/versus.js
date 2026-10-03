@@ -5,7 +5,7 @@
 //  ・装備を3つ選んで戦う。装備はすべてLv3、能力はふたりとも同じ(強化やセーブとは関係しない)
 //  ・相手は自分の画面では「敵」として enemies に入れ、装備がいつもどおり自動で攻撃する
 //  ・与えたダメージは合計値で相手へ送り、受けた側が自分の耐久から引く(途中が抜けても合計なので狂わない)
-//  ・クリックの衝撃波：五龍が相手に食らいつく。出した直後は少しのあいだ無敵(受けたダメージを無視する)
+//  ・クリックの衝撃波：近くにいる相手にダメージ。出した直後は少しのあいだ無敵(受けたダメージを無視する)
 //  ・耐久が0になった側の負け。1戦ごとに勝敗を数え、「もう一度」で装備を選び直す
 //------------------------------------------------------------------------------
 const VS_HP = 300;             //耐久(装備のダメージで数える。雑魚敵の体力は1～5)。決着まで30秒ほどになるよう調整
@@ -23,7 +23,7 @@ const VS_START_X = 0.18;       //開始位置(画面の幅に対する割合。�
 // ブレードは触れると強い(光刃なら毎秒10ほど)ので倍率は低め)
 const VS_DAMAGE_MUL = { gun:0.85, missile:0.8, water:0.65, laser:2.6, bug:2.0, tesla:3.0, emp:3.0, mine:1.8, blade:0.8,
                         fire:1.6, disc:1.3, gravity:5.0, barrier:1.0, sniper:0.5, freeze:2.6,   //追加の装備はtools/vs-dps.htmlで今の装備(約3.6/秒)にそろえた
-                        blast:3.0 };    //衝撃波(範囲内なら、龍がすべて当たったときと同じくらい)
+                        blast:3.0 };    //衝撃波(範囲内にいる相手へ)
 
 var versus = {
     active:false,       //対戦中か(装備選び・戦闘・結果のどれか)
@@ -45,12 +45,11 @@ var versus = {
     takenFz:0,
     iceSlow:0,
     hurtCd:0,           //被弾の音・揺れを出しすぎないための待ち時間
-    blasts:0,           //衝撃波を出した回数(相手の画面に龍を描いてもらう)
+    blasts:0,           //衝撃波を出した回数(相手の画面に衝撃波を描いてもらう)
     lastBlast:[0,0],
     blastSeen:0,
     other:null,         //相手から最後に届いた状態
     rival:null,         //自分の画面での相手(敵として enemies に入れる)
-    me:{ x:0, y:0, r:14, dead:false },  //相手の龍が狙う的(自分の位置)
     look:new DroneLook(),
     result:"",
     fightTime:0,
@@ -276,7 +275,6 @@ var versus = {
         M.updateFuel();
         if(this.empSlow > 0 || this.iceSlow > 0) drone.slow = true;   //EMP・冷凍を受けている間は遅い
         drone.update();
-        this.me.x = drone.X; this.me.y = drone.Y;
         if(this.live() && Click == 1) this.blast();
         this.updateRival(o);
         arms.update(this.live());
