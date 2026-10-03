@@ -328,8 +328,10 @@ const DRONE_SIZE = 40;      //ゲームでの等倍の大きさ(px)
 const DRONE_YAWS = 16;      //水平の向きの段数
 const DRONE_ELEVS = 5;      //カメラの高さの段数
 const DRONE_ELEV_LEVEL = 2; //ふだんの高さの段(正面・左右・後ろ)
-//試作の見比べ用：index.html#art=B のように案を選べる
-var DRONE_ART = (location.hash.match(/art=([ABC])/) || [0,"A"])[1];
+//ふだんの絵は案D(元の絵のテイスト)。index.html#art=A のように別の絵(スキン)も選べる
+//(案A・B・Cの絵は feature/drone-art-3d-candidates ブランチに保留。tools/bake-drone.ps1 で書き出せる)
+const DRONE_ART_DEFAULT = "D";
+var DRONE_ART = (location.hash.match(/art=([A-Z])/) || [0,DRONE_ART_DEFAULT])[1];
 
 //縮めて描くときにぼやけたり、ちらついたりしないよう、1/2・1/4に縮めた絵も先に作っておく
 var droneSheets = [];   //[1/4, 1/2, 等倍]の順。読み込み前は空
@@ -356,6 +358,12 @@ droneSheetImg.onload = function(){
     var g = Drone_front.getContext("2d");
     g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
     g.drawImage(list[1],0,DRONE_ELEV_LEVEL*f,f,f,0,0,f,f);
+};
+//選んだ絵が見つからなければ、ふだんの絵にする
+droneSheetImg.onerror = function(){
+    if(DRONE_ART == DRONE_ART_DEFAULT) return;
+    DRONE_ART = DRONE_ART_DEFAULT;
+    droneSheetImg.src = "images/game/Drone/drone_" + DRONE_ART + ".png";
 };
 droneSheetImg.src = "images/game/Drone/drone_" + DRONE_ART + ".png";
 var Drone_front = document.createElement("canvas");

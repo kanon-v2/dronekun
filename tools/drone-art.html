@@ -61,9 +61,19 @@ const float M_EYE = 9.0;    //光るランプの目
 const vec3 BODY_B = vec3(0.92,0.58,0.66); const float BODY_R = 0.17;
 #elif VARIANT == 1
 const vec3 BODY_B = vec3(0.74,0.50,0.60); const float BODY_R = 0.30;
-#else
+#elif VARIANT == 2
 const vec3 BODY_B = vec3(0.94,0.56,0.68); const float BODY_R = 0.07;
+#else
+const vec3 BODY_B = vec3(0.95,0.56,0.62); const float BODY_R = 0.12;
 #endif
+
+//ふちどり(形の外側に、この太さで濃い線を引く。0なら引かない)
+#if VARIANT == 3
+const float OUTLINE = 0.028;
+#else
+const float OUTLINE = 0.0;
+#endif
+const vec3 INK = vec3(0.07,0.07,0.08);
 
 vec3 camR, camU, camC, Lw;
 
@@ -144,7 +154,7 @@ vec2 map(vec3 p){
     r = U(r, vec2(sdCylY(p - vec3(0.0,-0.48,0.22), 0.18, 0.025) - 0.01, M_METAL));
     return r;
 }
-#else
+#elif VARIANT == 2
 //C：重たい作業機械(角ばった鉄の箱・黄色と黒の帯・奥まったランプの目・脚)
 vec2 map(vec3 p){
     float body = sdRoundBox(p, BODY_B, BODY_R);
@@ -164,6 +174,27 @@ vec2 map(vec3 p){
     r = U(r, rotor(p, vec3( 0.60,0.62,0.30), 0.46, 2.3, 0.43, 0.08, 0.055));
     r = U(r, rotor(p, vec3( 0.00,0.66,-0.36), 0.60, 1.4, 0.43, 0.08, 0.055));
     r = U(r, vec2(length(p - vec3(0.0,1.31,-0.36)) - 0.045, M_LED));
+    return r;
+}
+#else
+//D：元の絵のテイスト(暗い灰色の箱・黒い縁と白い枠の四角い目・細い棒の先の平たいプロペラ・角の黒いガード)
+vec2 map(vec3 p){
+    vec2 r = vec2(sdRoundBox(p, BODY_B, BODY_R), M_BODY);
+    //上のふた(少し明るい灰色)
+    r = U(r, vec2(sdRoundBox(p - vec3(0.0,0.52,0.0), vec3(0.91,0.08,0.58), 0.07), M_TRIM));
+    //角のガード(黒いゴム)
+    r = U(r, vec2(sdRoundBox(abs(p) - vec3(0.87,0.48,0.54), vec3(0.1), 0.05), M_DARK));
+    //目：黒い台・白い枠・黒いレンズ
+    vec3 e = p - vec3(0.0,0.08,0.62); e.x = abs(e.x) - 0.42;
+    r = U(r, vec2(sdRoundBox(e, vec3(0.215,0.215,0.03), 0.025), M_DARK));
+    float fr = sdRoundBox(e - vec3(0.0,0.0,0.03), vec3(0.165,0.165,0.03), 0.015);
+    fr = max(fr, -sdBox(e - vec3(0.0,0.0,0.05), vec3(0.105,0.105,0.1)));
+    r = U(r, vec2(fr, M_BEZEL));
+    r = U(r, vec2(sdRoundBox(e - vec3(0.0,0.0,0.015), vec3(0.11,0.11,0.03), 0.01), M_LENS));
+    //細い棒と平たいプロペラ(後ろの1本だけ高い)
+    r = U(r, rotor(p, vec3(-0.72,0.58,0.22), 0.78, 0.12, 0.32, 0.04, 0.03));
+    r = U(r, rotor(p, vec3( 0.72,0.58,0.22), 0.78, -0.1, 0.32, 0.04, 0.03));
+    r = U(r, rotor(p, vec3( 0.00,0.58,-0.30), 0.92, 0.05, 0.32, 0.04, 0.03));
     return r;
 }
 #endif
@@ -236,7 +267,7 @@ Mat getMat(float m, vec3 po, vec3 no){
         t.alb *= 1.0 - 0.45*s;
         //横の差し色の線
         if(abs(no.x) > 0.5 && abs(po.y + 0.2) < 0.035) t.alb = vec3(0.95,0.42,0.08);
-#else
+#elif VARIANT == 2
         t.alb = vec3(0.26,0.28,0.29)*(0.85 + 0.3*fbm(po*5.0));
         t.metal = 0.5; t.rough = 0.48 + 0.2*noise(po*25.0);
         //黄色と黒の帯(横と後ろの下側)
@@ -256,9 +287,24 @@ Mat getMat(float m, vec3 po, vec3 no){
             t.alb = mix(t.alb, vec3(0.6), rv); t.metal = max(t.metal, rv); t.rough = mix(t.rough,0.25,rv);
         }
         if(no.y < 0.6) t.alb *= 1.0 - 0.6*line(po.y - 0.4, 0.02);
+#else
+        //暗い灰色の塗装。ごく細かい地の揺らぎと、角だけうっすら明るく(塗装のすれ)
+        t.alb = vec3(0.27,0.28,0.30)*(0.95 + 0.1*fbm(po*6.0));
+        t.rough = 0.36 + 0.08*noise(po*vec3(4.0,60.0,4.0));
+        float rub = smoothstep(1.5,2.3,edge)*smoothstep(0.45,0.7,fbm(po*16.0));
+        t.alb = mix(t.alb, vec3(0.5,0.51,0.52), 0.4*rub);
 #endif
     }else if(m < M_LENS + 0.5){
         t.alb = vec3(0.015); t.rough = 0.05;
+#if VARIANT == 3
+        //元の絵と同じ、目の左上の小さなハイライト
+        if(no.z > 0.5){
+            vec2 uv = vec2(po.x - sign(po.x)*0.42, po.y - 0.08) - vec2(-0.05,0.05);
+            vec2 dq = abs(uv) - vec2(0.028);
+            float d = length(max(dq,0.0)) + min(max(dq.x,dq.y),0.0);
+            t.emit = vec3(0.55)*smoothstep(0.006,-0.006,d);
+        }
+#endif
     }else if(m < M_DARK + 0.5){
         t.alb = vec3(0.06,0.065,0.07); t.rough = 0.35;
     }else if(m < M_METAL + 0.5){
@@ -279,6 +325,8 @@ Mat getMat(float m, vec3 po, vec3 no){
     }else if(m < M_TRIM + 0.5){
 #if VARIANT == 1
         t.alb = vec3(0.96,0.45,0.1); t.rough = 0.3;
+#elif VARIANT == 3
+        t.alb = vec3(0.36,0.37,0.39)*(0.96 + 0.08*fbm(po*6.0)); t.rough = 0.32;
 #else
         t.alb = vec3(0.9,0.64,0.1); t.rough = 0.45;
         float wear = smoothstep(0.55,0.7,fbm(po*12.0));
@@ -322,15 +370,17 @@ vec3 shade(vec3 p, vec3 rd, float m){
     return diff + sp + refl + vec3(0.6,0.75,1.0)*rim*0.5*ao + mt.emit;
 }
 
+//当たらなかったときは、いちばん近づいた距離を返す(ふちどりに使う)
 vec2 march(vec3 ro, vec3 rd){
-    float t = 0.0;
+    float t = 0.0, near = 1e9;
     for(int i=0; i<160; i++){
         vec2 h = map(ro + rd*t);
+        near = min(near, h.x);
         if(h.x < 0.0006) return vec2(t,h.y);
         t += h.x*0.8;
         if(t > 12.0) break;
     }
-    return vec2(-1.0,0.0);
+    return vec2(-1.0,near);
 }
 
 vec3 tone(vec3 x){
@@ -354,6 +404,7 @@ void main(){
         vec3 rd = -camC;
         vec2 h = march(ro, rd);
         if(h.x > 0.0) acc += vec4(tone(shade(ro + rd*h.x, rd, h.y)), 1.0);
+        else if(h.y < OUTLINE) acc += vec4(INK,1.0);
     }
     outColor = acc/float(SS*SS);
 }
@@ -362,15 +413,18 @@ void main(){
 <script>
 //--- 候補 ---
 var VARIANTS = [
-    { id:"A", name:"A：いまの形を作り込む",
+    { id:"A", name:"A(保留)：いまの形を作り込む",
       desc:"灰色の箱・白い縁の四角い目・上の3本のプロペラという今の形のまま、塗装・継ぎ目・ねじ・角の塗装はげまで描き込む。",
       half:1.3, cy:0.3 },
-    { id:"B", name:"B：つやのある白いドローン",
+    { id:"B", name:"B(保留)：つやのある白いドローン",
       desc:"白くてつやのある丸い機体に、黒いバイザーと青く光る四角い目。4本の腕の先にオレンジのガード付きプロペラ。今の形からは大きく変わる。",
       half:1.25, cy:0.0 },
-    { id:"C", name:"C：使い込まれた作業機械",
+    { id:"C", name:"C(保留)：使い込まれた作業機械",
       desc:"角ばった鉄の箱に黄色と黒の帯、リベット、はげた塗装。目はひさしの奥でオレンジに光るランプ。下に着地用の脚。",
-      half:1.3, cy:0.24 }
+      half:1.3, cy:0.24 },
+    { id:"D", name:"D：元の絵のテイストで質感を上げる",
+      desc:"暗い灰色の箱・黒い縁と白い枠の四角い目・細い棒の先の平たいプロペラ・角の黒いガードという元の絵の作りのまま、塗装のつや・角のすれ・ふちどりで質感を上げる。",
+      half:1.26, cy:0.46 }
 ];
 //向き：名前・水平の向き(度)・カメラの高さ(度)
 var VIEWS = [["正面",0,15],["上へ",0,-25],["下へ",0,55],["左へ",67.5,15],["右へ",-67.5,15],["後ろ",180,15]];
@@ -492,6 +546,8 @@ function sceneCanvas(_frames,_dark){
     return c;
 }
 
+//#only=D のように開くと、その案だけを出す
+var only = (location.hash.match(/only=(\w)/) || [])[1];
 function buildPage(){
     var cards = document.getElementById("cards");
     //いまの絵
@@ -504,6 +560,7 @@ function buildPage(){
         viewBox(vs,VIEWS[i][0],im);
     }
     for(var vi=0; vi<VARIANTS.length; vi++){
+        if(only && VARIANTS[vi].id != only) continue;
         var v = VARIANTS[vi];
         card = el("div","card",cards);
         el("h2","",card,v.name);
@@ -528,6 +585,7 @@ function buildPage(){
     function loop(){
         var a = (performance.now() - t0)*0.06;
         for(var vi=0; vi<VARIANTS.length; vi++){
+            if(!VARIANTS[vi].spin) continue;
             var s = VARIANTS[vi].spin;
             var f = render(vi,a,15 + 25*Math.sin(a*0.013),VARIANTS[vi].tmp || (VARIANTS[vi].tmp = document.createElement("canvas")),1);
             var g = s.getContext("2d");

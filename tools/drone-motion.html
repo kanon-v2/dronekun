@@ -27,7 +27,7 @@ body{ margin:0; background:#e4e1da; font:14px "Hiragino Sans","Meiryo",sans-seri
 //--- 案を並べるページ ---
 var single = location.hash.indexOf("art=") >= 0;
 if(!single){
-    var names = { A:"A：いまの形を作り込む", B:"B：つやのある白いドローン", C:"C：使い込まれた作業機械" };
+    var names = { A:"A：いまの形を作り込む", B:"B：つやのある白いドローン", C:"C：使い込まれた作業機械", D:"D：元の絵のテイストで質感を上げる" };
     for(var id in names){
         var d = document.createElement("div");
         d.innerHTML = "<b>" + names[id] + "</b><iframe src='tools/drone-motion.html#art=" + id + "'></iframe>";
