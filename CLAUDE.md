@@ -14,7 +14,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 ```
 
 - ヘッドレスのEdgeで次の2つを開き、すべて `RESULT: OK` なら成功(終了コード0)。
-  - `tools/smoke-test.html`: ストーリーの流れ・各WAVEの戦闘・全シナジー・強化画面・ストーリー確認モード
+  - `tools/smoke-test.html`: ストーリーの流れ・各WAVEの戦闘・全シナジー・強化画面・ストーリー確認モード・ドローン君の絵と振り向き
   - `tools/coop-test.html`: 協力プレイ。ゲーム2つ(`tools/coop-frame.html`)を iframe で開き、偽のPeerJS(`tools/fake-peer.js`)の通信を親ページが中継する。部屋作り・コード違い・参加・出撃・WAVEクリアの同期・ゲストの攻撃の反映・退出と、対戦(参加・開始・決着・勝敗の一致・もう一度・退出)を確かめる(インターネット不要)
 - 新しい機能を足したら、`tools/smoke-test.html`(協力プレイに関わるものは `tools/coop-test.html`)にも確認項目を足す。
 - 見た目の確認はヘッドレスEdgeのスクリーンショットで行う:
@@ -50,7 +50,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | `versus.js` | ふたりで対戦(下記「対戦」参照)。page 7 |
 | `draw.js` | 1/60秒刻みの更新ループと描画。最後に読み込む |
 
-画像は `images/game/` 以下(ドローン君の6方向とポインタ)。それ以外の見た目はすべてキャンバスに図形で描いている。
+画像は `images/game/` 以下(ポインタだけ)。ドローン君を含め、それ以外の見た目はすべてキャンバスに図形で描いている(下の「ドローン君の絵」参照)。
 `images/ogp.png`(1200×630)は、リンクを貼ったときのプレビュー画像(`index.html` の OGP タグ)。WAVE5の女王蜂戦をヘッドレスEdgeで撮ったもの。ページの紹介文やプレビューには、ストーリーのネタバレ(同胞・人間の兵器・真実)を出さない。
 
 ## 仕組み
@@ -92,8 +92,19 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | ストーリーの文章・背景・流れる時期 | `story.js` の `STORIES`・`STORY_SKY`・`STORY_AFTER` |
 | BGM | `sound.js` の `TRACKS` |
 | 対戦の耐久・装備ごとのダメージ倍率 | `versus.js` の `VS_HP`・`VS_DAMAGE_MUL` |
+| ドローン君の色・振り向きの速さ・傾き | `common.js` の `FLAT_COLOR`・`TURN_RATE`・`TILT_*` |
 
 難易度は「プレイヤーを弱くする方向」と「敵の弾幕を増やす方向」で上げてきた経緯がある。敵の体力を上げる調整は控えめにする。
+
+## ドローン君の絵
+
+- 向きごとの絵を1枚に並べた「シート」を使う。横に水平の向き16段(22.5度ずつ。0が正面、増えると左を向く)、縦に高さ5段(見上げる → 見下ろす)。シートは等倍・2倍・4倍の3枚(`droneSheets`)で、描く大きさに近いものを使う。
+- `DroneLook` は、移動の向き(0:正面 1:上 2:下 3:左 4:右 5:後ろ)に向けて角度を少しずつ回し、いちばん近いコマを出す(`DIR_YAW`・`DIR_ELEV`)。傾き・ふわふわもここ。
+- ふだんの絵(案E)は `drawFlatDrone()` が起動時に図形で描く(画像ファイルはない)。元の絵の2次元のテイストで、暗い影絵のような色に、質感はハイライトの線で足している。胴体の箱の形は向きで変えず、目・棒・通気口・後ろのふたを箱のまわりの角度として持ち、向きに合わせて横へすべらせる。
+- スキン：`index.html#art=A` のように選ぶと `images/game/Drone/drone_A.png` を読む(見つからなければ案E)。3Dで描いた案A〜Dと元の6方向の絵は、`feature/drone-art-3d-candidates` ブランチに保管してある。
+  - 3Dの絵は `tools/drone-art.html`(WebGLで形・光・影を計算。案の見比べページ)で作り、`tools/bake-drone.ps1 A` でシートに書き出す。GPUで描くとヘッドレスEdgeのGPUプロセスが落ちることがあるので、書き出しはソフトウェア描画(SwiftShader)で行う。
+- `tools/drone-motion.html`：ゲームと同じ `DroneLook` で、自分・同胞の色違い・ドローン君改・ストーリーの大きさを動かして見る。`#art=E,film` で動きをコマ送りの1枚にする。
+- 1枚の絵として使うところ(ストーリーの残骸など)には、正面の絵を切り出した `Drone_front` がある。
 
 ## 開発用の機能
 

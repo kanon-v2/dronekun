@@ -146,11 +146,31 @@ try{
     if(keepSave) localStorage.setItem("dronekun_save", keepSave);
     if(keepBest) localStorage.setItem("dronekun_best", keepBest);
     if(keepClear) localStorage.setItem("dronekun_cleared", keepClear); else localStorage.removeItem("dronekun_cleared");
+    //ドローン君の振り向き：左から右へは正面を通って回り、止まると目標の向きの絵になる
+    var lk = new DroneLook(), passFront = false;
+    for(var i=0; i<60; i++) lk.update(3,0);
+    var atLeft = Math.round(lk.yaw) == DIR_YAW[3] && Math.round(lk.elev) == DIR_ELEV[3];
+    for(var i=0; i<60; i++){ lk.update(4,0); if(Math.round(lk.yaw) == 0) passFront = true; }
+    check("振り向き：左 → 正面を通って右", atLeft && passFront && Math.round(lk.yaw) == DIR_YAW[4], "yaw " + lk.yaw.toFixed(2));
+    for(var i=0; i<60; i++) lk.update(1,0);
+    check("振り向き：上を向くと見上げる高さの絵", Math.round(lk.elev) == DIR_ELEV[1] && Math.round(lk.yaw) == 0);
 }catch(e){ fails++; L("NG   例外 " + e.stack); }
 
-check("スクリプトエラーなし", errors.length == 0, errors.slice(0,5).join(" / "));
-L("");
-L(fails == 0 ? "RESULT: OK" : "RESULT: NG (" + fails + "件)");
-document.getElementById("result").textContent = out.join("\n");
+//画像の読み込みを待ってから確かめるもの
+function finish(){
+    try{
+        check("ドローン君の絵を用意する(等倍・2倍・4倍)", droneSheets.length == 3 && droneSheets[0].width*4 == droneSheets[2].width
+            && droneSheets[2].width == DRONE_FRAME*DRONE_YAWS && droneSheets[2].height == DRONE_FRAME*DRONE_ELEVS && Drone_front.width == DRONE_SIZE*2,
+            DRONE_ART + " " + droneSheets[2].width + "x" + droneSheets[2].height);
+        var lk2 = new DroneLook(); lk2.tint = "190,20,30";
+        for(var i=0; i<20; i++){ lk2.update(i % 6,0); lk2.draw(100,100,i % 4 + 1); }
+        check("色違い・拡大して描ける", !!tintCache["drone" + DRONE_ART + "/1|" + droneSheets[1].width + "|190,20,30"]);
+    }catch(e){ fails++; L("NG   例外 " + e.stack); }
+    check("スクリプトエラーなし", errors.length == 0, errors.slice(0,5).join(" / "));
+    L("");
+    L(fails == 0 ? "RESULT: OK" : "RESULT: NG (" + fails + "件)");
+    document.getElementById("result").textContent = out.join("\n");
+}
+if(droneSheets.length) finish(); else droneSheetImg.addEventListener("load", function(){ setTimeout(finish,0); });
 </script>
 </body></html>

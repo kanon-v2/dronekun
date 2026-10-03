@@ -318,44 +318,233 @@ var save = {
 };
 
 //------------------------------------------------------------------------------
-//  ドローン
+//  ドローン君の絵
+//  向きごとの絵を1枚に並べたもの(シート)を使う。横に水平の向き16段(22.5度ずつ。0が正面、
+//  増えると左を向く)、縦に高さ5段(見上げる → 見下ろす)。ゲームでは DRONE_SIZE px で描く
+//  ・ふだんの絵(案E)：元の絵の2次元のテイストのまま、図形で描く(drawFlatDrone)。画像ファイルはない
+//  ・ほかの絵(スキン)：tools/drone-art.html の3Dの絵を tools/bake-drone.ps1 で書き出した画像。
+//    index.html#art=A のように選ぶ(案A～Dは feature/drone-art-3d-candidates ブランチに保留)
 //------------------------------------------------------------------------------
-var Drone_front = new Image();
-Drone_front.src = "images/game/Drone/Drone_front2.png";
-var Drone_up = new Image();
-Drone_up.src = "images/game/Drone/Drone_up.png";
-var Drone_down = new Image();
-Drone_down.src = "images/game/Drone/Drone_down.png";
-var Drone_left = new Image();
-Drone_left.src = "images/game/Drone/Drone_left.png";
-var Drone_right = new Image();
-Drone_right.src = "images/game/Drone/Drone_right.png";
-var Drone_back = new Image();
-Drone_back.src = "images/game/Drone/Drone_back.png";
+const DRONE_FRAME = 160;    //シートの1コマの大きさ(px。等倍の4倍)
+const DRONE_SIZE = 40;      //ゲームでの等倍の大きさ(px)
+const DRONE_YAWS = 16;      //水平の向きの段数
+const DRONE_ELEVS = 5;      //高さの段数
+const DRONE_ELEV_LEVEL = 2; //ふだんの高さの段(正面・左右・後ろ)
+const DRONE_ART_DEFAULT = "E";
+var DRONE_ART = (location.hash.match(/art=([A-Z])/) || [0,DRONE_ART_DEFAULT])[1];
+
+//案Eの色(元の絵に合わせた灰色と黒)
+var FLAT_COLOR = {
+    body:"#2f3032",     //胴体の正面(影絵のように暗く)
+    rim:"#6b6d70",      //正面の上のふち(ハイライトの線)
+    shine:"#8a8c90",    //左上の角の光(ハイライト)
+    top:"#47494c",      //見下ろしたときに見える上面
+    under:"#1d1e1f",    //見上げたときに見える底面
+    seam:"#232425",     //継ぎ目
+    seamHi:"#45474a",   //継ぎ目の下の細いハイライト
+    line:"#111112",     //ふちどり
+    corner:"#18191a",   //角の暗いガード
+    mast:"#1a1b1c",     //棒とプロペラ
+    mastHi:"#55575a",   //棒とプロペラの光の当たる側
+    eye:"#0b0b0c",      //目の黒
+    frame:"#f2f2ef",    //目の白い枠
+    glint:"#8e9093"     //目のハイライト
+};
+
+//案E：元の絵と同じ平らな塗りで描く。(_g は40×40の座標で描けるように拡大しておく)
+//  胴体の箱の形は向きによって変えず、目・棒・後ろのふたなどの部品を、箱のまわりの円周上の角度として持ち、
+//  向き(_yaw 度。正で左を向く)に合わせて横へすべらせる。裏に回った部品は描かない
+//  _pitch：-1(見上げる)～1(見下ろす)。見下ろすと上面、見上げると底面が帯になって見え、目が上下に動く
+function drawFlatDrone(_g,_yaw,_pitch){
+    var C = FLAT_COLOR, g = _g;
+    var L = 2, R = 38, T = 17, B = 38, CX = 20;     //胴体の左・右・上・下
+    var band = Math.abs(_pitch)*5;                  //上面・底面の見える厚み
+    var faceT = T + (_pitch > 0 ? band : 0), faceB = B - (_pitch < 0 ? band : 0);
+    //円周上の角度 _a 度・半径 _r の部品の、横の位置と表を向いている度合い(1：正面、0以下：裏)
+    function at(_a,_r){
+        var a = (_yaw + _a)*Math.PI/180;
+        return { x:CX - _r*Math.sin(a), z:Math.cos(a) };
+    }
+    function rrect(_x,_y,_w,_h,_r){
+        g.beginPath();
+        g.moveTo(_x + _r,_y); g.arcTo(_x + _w,_y,_x + _w,_y + _h,_r); g.arcTo(_x + _w,_y + _h,_x,_y + _h,_r);
+        g.arcTo(_x,_y + _h,_x,_y,_r); g.arcTo(_x,_y,_x + _w,_y,_r); g.closePath();
+    }
+
+    //棒とプロペラ(奥のものから)。後ろの1本だけ少し高い
+    var masts = [at(60,16), at(-60,16), at(180,7)];
+    masts[0].top = 5.5; masts[1].top = 5.5; masts[2].top = 3.5;
+    masts.sort(function(a,b){ return a.z - b.z; });
+    for(var i=0; i<masts.length; i++){
+        var m = masts[i];
+        //見下ろすと上面の上に立つので、手前の棒ほど根元が下がる
+        var dy = _pitch > 0 ? band*(0.5 + 0.5*m.z) : 0;
+        g.fillStyle = C.mast;
+        g.fillRect(m.x - 1, m.top + dy, 2, T + dy - m.top + 1);
+        //プロペラ：横から見ると平たい棒、上下から見ると回っている円盤
+        var ry = 0.7 + 1.7*Math.abs(_pitch);
+        g.globalAlpha = Math.abs(_pitch) > 0.2 ? 0.6 : 1;
+        g.beginPath(); g.ellipse(m.x, m.top + dy, 5.5, ry, 0, 0, Math.PI*2); g.fill();
+        g.globalAlpha = 1;
+        g.fillRect(m.x - 1.5, m.top + dy - 1.2, 3, 2.4);
+        //棒とハブの左側に細い光
+        g.fillStyle = C.mastHi;
+        g.fillRect(m.x - 1, m.top + dy + 1.2, 0.6, T + dy - m.top - 1.2);
+        g.fillRect(m.x - 1.5, m.top + dy - 1.2, 3, 0.6);
+    }
+
+    //胴体
+    rrect(L,T,R - L,B - T,3);
+    g.save();
+    g.clip();
+    g.fillStyle = C.body; g.fillRect(L,T,R - L,B - T);
+    if(_pitch > 0){ g.fillStyle = C.top; g.fillRect(L,T,R - L,band); }
+    if(_pitch < 0){ g.fillStyle = C.under; g.fillRect(L,faceB,R - L,band); }
+    //正面の上のふちの明るい線と、下寄りの継ぎ目
+    g.fillStyle = C.rim; g.fillRect(L,faceT,R - L,1.2);
+    g.fillStyle = C.seam; g.fillRect(L,faceB - 4.5,R - L,0.8);
+    g.fillStyle = C.seamHi; g.fillRect(L,faceB - 3.7,R - L,0.5);
+    //左上の角の光(光は左上から当たる)
+    g.fillStyle = C.shine;
+    g.fillRect(L + 3,faceT + 0.2,7,0.8);
+    g.fillRect(L + 0.6,faceT + 1.6,0.8,4);
+    //横の通気口(3本の切れ込み)
+    [90,-90].forEach(function(_a){
+        var v = at(_a,17);
+        if(v.z < 0.25) return;
+        g.fillStyle = C.line;
+        for(var k=-1; k<=1; k++) g.fillRect(v.x - 2.5*v.z, (faceT + faceB)/2 + k*2.6 - 0.5, 5*v.z, 1);
+        //切れ込みの下のふちに光(暗い胴体の上でも見えるように)
+        g.fillStyle = C.seamHi;
+        for(var k=-1; k<=1; k++) g.fillRect(v.x - 2.5*v.z, (faceT + faceB)/2 + k*2.6 + 0.5, 5*v.z, 0.5);
+    });
+    //後ろのふた
+    var h = at(180,15);
+    if(h.z > 0.15){
+        var hw = 14*h.z, hy = (faceT + faceB)/2 - 4;
+        g.strokeStyle = C.seamHi; g.lineWidth = 0.5;
+        g.strokeRect(h.x - hw/2 + 0.5, hy + 0.6, hw, 8);
+        g.strokeStyle = C.line; g.lineWidth = 0.8;
+        g.strokeRect(h.x - hw/2, hy, hw, 8);
+        g.fillStyle = C.line;
+        g.fillRect(h.x - hw/2 + 1.5*h.z, hy + 1.5, 1.4*h.z, 1.4);
+        g.fillRect(h.x + hw/2 - 2.9*h.z, hy + 1.5, 1.4*h.z, 1.4);
+    }
+    //目(黒い縁・白い枠・黒い中・左上のハイライト)。横を向くほど細くなる
+    var ey = (faceT + faceB)/2 - 1 + _pitch*1.5;
+    [26,-26].forEach(function(_a){
+        var e = at(_a,18);
+        if(e.z < 0.12) return;
+        g.save();
+        g.translate(e.x, ey);
+        g.scale(e.z, 1);
+        g.fillStyle = C.eye;   g.fillRect(-4.5,-4.5,9,9);
+        g.fillStyle = C.frame; g.fillRect(-3.3,-3.3,6.6,6.6);
+        g.fillStyle = C.eye;   g.fillRect(-2.1,-2.1,4.2,4.2);
+        g.fillStyle = C.glint; g.fillRect(-2.1,-2.1,1.4,1.4);
+        g.restore();
+    });
+    g.restore();
+    //角の暗いガード(L字)
+    g.fillStyle = C.corner;
+    [[L,T,1,1],[R,T,-1,1],[L,B,1,-1],[R,B,-1,-1]].forEach(function(c){
+        g.fillRect(c[2] > 0 ? c[0] : c[0] - 4, c[3] > 0 ? c[1] : c[1] - 1.6, 4, 1.6);
+        g.fillRect(c[2] > 0 ? c[0] : c[0] - 1.6, c[3] > 0 ? c[1] : c[1] - 4, 1.6, 4);
+    });
+    //ふちどり
+    rrect(L,T,R - L,B - T,3);
+    g.strokeStyle = C.line; g.lineWidth = 1;
+    g.stroke();
+}
+
+//案Eのシートを、等倍・2倍・4倍それぞれの大きさで直接描く(縮めないので、どの大きさでもくっきり)
+function buildFlatSheets(){
+    var list = [];
+    for(var lv=0; lv<3; lv++){
+        var k = 1 << lv, f = DRONE_SIZE*k;
+        var c = document.createElement("canvas");
+        c.width = f*DRONE_YAWS; c.height = f*DRONE_ELEVS;
+        var g = c.getContext("2d");
+        for(var r=0; r<DRONE_ELEVS; r++){
+            for(var y=0; y<DRONE_YAWS; y++){
+                g.save();
+                g.translate(y*f, r*f);
+                g.scale(k,k);
+                drawFlatDrone(g, y*360/DRONE_YAWS, (r - DRONE_ELEV_LEVEL)/DRONE_ELEV_LEVEL);
+                g.restore();
+            }
+        }
+        c._key = "drone" + DRONE_ART + "/" + lv;
+        list.push(c);
+    }
+    return list;
+}
+
+//ゲームで使う形にそろえる：droneSheets は[等倍, 2倍, 4倍]の3枚
+var droneSheets = [];   //用意できるまでは空
+function useDroneSheets(_list){
+    droneSheets = _list;
+    //正面の絵だけを切り出したもの(ストーリーの残骸など、1枚の絵として使うところ向け)
+    var f = DRONE_SIZE*2;
+    Drone_front.width = Drone_front.height = f;
+    var g = Drone_front.getContext("2d");
+    g.drawImage(_list[1],0,DRONE_ELEV_LEVEL*f,f,f,0,0,f,f);
+}
+//書き出した画像のスキンは、縮めたものを先に作っておく(縮めて描くときにぼやけたり、ちらついたりしないよう)
+var droneSheetImg = new Image();
+droneSheetImg.onload = function(){
+    var list = [droneSheetImg];
+    droneSheetImg._key = "drone" + DRONE_ART + "/2";
+    for(var i=1; i>=0; i--){
+        var src = list[0];
+        var c = document.createElement("canvas");
+        c.width = src.width/2; c.height = src.height/2;
+        var g = c.getContext("2d");
+        g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+        g.drawImage(src,0,0,c.width,c.height);
+        c._key = "drone" + DRONE_ART + "/" + i;
+        list.unshift(c);
+    }
+    useDroneSheets(list);
+};
+//選んだ絵が見つからなければ、ふだんの絵にする
+droneSheetImg.onerror = function(){
+    DRONE_ART = DRONE_ART_DEFAULT;
+    useDroneSheets(buildFlatSheets());
+};
+var Drone_front = document.createElement("canvas");
+Drone_front.width = Drone_front.height = 1;   //用意できるまでは透明な1px
+Drone_front._key = "droneFront";
+if(DRONE_ART == DRONE_ART_DEFAULT) useDroneSheets(buildFlatSheets());
+else droneSheetImg.src = "images/game/Drone/drone_" + DRONE_ART + ".png";
 
 var t=0;
 
 //------------------------------------------------------------------------------
-//  ドローン君の見た目の動き(6枚の絵のあいだをなめらかに見せる)
-//  ・振り向き：絵を一瞬細く潰し、いちばん細いときに次の向きの絵に差し替えて戻す
-//    (左右への振り向きは横に、上下への振り向きは縦に潰す)
+//  ドローン君の見た目の動き
+//  ・振り向き：向きの角度を少しずつ目標へ近づけ、いちばん近い角度の絵を出す(本当に回って見える)
 //  ・傾き：横に動く方向へ機体を傾け、止まるとばねのように揺れ戻る
 //  ・浮遊：ホバリングしているように少し上下にゆれる
 //------------------------------------------------------------------------------
-const TURN_FRAMES = 10;     //振り向きにかかるフレーム数
+const TURN_RATE = 0.22;     //振り向きの速さ(1フレームで残りの角度の何割を回るか)
 const TILT_PER_SPEED = 0.06; //横の速さ1px/フレームあたりの傾き(ラジアン)
 const TILT_MAX = 0.4;       //最大の傾き(約23度)
+//向き(0:正面 1:上 2:下 3:左 4:右 5:後ろ)ごとの、水平の向き(段)とカメラの高さ(段)
+const DIR_YAW = [0, 0, 0, 3, -3, 8];
+const DIR_ELEV = [2, 0, 4, 2, 2, 2];
 
 //色違いのドローン君(同胞・ドローン君改)用に、絵に色を重ねたものを作って覚えておく
 //(getImageDataを使わない方法なので、ローカルで開いても動く)
 var tintCache = {};
 function tintedImage(_img,_color){
-    if(!_color || !_img.complete || !_img.naturalWidth) return _img;
-    var key = _img.src + "|" + _color;
+    if(!_color) return _img;
+    var w = _img.naturalWidth || _img.width, h = _img.naturalHeight || _img.height;
+    if(!w || _img.complete === false) return _img;
+    var key = (_img._key || _img.src) + "|" + w + "|" + _color;   //大きさも入れる(読み込み前の仮の絵と区別する)
     if(tintCache[key]) return tintCache[key];
     var c = document.createElement("canvas");
-    c.width = _img.naturalWidth;
-    c.height = _img.naturalHeight;
+    c.width = w;
+    c.height = h;
     var g = c.getContext("2d");
     g.drawImage(_img,0,0);
     g.globalCompositeOperation = "source-atop";  //絵のある部分だけに色を塗る
@@ -372,23 +561,10 @@ function dirFromVel(_vx,_vy){
     return _vy > 0 ? 2 : 1;
 }
 
-//Direction 0:front　1:up  2:down  3:left  4:right  5:back
-function droneImage(_dir){
-    switch(_dir){
-        case 1: return Drone_up;
-        case 2: return Drone_down;
-        case 3: return Drone_left;
-        case 4: return Drone_right;
-        case 5: return Drone_back;
-    }
-    return Drone_front;
-}
-
 var DroneLook = function(){
-    this.shown = 0;     //今表示している向き
-    this.to = 0;        //振り向いた先の向き
-    this.turnT = 0;     //振り向き中の経過フレーム(0なら振り向いていない)
-    this.vertical = false;
+    this.shown = 0;     //向かっている向き(協力プレイ・対戦では相方へこれを送る)
+    this.yaw = 0;       //今の水平の向き(段。小数)
+    this.elev = DRONE_ELEV_LEVEL;   //今のカメラの高さ(段。小数)
     this.tilt = 0;
     this.tiltV = 0;
     this.t = Math.random()*100;
@@ -398,18 +574,12 @@ DroneLook.prototype = {
     //_dir：移動方向から決めた向き　_speedX：横の速さ
     update:function(_dir,_speedX){
         this.t++;
-        //振り向き(振り向き中に向きが変わったら、終わってから次の振り向きを始める)
-        if(this.turnT == 0 && _dir != this.shown){
-            this.to = _dir;
-            this.turnT = 1;
-            //上下の絵がからむ振り向き(左右を含まない)は縦に潰す
-            var lr = function(d){ return d == 3 || d == 4; };
-            this.vertical = !lr(this.shown) && !lr(_dir);
-        }else if(this.turnT > 0){
-            this.turnT++;
-            if(this.turnT == Math.ceil(TURN_FRAMES/2)) this.shown = this.to;
-            if(this.turnT >= TURN_FRAMES) this.turnT = 0;
-        }
+        this.shown = _dir;
+        //近いほうの回り方で目標の向きへ(左から右へは正面を通って回る)
+        var d = DIR_YAW[_dir] - this.yaw;
+        d -= Math.round(d/DRONE_YAWS)*DRONE_YAWS;
+        this.yaw += Math.abs(d) < 0.05 ? d : d*TURN_RATE;
+        this.elev += (DIR_ELEV[_dir] - this.elev)*TURN_RATE;
         //傾きはばね：目標の角度へ引っぱられ、行きすぎて揺れながら落ち着く
         var target = Math.max(-TILT_MAX, Math.min(TILT_MAX, _speedX*TILT_PER_SPEED));
         this.tiltV += (target - this.tilt)*0.12;
@@ -418,23 +588,21 @@ DroneLook.prototype = {
     },
     //(_x,_y)を中心に描く。_scaleで拡大(省略時は等倍)
     draw:function(_x,_y,_scale){
-        var img = tintedImage(droneImage(this.shown), this.tint);
-        var w = img.naturalWidth || img.width || 40, h = img.naturalHeight || img.height || 40;
+        if(!droneSheets.length) return;
         var k = _scale || 1;
-        //振り向きの潰れ具合：1 → 0.12 → 1
-        var sx = 1, sy = 1;
-        if(this.turnT > 0){
-            var s = Math.max(0.12, Math.abs(Math.cos(Math.PI*this.turnT/TURN_FRAMES)));
-            if(this.vertical) sy = s; else sx = s;
-        }
+        //描く大きさに近い絵を使う(等倍なら1/4、2倍なら1/2)
+        var lv = k <= 1.25 ? 0 : k <= 2.5 ? 1 : 2;
+        var img = tintedImage(droneSheets[lv], this.tint);
+        var f = DRONE_FRAME >> (2 - lv);
+        var col = ((Math.round(this.yaw) % DRONE_YAWS) + DRONE_YAWS) % DRONE_YAWS;
+        var row = Math.max(0, Math.min(DRONE_ELEVS - 1, Math.round(this.elev)));
         var bob = Math.sin(this.t*0.08)*1.5;
+        var s = DRONE_SIZE*k;
         ctx.save();
-        ctx.translate(Math.round(_x), Math.round(_y + bob*k));
+        ctx.translate(_x, _y + bob*k);
         ctx.rotate(this.tilt);
-        ctx.scale(sx*k,sy*k);
-        //回転・縮小するときはなめらかに描いたほうがきれい
-        ctx.imageSmoothingEnabled = this.turnT > 0 || Math.abs(this.tilt) > 0.02 || k != Math.round(k);
-        ctx.drawImage(img,-w/2,-h/2);
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(img, col*f, row*f, f, f, -s/2, -s/2, s, s);
         ctx.restore();
         ctx.imageSmoothingEnabled = false;
     }
@@ -511,17 +679,6 @@ var drone = {
             }else if(this.keeptime >= 100){this.Direction = 0;}
         }
         this.keeptime++;
-    },
-    //Direction 0:front　1:up  2:down  3:left  4:right  5:back
-    getImage: function(){
-        switch(this.Direction){
-            case 0: return Drone_front; break;
-            case 1: return Drone_up;    break;
-            case 2: return Drone_down;  break;
-            case 3: return Drone_left;  break;
-            case 4: return Drone_right; break;
-            case 5: return Drone_back;  break;
-        }
     },
     //見た目の動き(振り向き・傾き・浮遊)
     look: new DroneLook(),

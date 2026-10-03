@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<!--
+    ドローン君の絵が動く様子を見る
+    ・そのまま開くと、案A・B・Cを並べて同じ動きをさせる(それぞれ iframe で #art=案 を開く)
+    ・#art=B のように開くと、その案だけを動かす
+    ・#art=B,film のように開くと、自分のドローン君の動きを一定間隔で並べた1枚(フィルム)にする(ヘッドレスでの確認用)
+    ゲームと同じ common.js の DroneLook で描いている
+-->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<base href="../">
+<title>ドローン君の動き</title>
+<style>
+body{ margin:0; background:#e4e1da; font:14px "Hiragino Sans","Meiryo",sans-serif; color:#222; }
+#Bigbox{ display:none; }
+.grid{ display:flex; flex-wrap:wrap; gap:10px; padding:10px; }
+.grid div{ background:#fff; padding:6px; border-radius:6px; }
+.grid iframe{ width:640px; height:360px; border:0; display:block; }
+</style>
+</head>
+<body>
+<div id="Bigbox"><canvas id="Canvas" width="960" height="540"></canvas></div>
+<div id="all" class="grid"></div>
+<script src="scripts/drone/common.js"></script>
+<script>
+//--- 案を並べるページ ---
+var single = location.hash.indexOf("art=") >= 0;
+if(!single){
+    var names = { E:"E：元の絵の2次元のテイスト" };   //保留中の案A～Dは feature/drone-art-3d-candidates ブランチ
+    for(var id in names){
+        var d = document.createElement("div");
+        d.innerHTML = "<b>" + names[id] + "</b><iframe src='tools/drone-motion.html#art=" + id + "'></iframe>";
+        document.getElementById("all").appendChild(d);
+    }
+}else{
+    document.getElementById("Bigbox").style.display = "block";
+    canvas.style.width = "100%";
+    canvas.style.display = "block";
+    document.body.style.overflow = "hidden";
+}
+
+//--- 動き ---
+//自分のドローン君は、目標地点を順に追いかける(ゲームと同じ追従のしかた)。止まると正面を向く
+var ROUTE = [[480,250],[180,250],[180,250],[780,250],[780,250],[780,90],[780,90],[780,400],[480,400],[480,400],[480,250],[480,250]];
+var ROUTE_STEP = 70;    //目標を次へ進める間隔(フレーム)
+var me = { x:480, y:250, vx:0, vy:0, look:new DroneLook() };
+var kins = [];
+for(var i=0; i<5; i++) kins.push({ x:-60 - i*170, y:470 + (i%2)*28, look:new DroneLook(), c:["80,140,230","60,170,110","220,160,30","150,90,210","230,100,60"][i] });
+var kai = { x:120, y:120, look:new DroneLook() };
+kai.look.tint = "190,20,30";
+for(var i=0; i<kins.length; i++) kins[i].look.tint = kins[i].c;
+//右下の暗い窓：ストーリー画面のように3倍で、向きを順に変える
+var big = { look:new DroneLook() };
+var BIG_DIRS = [0,3,5,4,1,2];
+var frame = 0;
+
+function step(){
+    frame++;
+    var w = ROUTE[Math.floor(frame/ROUTE_STEP) % ROUTE.length];
+    var px = me.x, py = me.y, d = 14;
+    me.x = (w[0] + d*me.x)/(d + 1);
+    me.y = (w[1] + d*me.y)/(d + 1);
+    me.vx = me.x - px; me.vy = me.y - py;
+    me.look.update(dirFromVel(me.vx,me.vy), me.vx);
+    for(var i=0; i<kins.length; i++){
+        var k = kins[i];
+        k.x += 1.6;
+        if(k.x > 700) k.x -= 850;
+        k.look.update(4, 1.6);
+    }
+    var kx = kai.x;
+    kai.x = 120 + 60*Math.sin(frame*0.02);
+    kai.y = 120 + 20*Math.sin(frame*0.033);
+    kai.look.update(dirFromVel(kai.x - kx,0), kai.x - kx);
+    big.look.update(BIG_DIRS[Math.floor(frame/60) % BIG_DIRS.length], 0);
+}
+function render(){
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0,0,CW,CH);
+    ctx.strokeStyle = "#f0f0f0";
+    ctx.beginPath();
+    for(var x=0; x<=CW; x+=GS){ ctx.moveTo(x + 0.5,0); ctx.lineTo(x + 0.5,CH); }
+    for(var y=0; y<=CH; y+=GS){ ctx.moveTo(0,y + 0.5); ctx.lineTo(CW,y + 0.5); }
+    ctx.stroke();
+    for(var i=0; i<kins.length; i++) kins[i].look.draw(kins[i].x,kins[i].y);
+    kai.look.draw(kai.x,kai.y,2);
+    me.look.draw(me.x,me.y);
+    //ストーリー画面ふうの窓
+    var g = ctx.createLinearGradient(0,330,0,540);
+    g.addColorStop(0,"#0b1020"); g.addColorStop(1,"#26304a");
+    ctx.fillStyle = g;
+    ctx.fillRect(720,330,240,210);
+    big.look.draw(840,430,3);
+    ctx.fillStyle = "#333";
+    ctx.font = "16px sans-serif";
+    ctx.fillText("自分(等倍)・同胞(等倍)・ドローン君改(2倍)・右下は3倍", 12, 24);
+}
+
+if(single){
+    if(location.hash.indexOf("film") >= 0){
+        //フィルム：自分のドローン君のまわりを8フレームおきに切り出して並べる
+        var makeFilm = function(){
+            var film = document.createElement("canvas");
+            var COLS = 16, ROWS = 6, C = 80;
+            film.width = COLS*C; film.height = ROWS*C;
+            var fg = film.getContext("2d");
+            fg.fillStyle = "#fff"; fg.fillRect(0,0,film.width,film.height);
+            for(var n=0; n<COLS*ROWS; n++){
+                for(var j=0; j<8; j++) step();
+                render();
+                fg.drawImage(canvas, me.x - 40, me.y - 40, 80, 80, (n % COLS)*C, Math.floor(n/COLS)*C, C, C);
+            }
+            document.body.innerHTML = "";
+            film.style.display = "block";
+            document.body.appendChild(film);
+        };
+        //絵の用意ができてから(案Eはすぐ、画像のスキンは読み込みのあと)
+        if(droneSheets.length) makeFilm(); else droneSheetImg.addEventListener("load",function(){ setTimeout(makeFilm,0); });
+    }else{
+        //iframe の中では requestAnimationFrame が動かないことがあるので、setInterval で進める
+        setInterval(function(){ step(); render(); }, 1000/60);
+    }
+}
+</script>
+</body>
+</html>

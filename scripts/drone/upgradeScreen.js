@@ -12,13 +12,13 @@ var drone_around = {
         t++;
         this.preX.push(this.X);
         if(this.preX.length >= 5)  this.preX.shift();
-        this.X = Icon.X+Icon.width/2-drone_around.getImage().naturalWidth/2 + 50*Math.sin(Math.PI*t/120);
+        this.X = Icon.X+Icon.width/2-DRONE_SIZE/2 + 50*Math.sin(Math.PI*t/120);
         return this.X;
     },
     getY: function(){
         this.preY.push(this.Y);
         if(this.preY.length >= 5)  this.preY.shift();
-        this.Y = Icon.Y+Icon.height/2-drone_around.getImage().naturalHeight/2 + 50*Math.sin(Math.PI*t/90);
+        this.Y = Icon.Y+Icon.height/2-DRONE_SIZE/2 + 50*Math.sin(Math.PI*t/90);
         return this.Y;
     },
     //ドローンの向いている方向と速度を検出
@@ -54,17 +54,6 @@ var drone_around = {
             }else{this.Direction = 0;}
         }else{this.keeptime++;}
     },
-    //Direction 0:front　1:up  2:down  3:left  4:right  5:back
-    getImage: function(){
-            switch(this.Direction){
-                case 0: return Drone_front; break;
-                case 1: return Drone_up;    break;
-                case 2: return Drone_down;  break;
-                case 3: return Drone_left;  break;
-                case 4: return Drone_right; break;
-                case 5: return Drone_back;  break;
-            }
-    }
 
 }
 
