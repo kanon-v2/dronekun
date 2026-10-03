@@ -73,6 +73,7 @@ var coop = {
     applied:{},
     gotDone:{},
     blastDone:0,
+    blockDone:0,        //ホスト：ゲストのバリアが防いだ弾を、何個目まで消したか
     //出来事(龍の大技・ボス撃破)
     events:[],
     evSeq:0,
@@ -238,7 +239,8 @@ var coop = {
         this.dmg = {}; this.got = []; this.blast = [0,0,0];
         this.partsGot = 0; this.partnerParts = 0;
         this.checkpoint = null; this.wantContinue = false; this.hostCn = false;
-        this.applied = {}; this.gotDone = {}; this.blastDone = 0;
+        this.applied = {}; this.gotDone = {}; this.blastDone = 0; this.blockDone = 0;
+        arms.blockLog = [0];    //バリアで防いだ数(ゲスト→ホスト)
         this.events = []; this.evSeq = 0; this.evSeen = 0;
         this.snap = null; this.snapQ = -1; this.appliedQ = -1;
         this.partner = null;
@@ -424,7 +426,8 @@ var coop = {
             case "heli":    p1 = r((_e.face || 0)*100); break;
             case "panzer":  p1 = r((_e.turret || 0)*100); break;
         }
-        var flags = (_e.flash > 0 ? 1 : 0) | (_e.slow > 0 ? 2 : 0) | (_e.wet > 0 ? 4 : 0) | (_e.enraged ? 8 : 0);
+        var flags = (_e.flash > 0 ? 1 : 0) | (_e.slow > 0 ? 2 : 0) | (_e.wet > 0 ? 4 : 0) | (_e.enraged ? 8 : 0)
+                  | (_e.frozen > 0 ? 16 : 0) | (_e.burn > 0 ? 32 : 0);
         _s.e.push(_e.id, COOP_TYPES.indexOf(_e.type), r(_e.x), r(_e.y), r(Math.max(0,_e.hp)/_e.maxHp*100), p1, p2, flags);
         if(_e.boss){
             var aimA = Math.atan2(_e.aimY || 0,_e.aimX || 1);
@@ -452,6 +455,7 @@ var coop = {
             var L = arms.beams[arms.beams.length - 1];
             a.L = [r(L.x), r(L.y), r(L.dx*100), r(L.dy*100), L.life, L.focus ? 1 : 0, L.w];
         }
+        arms.summary2(a);   //追加の装備(armsExtra.js)
         return a;
     },
 
@@ -461,7 +465,8 @@ var coop = {
         var g = {
             x:r(drone.X), y:r(drone.Y), d:drone.look.shown, hp:M.hp, mh:M.maxHp, dn:M.down ? 1 : 0,
             pg:page.number, rd:this.localReady ? game.wave : 0,
-            dm:this.dmg, got:this.got.slice(-30), bl:this.blast, ev:this.events, pc:this.partsGot, cn:this.wantContinue ? 1 : 0
+            dm:this.dmg, got:this.got.slice(-30), bl:this.blast, ev:this.events, pc:this.partsGot, cn:this.wantContinue ? 1 : 0,
+            br:arms.blockLog    //バリアで防いだ数と、最近防いだ位置(ホストで弾を消してもらう)
         };
         if(page.number == 1) g.a = this.armsSummary();
         if(JSON.stringify(g).length > COOP_LIMIT){ g.a = 0; }
@@ -482,11 +487,14 @@ var coop = {
         for(var i=0; i<enemies.length; i++){
             var e = enemies[i], k = "e" + e.id, v = dm[k];
             if(!v) continue;
-            var done = this.applied[k] || [0,0,0];
+            var done = this.applied[k] || [0,0,0,0,0];
             var d = (v[0] - done[0])/10;
             if(v[1] > done[1]) e.slow = 150;
             if(v[2] > done[2]) e.wet = WET_TIME;
-            this.applied[k] = [v[0], v[1], v[2]];
+            //相方が燃やした・凍らせた(armsExtra.js。相方のレベルはわからないので真ん中の長さ)
+            if((v[3] || 0) > (done[3] || 0)) e.burn = Math.max(e.burn || 0, BURN_TIME[1]);
+            if((v[4] || 0) > (done[4] || 0)) arms.freezeEnemy(e, FREEZE_PARTNER);
+            this.applied[k] = [v[0], v[1], v[2], v[3] || 0, v[4] || 0];
             if(d > 0) mainScreen.hitEnemy(e, d, "partner");
         }
         //ゲストが拾ったアイテムを消す
@@ -502,6 +510,20 @@ var coop = {
             this.blastDone = bl[0];
             for(var i=enemyShots.length-1; i>=0; i--){
                 if(Math.hypot(enemyShots[i].x - bl[1], enemyShots[i].y - bl[2]) < BLAST_RADIUS) enemyShots.splice(i,1);
+            }
+        }
+        //ゲストのバリアが防いだ弾：防いだ位置にいちばん近い弾を消す(新しく防いだ分だけ。最近の6つまで届く)
+        var br = _g.br || [0];
+        if(br[0] > this.blockDone){
+            var n = Math.min(br[0] - this.blockDone, (br.length - 1)/2);
+            this.blockDone = br[0];
+            for(var k=br.length - n*2; k<br.length; k+=2){
+                var best = -1, bd = 24;
+                for(var i=0; i<enemyShots.length; i++){
+                    var d = Math.hypot(enemyShots[i].x - br[k], enemyShots[i].y - br[k+1]);
+                    if(d < bd){ bd = d; best = i; }
+                }
+                if(best >= 0) enemyShots.splice(best,1);
             }
         }
     },
@@ -612,10 +634,12 @@ var coop = {
     guestHit:function(_e,_dmg,_src){
         if(_e.dead) return;
         var k = "e" + _e.id;
-        var v = this.dmg[k] || (this.dmg[k] = [0,0,0]);
+        var v = this.dmg[k] || (this.dmg[k] = [0,0,0,0,0]);
         v[0] += Math.round(_dmg*10);
         if(_src == "emp") v[1]++;
         if(_src == "water") v[2]++;
+        if(_src == "fire") v[3]++;      //燃やした(armsExtra.js)
+        if(_src == "freeze") v[4]++;    //凍らせた
         _e.flash = 6;
         sound.play("hit");
     },
@@ -708,6 +732,8 @@ var coop = {
             if(fl & 1) e.flash = Math.max(e.flash,3);
             e.slow = (fl & 2) ? 2 : 0;
             e.wet = (fl & 4) ? 60 : 0;
+            e.frozen = (fl & 16) ? 3 : 0;      //凍っている・燃えている(見た目だけ。数えるのはホスト)
+            e.burn = (fl & 32) ? 3 : 0;
             e.enraged = !!(fl & 8);
             switch(type){
                 case "dasher":  e.aimX = Math.cos(p1); e.aimY = Math.sin(p1); e.timer = p2; break;
@@ -875,6 +901,7 @@ var coop = {
             ctx.beginPath(); ctx.moveTo(L[0],L[1]); ctx.lineTo(L[0] + L[2]*12, L[1] + L[3]*12); ctx.stroke();
             ctx.lineWidth = 1;
         }
+        arms.drawSummary2(_a, (_ox != null || P) ? ox : null, oy);  //追加の装備(armsExtra.js)
         ctx.fillStyle = "#000";
     },
 

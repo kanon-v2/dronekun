@@ -14,13 +14,15 @@ const VS_WEAPON_LV = 3;        //装備のレベル(全部同じ)
 const VS_STAT_LV = 3;          //能力のレベル(全部同じ)
 const VS_COUNTDOWN = 180;      //開始までの秒読み(フレーム)。この間は動けるが攻撃しない
 const VS_EMP_SLOW = 90;        //相手のEMPを受けたときに遅くなる時間(フレーム)
+const VS_ICE_SLOW = 60;        //相手の冷凍を受けたときに遅くなる時間(フレーム。対戦では凍って止まる代わり)
 const VS_COLOR = "215,60,45";  //相手のドローン君の色
 const VS_START_X = 0.18;       //開始位置(画面の幅に対する割合。ホストは左、ゲストは右)
 //対戦でのダメージの倍率(装備ごと)。ふつうの戦闘は敵の群れ向けに調整してあるので、
 //1対1では群れに強い装備(電撃など)が弱く、連射の装備が強くなりすぎる。自動プレイで測って差を縮めた
 //(離れて戦ったときの値 毎秒：水5.5 ミサイル4.6 実弾4.2 虫1.6 レーザー1.5 電撃1.2 地雷0.8 EMP0.8。
 // ブレードは触れると強い(光刃なら毎秒10ほど)ので倍率は低め)
-const VS_DAMAGE_MUL = { gun:0.85, missile:0.8, water:0.65, laser:2.6, bug:2.0, tesla:3.0, emp:3.0, mine:1.8, blade:0.8 };
+const VS_DAMAGE_MUL = { gun:0.85, missile:0.8, water:0.65, laser:2.6, bug:2.0, tesla:3.0, emp:3.0, mine:1.8, blade:0.8,
+                        fire:1.6, disc:1.3, gravity:5.0, barrier:1.0, sniper:0.5, freeze:2.6 };   //追加の装備はtools/vs-dps.htmlで今の装備(約3.6/秒)にそろえた
 
 var versus = {
     active:false,       //対戦中か(装備選び・戦闘・結果のどれか)
@@ -38,6 +40,9 @@ var versus = {
     taken:0,
     takenEmp:0,
     empSlow:0,
+    fz:0,               //冷凍を当てた回数
+    takenFz:0,
+    iceSlow:0,
     hurtCd:0,           //被弾の音・揺れを出しすぎないための待ち時間
     blasts:0,           //衝撃波を出した回数(相手の画面に龍を描いてもらう)
     lastBlast:[0,0],
@@ -101,9 +106,9 @@ var versus = {
         enemies.push(this.rival);
 
         this.hp = VS_HP;
-        this.dealt = 0; this.emp = 0;
-        this.taken = 0; this.takenEmp = 0;
-        this.empSlow = 0; this.hurtCd = 0;
+        this.dealt = 0; this.emp = 0; this.fz = 0;
+        this.taken = 0; this.takenEmp = 0; this.takenFz = 0;
+        this.empSlow = 0; this.iceSlow = 0; this.hurtCd = 0;
         this.result = "";
         this.phase = "fight";
         this.t = 0;
@@ -144,6 +149,7 @@ var versus = {
         if(!this.live()) return;
         this.dealt += Math.round(_dmg*(VS_DAMAGE_MUL[_src] || 1)*10);
         if(_src == "emp") this.emp++;
+        if(_src == "freeze") this.fz++;
         _e.flash = 6;
         sound.play("hit");
     },
@@ -172,7 +178,7 @@ var versus = {
         if(this.active && this.phase != "select"){
             v.x = r(drone.X); v.y = r(drone.Y); v.d = drone.look.shown;
             v.hp = Math.max(0, Math.round(this.hp*10)/10);
-            v.dm = this.dealt; v.em = this.emp;
+            v.dm = this.dealt; v.em = this.emp; v.fz = this.fz;
             v.dead = this.hp <= 0 ? 1 : 0;
             v.gd = mainScreen.guard > 0 ? 1 : 0;
             if(this.phase == "fight") v.a = coop.armsSummary();
@@ -196,6 +202,7 @@ var versus = {
         if(inc > 0){
             this.taken = _v.dm;
             if(mainScreen.guard <= 0 && this.hp > 0){
+                inc = arms.absorbVs(inc);     //バリアの板があれば1枚で防ぐ(armsExtra.js)
                 this.hp -= inc;
                 this.hurt();
             }
@@ -203,6 +210,10 @@ var versus = {
         if((_v.em || 0) > this.takenEmp){
             this.takenEmp = _v.em;
             this.empSlow = VS_EMP_SLOW;
+        }
+        if((_v.fz || 0) > this.takenFz){
+            this.takenFz = _v.fz;
+            this.iceSlow = VS_ICE_SLOW;
         }
     },
 
@@ -256,8 +267,9 @@ var versus = {
         M.clock++;
         if(M.tint && --M.tint.life <= 0) M.tint = null;
         if(this.empSlow > 0) this.empSlow--;
+        if(this.iceSlow > 0) this.iceSlow--;
         M.updateFuel();
-        if(this.empSlow > 0) drone.slow = true;   //EMPを受けている間は遅い
+        if(this.empSlow > 0 || this.iceSlow > 0) drone.slow = true;   //EMP・冷凍を受けている間は遅い
         drone.update();
         this.me.x = drone.X; this.me.y = drone.Y;
         if(this.live() && Click == 1) this.blast();
@@ -321,9 +333,10 @@ var versus = {
     },
 
     //装備選びのカード(3列×3行)
+    //装備のカード(5つずつ3段)
     card:function(_i){
-        var c = _i % 3, r = Math.floor(_i/3);
-        return new drawRect(CW/2 + (c - 1)*GS*10.2, GS*3.4 + r*GS*2.9, GS*9.8, GS*2.6);
+        var c = _i % 5, r = Math.floor(_i/5);
+        return new drawRect(CW/2 + (c - 2)*GS*6.0, GS*3.2 + r*GS*2.95, GS*5.75, GS*2.7);
     },
 
     //------------------------------------------------------------ 描画
@@ -354,20 +367,15 @@ var versus = {
             ctx.lineWidth = on ? 3 : 1;
             ctx.strokeRect(b.X,b.Y,b.width,b.height);
             ctx.lineWidth = 1;
-            //しるし
-            ctx.fillStyle = W.color;
-            ctx.fillRect(b.X + 10, b.Y + 14, 30, 30);
-            ctx.fillStyle = "#fff";
-            ctx.font = "bold 18px sans-serif";
-            ctx.textAlign = "center";
-            ctx.fillText(W.mark, b.X + 25, b.Y + 30);
+            //しるし・名前・説明(3行まで)
+            drawWeaponIcon(id, b.X + 7, b.Y + 8, 26);
             ctx.textAlign = "left";
             ctx.fillStyle = "#000";
-            ctx.font = "bold 16px sans-serif";
-            ctx.fillText(W.name + (on ? "　✔" : ""), b.X + 50, b.Y + 20);
-            ctx.font = "11px sans-serif";
+            ctx.font = "bold 14px sans-serif";
+            ctx.fillText(W.name + (on ? " ✔" : ""), b.X + 40, b.Y + 21);
+            ctx.font = "10px sans-serif";
             ctx.fillStyle = "#555";
-            this.wrap(W.desc, b.X + 50, b.Y + 41, b.width - 58, 14, 2);
+            this.wrap(W.desc, b.X + 8, b.Y + 46, b.width - 14, 12, 3);
         }
 
         //今の組み合わせのシナジー
@@ -449,6 +457,7 @@ var versus = {
         //遅くなっている理由をドローン君のまわりに出す(「あなた」の名札より上)
         if(this.phase == "fight" && M.fuelOut) M.drawSlowMark("燃料切れ！止まると回復", "210,40,40", 50);
         else if(this.phase == "fight" && this.empSlow > 0) M.drawSlowMark("EMPで減速中", "134,102,204", 50);
+        else if(this.phase == "fight" && this.iceSlow > 0) M.drawSlowMark("凍って減速中", "91,184,222", 50);
         else if(M.noFuelMsg > 0){
             ctx.font = "bold 14px sans-serif";
             ctx.fillStyle = "#c33";
@@ -511,6 +520,9 @@ var versus = {
         if(this.empSlow > 0){
             ctx.fillStyle = "#86c";
             ctx.fillText("EMPで減速中", 210, 52);
+        }else if(this.iceSlow > 0){
+            ctx.fillStyle = "#5bb8de";
+            ctx.fillText("凍って減速中", 210, 52);
         }
         ctx.textAlign = "center";
         ctx.fillStyle = "#555";

@@ -48,7 +48,8 @@ window.addEventListener("message", function(ev){
 });
 
 //------------------------------------------------ 手順
-var IDS = ["gun","missile","laser","bug","tesla","mine","blade","water","emp"], k = 0, WIN = 1200;
+//測る装備(#ids=fire,disc のように選べる。なければ全部)
+var IDS = (location.hash.match(/ids=([a-z,]+)/) || [0,"gun,missile,laser,bug,tesla,mine,blade,water,emp,fire,disc,gravity,barrier,sniper,freeze"])[1].split(","), k = 0, WIN = 1200;
 function waitFor(cond, ms, then){
     var t0 = Date.now();
     var iv = setInterval(function(){ var ok = false; try{ ok = st.host && st.guest && cond(); }catch(e){} if(ok || Date.now() - t0 > ms){ clearInterval(iv); then(ok); } }, 50);

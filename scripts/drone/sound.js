@@ -391,6 +391,14 @@ var sound = {
             case "water":   this.noise(0.07,0.05,"bandpass",2500,1500,S); break;
             case "steam":   this.noise(0.6,0.22,"highpass",1200,3000,S); this.tone("sine",220,90,0.3,0.12,S); break;
             case "emp":     this.tone("sine",700,55,0.5,0.25,S); this.noise(0.4,0.06,"lowpass",1500,200,S); break;
+            //追加の装備(armsExtra.js)
+            case "fire":    this.noise(0.12,0.05,"bandpass",900,400,S); break;   //ごうっ(炎は続けて出るので小さく)
+            case "disc":    this.tone("triangle",420,950,0.12,0.06,S); this.noise(0.1,0.03,"highpass",2500,4000,S); break;
+            case "gravity": this.tone("sine",180,55,0.6,0.14,S); this.noise(0.5,0.05,"lowpass",600,90,S); break;
+            case "block":   this.tone("triangle",1900,2700,0.05,0.06,S); this.tone("square",950,950,0.03,0.03,S,0,0,3000); break;
+            case "snipe":   this.tone("square",1500,180,0.09,0.09,S,0,0,2500); this.noise(0.16,0.12,"highpass",1800,600,S); break;
+            case "freeze":  this.tone("triangle",2600,1300,0.12,0.06,S); this.tone("sine",3200,3200,0.08,0.03,S,now + 0.05); break;
+            case "shatter": this.noise(0.14,0.08,"highpass",3000,5000,S); this.tone("triangle",3000,1600,0.1,0.05,S); break;
             case "explode": this.noise(0.5,0.35,"lowpass",1400,70,S); this.tone("sine",130,38,0.4,0.28,S); break;
             //敵
             case "hit":       this.tone("square",240,170,0.03,0.04,S,0,0,1800); break;

@@ -547,6 +547,13 @@ var mainScreen = {
 
     //_src：何で攻撃したか("gun","missile"など。シナジーの判定に使う)
     hitEnemy:function(_e,_dmg,_src){
+        //凍った敵：次の一撃が2倍で、氷が砕ける(冷凍。armsExtra.js。ゲストの攻撃はホストに届いてから数える)
+        if(_e.frozen > 0 && _src != "freeze" && !coop.isGuest()){
+            _dmg *= 2;
+            _e.frozen = 0;
+            _e.wasFrozen = true;
+            arms.shatterFx(_e);
+        }
         //対戦の相手：ダメージを数えて相手へ送るだけ(相手の耐久は相手の画面で減らす。versus.js)
         if(_e.rival){ versus.hit(_e,_dmg,_src); return; }
         //ゲストの攻撃はダメージをホストへ送るだけ(敵を動かしているのはホスト)
@@ -599,6 +606,8 @@ var mainScreen = {
             var tgt = nearestPlayer(e.x,e.y);
             aimAt = tgt;
             var dx = tgt.X - e.x, dy = tgt.Y - e.y, d = Math.hypot(dx,dy) || 1;
+            //凍った敵は動かず、攻撃もしない(冷凍。armsExtra.js。ボス・レア敵は凍らず遅くなるだけ)
+            if(e.frozen > 0 && !e.boss && !e.rare) continue;
             e.face = Math.atan2(dy,dx);
 
             //レア敵・ボスの動きはbosses.js
@@ -1099,6 +1108,9 @@ var mainScreen = {
         //レア敵・ボスの見た目はbosses.js、雑魚敵はenemyArt.js、同胞はforces.js
         if(!special.draw(_e,body) && !enemyArt.draw(_e,body)) forces.draw(_e,body);
         ctx.restore();
+
+        //燃えている・凍っている敵(armsExtra.js)
+        arms.drawStatus(_e);
 
         //濡れている敵：水色のしずくがしたたる
         if(_e.wet > 0){

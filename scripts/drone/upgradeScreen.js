@@ -90,8 +90,8 @@ for(var i=0; i<3; i++){
 }
 var itemRects = [];
 for(var i=0; i<WEAPON_IDS.length; i++){
-    //5つずつ2段に並べる
-    itemRects.push(new drawRect(300 + (i%5)*128 + 59 , 212 + Math.floor(i/5)*56 , 118 , 48));
+    //5つずつ3段に並べる(下の説明欄にかからないように)
+    itemRects.push(new drawRect(300 + (i%5)*128 + 59 , 206 + Math.floor(i/5)*39 , 118 , 35));
 }
 var infoRect = new drawRect(615 , 324 , 630 , 102);
 
@@ -526,18 +526,18 @@ var upgradeScreen = {
             ctx.lineWidth = on ? 2 : 1;
             ctx.strokeRect(r.X,r.Y,r.width,r.height);
             ctx.lineWidth = 1;
-            drawWeaponIcon(id,r.X + 8,r.Y + 8,32);
+            drawWeaponIcon(id,r.X + 5,r.Y + 5,25);
             ctx.textAlign = "left";
             ctx.fillStyle = "#000";
-            ctx.font = "bold 15px sans-serif";
-            ctx.fillText(WEAPONS[id].name,r.X + 48,r.Y + 17);
-            ctx.font = "12px sans-serif";
-            ctx.fillText("Lv." + game.owned[id],r.X + 48,r.Y + 35);
+            ctx.font = "bold 13px sans-serif";
+            ctx.fillText(WEAPONS[id].name,r.X + 36,r.Y + 11);
+            ctx.font = "11px sans-serif";
+            ctx.fillText("Lv." + game.owned[id],r.X + 36,r.Y + 26);
             if(on){
                 ctx.fillStyle = "#c33";
                 ctx.font = "bold 11px sans-serif";
                 ctx.textAlign = "right";
-                ctx.fillText("装備中",r.X + r.width - 6,r.Y + 35);
+                ctx.fillText("装備中",r.X + r.width - 6,r.Y + 26);
             }
         }
 

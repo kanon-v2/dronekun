@@ -13,6 +13,7 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
 <script src="scripts/drone/common.js"></script>
 <script src="scripts/drone/sound.js"></script>
 <script src="scripts/drone/equipment.js"></script>
+<script src="scripts/drone/armsExtra.js"></script>
 <script src="scripts/drone/bosses.js"></script>
 <script src="scripts/drone/startScreen.js"></script>
 <script src="scripts/drone/mainScreen.js"></script>
@@ -227,6 +228,55 @@ try{
     viewOpt.hitbox = keepHit; viewOpt.pointer = keepPtr;
     if(keepView) localStorage.setItem(viewOpt.KEY, keepView); else localStorage.removeItem(viewOpt.KEY);
     page.change(0);
+    //新しい装備(armsExtra.js)：それぞれの効果が働く
+    var mkE = function(_type,_x,_y,_hp){ var e = makeEnemy(_type); e.x = _x; e.y = _y; e.vx = 0; e.vy = 0; e.hp = e.maxHp = _hp || 50; e.timer = 9999; enemies.push(e); return e; };
+    var prep = function(_id){ setup(7, {}, [_id,null,null], 3); game.owned[_id] = 3; page.change(1); enemies = []; enemyShots = []; mainScreen.toSpawn = 0;
+                              arms.reset(); arms.cd[_id] = 0; drone.X = 300; drone.Y = 270; };
+    var run = function(_n){ for(var i=0; i<_n; i++){ arms.update(true); if(i % 10 == 0) draw1(); } };
+    //火炎放射：当たった敵が燃え、炎が届かなくなっても削れ続ける
+    prep("fire");
+    var fe = mkE("tank",360,270); run(30);
+    var fBurn = fe.burn > 0 && fe.hp < 50;
+    drone.X = 40; var fh = fe.hp; run(60);
+    check("火炎放射：敵が燃えて削れ続ける", fBurn && fe.hp < fh, "残り" + fe.hp.toFixed(1));
+    //円盤：行きと帰りで当たり、戻ってくる
+    prep("disc");
+    var de = mkE("tank",430,270); run(1);
+    var dThrown = arms.discs.length == 2;
+    arms.cd.disc = 99999;   //1回だけ投げて、戻ってくるまでを見る
+    run(200);
+    check("円盤：投げて戻り、行きと帰りで当たる", dThrown && arms.discs.length == 0 && de.hp <= 50 - DISC_DMG*3 + 0.01 && de.hp >= 50 - DISC_DMG*4 - 0.01, "残り" + de.hp.toFixed(1));
+    //重力弾：渦がまわりの敵を吸い寄せる
+    prep("gravity");
+    var g1 = mkE("tank",420,270), g2 = mkE("tank",430,350); run(60);
+    var gw = arms.wells[0], gd0 = gw && gw.open ? Math.hypot(g2.x - gw.x, g2.y - gw.y) : 0;
+    run(40);
+    var gd1 = gw ? Math.hypot(g2.x - gw.x, g2.y - gw.y) : 0;
+    check("重力弾：渦がまわりの敵を吸い寄せる", gw && gw.open && gd1 < gd0 - 20, Math.round(gd0) + "→" + Math.round(gd1));
+    //バリア：板に触れた敵の弾が消え、その板はしばらく消える
+    prep("barrier");
+    run(1);
+    var bp = arms.platePos(0, arms.plates.length);
+    enemyShots.push({ x:bp.x, y:bp.y, vx:0, vy:0, r:5, kind:"normal", grazed:false });
+    run(1);
+    var bDown = arms.plates.filter(function(p){ return p.down > 0; }).length;
+    check("バリア：敵の弾を消し、板がしばらく消える", arms.plates.length == 4 && enemyShots.length == 0 && bDown == 1);
+    //狙撃：いちばん体力の多い敵だけを大きく削る
+    prep("sniper");
+    var sWeak = mkE("bug",350,200,3), sTough = mkE("tank",700,450,80); run(1);
+    check("狙撃：いちばん体力の多い敵を削る", sTough.hp == 80 - SNIPE_DMG[2] && sWeak.hp == 3);
+    //冷凍：凍った敵は動かず、次の一撃が2倍で砕ける
+    prep("freeze");
+    var ze = mkE("bug",380,270,50), zf = 0;
+    while(!(ze.frozen > 0) && zf < 60){ run(1); zf++; }
+    var zFrozen = ze.frozen > 0;
+    ze.vx = 3; var zx = ze.x;
+    for(var i=0; i<5; i++) mainScreen.updateEnemies();
+    var zStill = ze.x == zx;
+    var zh = ze.hp; mainScreen.hitEnemy(ze,1,"gun");
+    check("冷凍：凍った敵は止まり、次の一撃が2倍で砕ける", zFrozen && zStill && zh - ze.hp == 2 && !(ze.frozen > 0), "凍" + zFrozen + " 止" + zStill + " 差" + (zh - ze.hp));
+    enemies = []; enemyShots = []; page.change(0);
+
     //テスト前のセーブ等を戻す
     save.clear();
     if(keepSave) localStorage.setItem("dronekun_save", keepSave);

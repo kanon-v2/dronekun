@@ -196,6 +196,7 @@ var arms = {
         this.cd = {};
         var eq = this.equipped();
         for(var i=0; i<eq.length; i++) this.cd[eq[i]] = 30 + i*15;  //最初の攻撃は少しずつずらす
+        this.reset2();  //追加の装備(armsExtra.js)
     },
 
     equipped:function(){
@@ -218,7 +219,7 @@ var arms = {
     },
     //残りの待ち時間の割合(HUD用)
     charge:function(_id){
-        if(_id == "blade") return 1;
+        if(_id == "blade" || _id == "barrier") return 1;
         return 1 - Math.max(0,this.cd[_id] || 0) / this.cooldown(_id);
     },
 
@@ -248,7 +249,7 @@ var arms = {
             var eq = this.equipped();
             for(var i=0; i<eq.length; i++){
                 var id = eq[i];
-                if(id == "blade") continue;
+                if(id == "blade" || id == "barrier") continue;   //いつも動いている装備
                 if(this.cd[id] > 0){ this.cd[id]--; continue; }
                 //撃てる相手がいなければ待機して、見つかりしだい撃つ
                 if(this.fire(id,this.level(id))){
@@ -264,6 +265,7 @@ var arms = {
         this.updateMines();
         this.updateBugs();
         this.updateDrops();
+        this.update2(_firing);  //追加の装備(armsExtra.js)
         for(var i=this.beams.length-1; i>=0; i--){ if(--this.beams[i].life <= 0) this.beams.splice(i,1); }
         for(var i=this.bolts.length-1; i>=0; i--){ if(--this.bolts[i].life <= 0) this.bolts.splice(i,1); }
         if(this.chainTimer > 0 && --this.chainTimer == 0) this.chainCount = 0;
@@ -326,6 +328,12 @@ var arms = {
                             fx.sparks(e.x, e.y, 10, SYN_COLOR.focus, 6, 3);
                             fx.ring(e.x, e.y, 34, SYN_COLOR.focus, 12, 4);
                         }
+                        //集光：渦の中の敵には2倍
+                        if(this.syn.lens && this.inWell(e)){
+                            m *= 2;
+                            fx.flare(e.x, e.y, 30, SYN_COLOR.lens, 12);
+                            fx.shout("lens", e.x, e.y);
+                        }
                         if(this.syn.steam && e.wet > 0) steamHits.push(e);
                         mainScreen.hitEnemy(e,(_lv+1)*m,"laser");
                     }
@@ -386,7 +394,7 @@ var arms = {
                 effects.push({ ring:true, x:drone.X, y:drone.Y, life:18, maxLife:18, R:R, color:"130,90,200" });
                 return true;
         }
-        return false;
+        return this.fire2(_id,_lv);     //追加の装備(armsExtra.js)
     },
 
     //電撃：_firstから近くの敵へ次々に飛び移る
@@ -399,6 +407,8 @@ var arms = {
             if(this.syn.overload && cur.slow > 0){ m *= 2; overload = true; }
             //漏電：濡れた敵には2倍で、そこから遠くまで飛び移る
             if(this.syn.short && cur.wet > 0){ m *= 2; reach = 195; shorted = true; }
+            //超伝導：凍った敵には1.5倍で、そこから遠くまで飛び移る
+            if(this.syn.superconduct && cur.frozen > 0){ m *= 1.5; reach = 195; fx.flare(cur.x, cur.y, 26, SYN_COLOR.superconduct, 10); fx.shout("superconduct", cur.x, cur.y); }
             pts.push({x:cur.x, y:cur.y});
             hit.push(cur);
             mainScreen.hitEnemy(cur,m,"tesla");
@@ -473,6 +483,9 @@ var arms = {
         }
         burst(_x,_y,10,"#e84");
         sound.play("explode");
+        //ナパーム・焼夷地雷：爆発の跡がしばらく燃える(armsExtra.js)
+        if(this.syn.napalm && _src == "missile") this.addField(_x,_y,_R*0.8,"napalm");
+        if(this.syn.incendiary && _src == "mine") this.addField(_x,_y,_R*0.8,"incendiary");
     },
 
     spawnBug:function(_x,_y){
@@ -491,6 +504,7 @@ var arms = {
             fx.ring(_e.x, _e.y, 30, SYN_COLOR.parasite, 12, 3);
             fx.shout("parasite", _e.x, _e.y);
         }
+        this.onKill2(_e);   //追加の装備(armsExtra.js)
     },
 
     updateBullets:function(){
@@ -502,7 +516,7 @@ var arms = {
                 var e = enemies[j];
                 if(e.dead || b.hit.indexOf(e) >= 0) continue;
                 if(Math.hypot(e.x - b.x, e.y - b.y) < e.r + 3){
-                    mainScreen.hitEnemy(e,1,"gun");
+                    mainScreen.hitEnemy(e,this.gunDmg(),"gun");    //照準の間は2倍(armsExtra.js)
                     b.hit.push(e);
                     if(this.syn.pierce){
                         //徹甲弾：当たるたびに火花。2体目以降を貫くと大きく弾ける
@@ -706,6 +720,7 @@ var arms = {
 
     //----------------------------------------------------------------- 描画
     draw:function(_showBlades){
+        this.draw2(_showBlades);    //追加の装備(armsExtra.js。地面の炎・渦などは下に描く)
         //地雷
         for(var i=0; i<this.mines.length; i++){
             var m = this.mines[i];

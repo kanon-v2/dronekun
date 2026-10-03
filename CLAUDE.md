@@ -36,6 +36,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | `common.js` | キャンバス・ページ管理(`page`)・マウス/タッチ入力・矩形ボタン(`drawRect`)・能力(`STATS`)・進行状況(`game`)・セーブ(`save`)・ドローン君(`drone`)と見た目(`DroneLook`) |
 | `sound.js` | BGM・効果音。Web Audio API で合成(音声ファイルなし)。曲データは `TRACKS` |
 | `equipment.js` | 装備(`WEAPONS`)・シナジー(`SYNERGIES`)・戦闘中の装備の動作(`arms`)・シナジー演出(`fx`) |
+| `armsExtra.js` | 追加の装備(火炎放射・円盤・重力弾・バリア・狙撃・冷凍)とそのシナジー。`WEAPONS`・`SYNERGIES`・`arms` に足す(`arms` から `fire2`・`update2`・`draw2` などを呼ぶ)。敵の状態「燃える」「凍る」もここ |
 | `bosses.js` | レア敵・ボス(女王蜂・移動要塞・ドローン君改)。`special` |
 | `startScreen.js` | タイトル画面 |
 | `mainScreen.js` | 戦闘画面。敵の種類(`ENEMY_TYPES`)・敵の弾・アイテム・HUD |
@@ -87,8 +88,8 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | 内容 | 場所 |
 |---|---|
 | 能力の値・強化コスト | `common.js` の `STATS`・`UPGRADE_COST` |
-| 装備の強さ・攻撃間隔 | `equipment.js` の `WEAPONS`・`SLOT_COST`、水鉄砲は `WATER_*` |
-| シナジーの組み合わせ・色 | `equipment.js` の `SYNERGIES`・`SYN_COLOR` |
+| 装備の強さ・攻撃間隔 | `equipment.js` の `WEAPONS`・`SLOT_COST`、水鉄砲は `WATER_*`。追加の装備は `armsExtra.js` の `WEAPONS` と `FIRE_*`・`BURN_*`・`DISC_*`・`WELL_*`・`BARRIER_*`・`SNIPE_*`・`FREEZE_*`・`ICE_*` |
+| シナジーの組み合わせ・色 | `equipment.js` の `SYNERGIES`・`SYN_COLOR`(追加の装備のものは `armsExtra.js`) |
 | 敵の種類・弾幕の増え方 | `mainScreen.js` の `ENEMY_TYPES`・`danmaku()`・`HIT_CORE`・`GRAZE_RANGE` |
 | 雑魚敵の見た目・色 | `enemyArt.js` の `enemyArt`・`ENEMY_COLOR` |
 | 衝撃波(五龍) | `mainScreen.js` の `BLAST_*`、`dragons.js` の `DRAGON_*` |
@@ -136,6 +137,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 
 - ホストが敵・弾・アイテムを動かし、状態を約30回/秒でゲストへ送る。ゲストは自分のドローン君と武器を自分の画面で動かし、与えたダメージ・拾ったアイテム・衝撃波を「合計値」で送り返す。被弾判定はそれぞれが自分について行う。
 - 送る量は1回 `COOP_LIMIT`(12000バイト)以内。超えるときはゲストから遠いものから削る。
+- 敵の状態：減速(EMP)・濡れ(水鉄砲)・燃える(火炎放射)・凍る(冷凍)は、ゲストが付けた回数をダメージと一緒に送り(`guestHit` の `dm`)、ホストが自分の敵に付ける。ホストからは状態の印を送る(`packEnemy` の `flags`)。燃えて削れる分と、凍った敵への2倍はホストだけで数える。ゲストの重力弾の渦は、相方の武器の見た目(`armsSummary`)で届いた位置でホストが敵を吸い寄せる。ゲストのバリアが防いだ弾は、防いだ位置を送り(`br`)、ホストがいちばん近い弾を消す。
 - 協力プレイ中は敵の体力2倍(`COOP_HP_MUL`)、強化・装備は各自、セーブしない。
 - 拾ったパーツはふたりとも受け取る。自分が拾った数の合計(`partsGot`)を送り合い、増えた分を足す(`shareParts`)。報酬カプセル・燃料は拾った人だけ。
 - コンティニュー：強化画面で `save.write` が呼ばれると、協力プレイ中はセーブの代わりに `coop.checkpoint` に覚える。ふたりとも撃墜されたらゲームオーバー画面でコンティニューを押せて、ふたりとも押すと(相方がいなければすぐ)ホストが `checkpoint` に戻して強化画面へ。ゲストはホストが強化画面へ戻ったのを見てついていく(`continueGame`)。
@@ -157,7 +159,8 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 - 相手は自分の画面では `enemies` に入った敵(`rival:true`)。装備はいつもどおり自動で狙い、`mainScreen.hitEnemy` が `versus.hit` へ回す。与えたダメージ(`VS_DAMAGE_MUL` をかけた値)の合計を送り、受けた側が自分の耐久から引く。被弾の判定は攻撃した側の画面で行う。
 - 衝撃波は五龍が相手に食らいつく。出した直後(`mainScreen.guard`)は受けたダメージを無視する。相手の衝撃波は `dragonBlast.cast(…, true, [versus.me])` で、龍が自分に向かってくる見た目だけ描く。
 - 能力・装備は対戦用に `game` を作り直す(ひとり用のセーブには書き込まない。つづきからはセーブから読み直す)。
-- バランス調整：`tools/vs-balance.html`(組み合わせを変えて自動で何戦もする。`#8` で戦数)と `tools/vs-dps.html`(装備1つずつの毎秒のダメージ)。自動プレイは近づかないので、ブレード・地雷は実際より弱く出る。
+- 追加の装備の対戦での効き方：冷凍は凍らせる代わりに相手を遅くする(`VS_ICE_SLOW`。EMPと同じく回数を送る)。バリアは、受けたダメージを板1枚で `VS_BARRIER_ABSORB` 防ぐ(`arms.absorbVs`)。重力弾は相手を吸い寄せない(相手の位置は相手の画面で決まる)が、渦のダメージは入る。
+- バランス調整：`tools/vs-balance.html`(組み合わせを変えて自動で何戦もする。`#8` で戦数)と `tools/vs-dps.html`(装備1つずつの毎秒のダメージ。`#ids=fire,disc` で測る装備を選べる。全部だと時間がかかる)。自動プレイは近づかないので、ブレード・地雷は実際より弱く出る。
 
 ## Git の運用
 
