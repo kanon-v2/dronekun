@@ -58,6 +58,7 @@ function draw(now){
         screens[page.number].update();
         coop.send();
         Click = 0;
+        endTap();   //タイトル画面でタップしてボタンを押したら、ドローン君の目標を元に戻す
         time++;
         if(time >= MAXTIME){time=0;}
         acc -= STEP;

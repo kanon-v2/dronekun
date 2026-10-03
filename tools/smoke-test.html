@@ -179,6 +179,31 @@ try{
     canvas.style.width = keepCssW; canvas.style.height = keepCssH;
     fps.count = keepFps.count; fps.last = keepFps.last; fps.value = keepFps.value; fps.low = keepFps.low;
 
+    //タイトル画面のタッチ：ボタン以外はドラッグした分だけ目標が動き(戦闘中と同じ)、ボタンはタップで押せて目標は飛ばない
+    page.change(0); startScreen.settings = false; bossDebug.menu = false;
+    var crect = canvas.getBoundingClientRect();
+    var pe = function(_type,_x,_y){ canvas.dispatchEvent(new PointerEvent(_type,{ pointerType:"touch", pointerId:7, bubbles:true, cancelable:true,
+        clientX:crect.left + _x*crect.width/CW, clientY:crect.top + _y*crect.height/CH })); };
+    MouseX = 480; MouseY = 270; Click = 0;
+    pe("pointerdown",150,450);
+    var tNoJump = MouseX == 480 && MouseY == 270 && Click == 0;
+    pe("pointermove",190,430);
+    var tMoved = Math.abs(MouseX - (480 + 40*TOUCH_SPEED)) < 0.01 && Math.abs(MouseY - (270 - 20*TOUCH_SPEED)) < 0.01;
+    pe("pointerup",190,430);
+    var tx = MouseX, ty = MouseY;
+    pe("pointerdown",settingsButton.X + 20,settingsButton.Y + 10);
+    var tTap = Click == 1;
+    startScreen.update(); Click = 0; endTap();
+    pe("pointerup",settingsButton.X + 20,settingsButton.Y + 10);
+    var tOpen = startScreen.settings && MouseX == tx && MouseY == ty;
+    pe("pointerdown",settingsClose.X + 20,settingsClose.Y + 10);
+    startScreen.update(); Click = 0; endTap();
+    pe("pointerup",settingsClose.X + 20,settingsClose.Y + 10);
+    var tClose = !startScreen.settings && MouseX == tx && MouseY == ty;
+    check("タイトル画面のタッチ：ドラッグで目標が動き、ボタンはタップで押せる(目標は飛ばない)", tNoJump && tMoved && tTap && tOpen && tClose,
+          [tNoJump, tMoved, tTap, tOpen, tClose].map(function(b){ return b ? 1 : 0; }).join(""));
+    inputMode = "mouse";
+
     //戦闘画面の右下：当たり判定・ポインタの表示ボタン
     var keepView = localStorage.getItem(viewOpt.KEY), keepHit = viewOpt.hitbox, keepPtr = viewOpt.pointer;
     viewOpt.hitbox = true; viewOpt.pointer = true;

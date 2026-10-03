@@ -58,6 +58,12 @@ var startScreen = {
         this.hover = -1;
         this.settings = false;
     },
+    //タッチで、ボタンの上を触ったか(タイトル画面では、ボタン以外はドラッグでドローン君を動かす。common.js)
+    touchUI:function(_x,_y){
+        var list = this.items();
+        for(var i=0; i<list.length; i++) if(list[i][0].contains(_x,_y)) return true;
+        return settingsButton.contains(_x,_y) || (debugUrl() && debugButton.contains(_x,_y));
+    },
     //メニューの一覧([ボタン, 文字, 押せるか])
     items:function(){
         return [
@@ -93,9 +99,12 @@ var startScreen = {
             return;
         }
         //マウスが乗ったメニューが変わったら、小さく音を鳴らす
+        //(タッチではマウスを乗せることがないので、目標の位置がボタンに重なっても反転させない)
         var list = this.items(), h = -1;
-        for(var i=0; i<list.length; i++) if(list[i][2] && list[i][0].contains(MouseX,MouseY)) h = i;
-        if(settingsButton.contains(MouseX,MouseY)) h = list.length;
+        if(inputMode == "mouse"){
+            for(var i=0; i<list.length; i++) if(list[i][2] && list[i][0].contains(MouseX,MouseY)) h = i;
+            if(settingsButton.contains(MouseX,MouseY)) h = list.length;
+        }
         if(h != this.hover && h >= 0) sound.play("hover");
         this.hover = h;
 
@@ -375,7 +384,7 @@ var startScreen = {
     //デバッグのメニューを開くボタン(赤い枠。乗せると赤く反転)
     drawDebugButton:function(){
         var b = debugButton;
-        var on = b.contains(MouseX,MouseY) && !this.settings && !bossDebug.menu;
+        var on = inputMode == "mouse" && b.contains(MouseX,MouseY) && !this.settings && !bossDebug.menu;
         ctx.fillStyle = on ? TITLE_ACCENT : "#fff";
         ctx.fillRect(b.X, b.Y, b.width, b.height);
         ctx.strokeStyle = TITLE_ACCENT;

@@ -62,6 +62,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
   各画面は `{ enter(), update(), draw() }` を持つオブジェクトで、`draw.js` の `screens` 配列に並ぶ。切り替えは `page.change(n)`。
 - 更新は `draw.js` で1/60秒ごと(画面のリフレッシュレートに依存しない)。`update()` が1コマ、`draw()` が描画。
 - クリックは `Click == 1` が1コマだけ立つ。ボタンは `drawRect` の `clicked()` / `button()` を使う。
+- タッチ操作(`common.js`)：戦闘中・対戦の戦闘中・タイトル画面は、どこをドラッグしても指の動いた分だけドローン君の目標が動く(`isTouchDrag()`)。タイトル画面では、ボタンの上を触ったときだけタップとして押し(`startScreen.touchUI()`)、押し終わったら目標を元に戻す(`tapAt()`・`endTap()`。目標がボタンへ飛ばないように)。それ以外の画面はタップ。
 - セーブは `localStorage`(`dronekun_save`・ハイスコア `dronekun_best`・クリア済み `dronekun_cleared`)。強化画面に入ったときに自動セーブ。
 - 画面右下のボタン(`sound.js` の `sound.buttons`)：BGM・SEはいつでも、「当たり判定」「ポインタ」の表示/非表示は戦闘中だけ出す(`when`)。表示の設定は `common.js` の `viewOpt`(`localStorage` の `dronekun_view`)。ポインタを隠すのは戦闘中だけ(メニューでは操作に要るので出す)。
 - 全20WAVE(`FINAL_WAVE`)。5WAVEごとにボス。WAVE15(`REVEAL_WAVE`)のボス後に真実が明かされ、WAVE16からは人間の兵器が敵になる。
