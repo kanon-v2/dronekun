@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<!--
+    敵の見た目を見る
+    ・ゲームと同じ描き方(mainScreen.drawEnemy)で、雑魚敵を大きく並べ、下に等倍(戦闘画面の大きさ)と状態の違いを並べる
+    ・敵は動き続ける(突進の予告→突進、砲台の狙い・撃つ前の光り、自爆の点滅など)
+    ・#still：ヘッドレスの撮影用(少し動かしてから止める)
+-->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<base href="../">
+<title>敵の見た目</title>
+<style>body{ margin:0; background:#ddd; } #Canvas{ display:block; width:960px; height:540px; }</style>
+</head>
+<body>
+<div id="Bigbox"><canvas id="Canvas" width="960" height="540"></canvas></div>
+<script src="scripts/drone/common.js"></script>
+<script src="scripts/drone/sound.js"></script>
+<script src="scripts/drone/equipment.js"></script>
+<script src="scripts/drone/bosses.js"></script>
+<script src="scripts/drone/startScreen.js"></script>
+<script src="scripts/drone/mainScreen.js"></script>
+<script src="scripts/drone/dragons.js"></script>
+<script src="scripts/drone/forces.js"></script>
+<script src="scripts/drone/enemyArt.js"></script>
+<script src="scripts/drone/upgradeScreen.js"></script>
+<script src="scripts/drone/gameoverScreen.js"></script>
+<script src="scripts/drone/story.js"></script>
+<script src="scripts/drone/bossDebug.js"></script>
+<script src="lib/peerjs.min.js"></script>
+<script src="scripts/drone/coop.js"></script>
+<script src="scripts/drone/versus.js"></script>
+<script src="scripts/drone/draw.js"></script>
+<script>
+game.wave = 8;  //回転砲台の砲身が3本になるWAVE
+
+function mk(_type,_x,_y,_k){
+    var T = ENEMY_TYPES[_type];
+    return { type:_type, r:T.r, x:_x, y:_y, k:_k || 1, vx:0, vy:0, t:Math.floor(Math.random()*100), timer:60, flash:0,
+             hp:10, maxHp:10, slow:0, wet:0, face:0, spin:0, firing:0, fuse:0, aimX:1, aimY:0, turret:0, seed:0.3 };
+}
+var TYPES = [["bug","虫"],["dasher","突進"],["shooter","砲台"],["tank","装甲"],["spinner","回転砲台"],["bomber","自爆機"],
+             ["mdrone","人間のドローン"],["heli","ヘリ"],["panzer","戦車"]];
+var big = [], small = [], states = [];
+for(var i=0; i<TYPES.length; i++){
+    var row = i < 6 ? 0 : 1, col = i < 6 ? i : i - 6;
+    big.push(mk(TYPES[i][0], 85 + col*158 + (row ? 158 : 0), row ? 300 : 125, row ? 2.2 : 2.6));
+    small.push(mk(TYPES[i][0], 60 + i*52, 468, 1));
+}
+//状態の違い(等倍)：被弾の白・濡れ・EMP・傷ついた体力ゲージ
+var st = [["flash","被弾"],["wet","濡れ"],["slow","EMP"],["hurt","傷"]];
+for(var i=0; i<st.length; i++){
+    var e = mk(i % 2 ? "shooter" : "bug", 580 + i*95, 468, 1);
+    e.state = st[i][0];
+    states.push(e);
+}
+
+//敵の動き(ゲームの中の動きを簡単にまねる)
+function act(_e){
+    _e.t++;
+    var t = _e.t;
+    switch(_e.type){
+        case "dasher":
+            //予告(60フレーム)→突進(40フレーム)をくり返す
+            var c = t % 100;
+            _e.timer = c < 60 ? 60 - c : 0;
+            var a = t*0.01;
+            _e.aimX = Math.cos(a); _e.aimY = Math.sin(a);
+            _e.vx = _e.timer > 0 ? 0 : _e.aimX*5; _e.vy = _e.timer > 0 ? 0 : _e.aimY*5;
+            break;
+        case "shooter":
+            _e.face = Math.sin(t*0.02)*1.2;
+            var c = t % 90;
+            _e.vx = _e.vy = c < 30 ? 0.8 : 0;
+            _e.timer = c < 30 ? 55 : 90 - c;
+            break;
+        case "spinner":
+            _e.firing = t % 160 < 70 ? 1 : 0;
+            _e.spin += _e.firing ? 0.06 : 0.015;
+            break;
+        case "bomber":
+            var c = t % 120;
+            _e.fuse = c < 75 ? 0 : 120 - c;
+            break;
+        case "heli":
+            _e.face = Math.sin(t*0.015)*1.5;
+            break;
+        case "panzer":
+            _e.vx = Math.cos(t*0.004); _e.vy = Math.sin(t*0.004);
+            _e.turret = Math.sin(t*0.02)*1.2 - 0.6;
+            break;
+        case "mdrone":
+            _e.vx = 2; break;
+    }
+    if(_e.state == "flash") _e.flash = t % 40 < 6 ? 3 : 0;
+    if(_e.state == "wet") _e.wet = 60;
+    if(_e.state == "slow") _e.slow = 2;
+    if(_e.state == "hurt") _e.hp = 4;
+}
+function drawAt(_e){
+    //大きく描くときは、敵の位置を原点にして拡大する
+    var x = _e.x, y = _e.y;
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.scale(_e.k,_e.k);
+    _e.x = 0; _e.y = 0;
+    mainScreen.drawEnemy(_e);
+    _e.x = x; _e.y = y;
+    ctx.restore();
+}
+function label(_s,_x,_y){
+    ctx.fillStyle = "#555"; ctx.font = "12px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(_s,_x,_y);
+}
+var gallery = {
+    update:function(){
+        var all = big.concat(small,states);
+        for(var i=0; i<all.length; i++) act(all[i]);
+    },
+    draw:function(){
+        mainScreen.drawBackground();
+        for(var i=0; i<big.length; i++){ drawAt(big[i]); label(TYPES[i][1], big[i].x, big[i].y + (i < 6 ? 72 : 78)); }
+        ctx.fillStyle = "rgba(0,0,0,0.12)"; ctx.fillRect(20,425,920,1);
+        for(var i=0; i<small.length; i++) drawAt(small[i]);
+        for(var i=0; i<states.length; i++){ drawAt(states[i]); label(st[i][1], states[i].x, 505); }
+        label("等倍(戦闘画面の大きさ)", 260, 505);
+    }
+};
+screens.push(gallery);
+page.number = screens.length - 1;
+sound.draw = function(){};
+fps.draw = function(){};
+pointer.draw = function(){};
+//撮影用：少し進めてから止める
+if(location.hash.indexOf("still") >= 0){
+    for(var i=0; i<75; i++) gallery.update();
+    gallery.update = function(){};
+}
+</script>
+</body>
+</html>

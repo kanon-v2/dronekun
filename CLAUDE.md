@@ -14,7 +14,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 ```
 
 - ヘッドレスのEdgeで次の2つを開き、すべて `RESULT: OK` なら成功(終了コード0)。
-  - `tools/smoke-test.html`: ストーリーの流れ・各WAVEの戦闘・全シナジー・強化画面・ストーリー確認モード・ドローン君の絵と振り向き・タイトルの設定(見た目の切り替え)
+  - `tools/smoke-test.html`: ストーリーの流れ・各WAVEの戦闘・全シナジー・強化画面・ストーリー確認モード・ドローン君の絵と振り向き・タイトルの設定(見た目の切り替え)・雑魚敵の見た目
   - `tools/coop-test.html`: 協力プレイ。ゲーム2つ(`tools/coop-frame.html`)を iframe で開き、偽のPeerJS(`tools/fake-peer.js`)の通信を親ページが中継する。部屋作り・コード違い・参加・出撃・WAVEクリアの同期・ゲストの攻撃の反映・退出と、対戦(参加・開始・決着・勝敗の一致・もう一度・退出)を確かめる(インターネット不要)
 - 新しい機能を足したら、`tools/smoke-test.html`(協力プレイに関わるものは `tools/coop-test.html`)にも確認項目を足す。
 - 見た目の確認はヘッドレスEdgeのスクリーンショットで行う:
@@ -41,6 +41,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | `mainScreen.js` | 戦闘画面。敵の種類(`ENEMY_TYPES`)・敵の弾・アイテム・HUD |
 | `dragons.js` | 衝撃波(クリック)＝五龍の大技 |
 | `forces.js` | 同胞(色違いのドローン君)と人間の兵器。`ENEMY_TYPES` に種類を追加している |
+| `enemyArt.js` | 雑魚敵(`mainScreen.js` の6種類と人間の兵器3種類)の見た目(`enemyArt`)。`mainScreen.drawEnemy` から呼ぶ |
 | `upgradeScreen.js` | 強化画面(報酬カード・能力強化・装備・能力リセット) |
 | `gameoverScreen.js` | ゲームオーバー画面 |
 | `story.js` | ストーリー(`STORIES`)・ストーリー画面・エンディング・ストーリー確認モード |
@@ -87,6 +88,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | 装備の強さ・攻撃間隔 | `equipment.js` の `WEAPONS`・`SLOT_COST`、水鉄砲は `WATER_*` |
 | シナジーの組み合わせ・色 | `equipment.js` の `SYNERGIES`・`SYN_COLOR` |
 | 敵の種類・弾幕の増え方 | `mainScreen.js` の `ENEMY_TYPES`・`danmaku()`・`HIT_CORE`・`GRAZE_RANGE` |
+| 雑魚敵の見た目・色 | `enemyArt.js` の `enemyArt`・`ENEMY_COLOR` |
 | 衝撃波(五龍) | `mainScreen.js` の `BLAST_*`、`dragons.js` の `DRAGON_*` |
 | レア敵・ボス | `bosses.js` の `RARE_*`・`BOSS_EVERY`・`makeBoss()`・`KAI_PATTERNS` |
 | 同胞・人間の兵器 | `forces.js` の `kinRate()`・`pickHuman()` |
@@ -110,6 +112,13 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
   - 3Dの絵は `tools/drone-art.html`(WebGLで形・光・影を計算。案の見比べページ)で作り、`tools/bake-drone.ps1 A` でシートに書き出す。GPUで描くとヘッドレスEdgeのGPUプロセスが落ちることがあるので、書き出しはソフトウェア描画(SwiftShader)で行う。
 - `tools/drone-motion.html`：ゲームと同じ `DroneLook` で、自分・同胞の色違い・ドローン君改・ストーリーの大きさを動かして見る。`#art=O` で見た目を選び、`#art=E,film` で動きをコマ送りの1枚にする。
 - 1枚の絵として使うところ(ストーリーの残骸など)には、正面の絵を切り出した `Drone_front` がある。
+
+## 雑魚敵の見た目(enemyArt.js)
+
+- ドローン君(標準)と同じ画風：平らな塗り・濃いふちどり・左上から光が当たるハイライトの線。グラデーションや影のぼかし(`shadowBlur`)は使わない(数が多くても軽く描けるように。1体あたり約10µs)。光るランプのにじみは薄い円を重ねて表す(`halo`)。
+- 大きさ・当たり判定(`r`)と色の役割(虫の灰色の羽・突進の赤・回転砲台のオレンジ・人間の兵器のオリーブ)は変えない。被弾したときは胴体を白く塗る(`_body`)。
+- 協力プレイのゲストの画面でも同じに見えるよう、絵に使う値はホストから届くもの(`t`・`vx`・`vy`・`face`・`timer`・`spin`・`firing`・`fuse`・`aimX`/`aimY`・`turret`・`flash`)だけにする。新しい値を使うときは `coop.js` の `packEnemy` と受け取り側も直す。
+- `tools/enemy-art.html`：雑魚敵を大きく並べ、等倍と状態の違い(被弾・濡れ・EMP・傷)も並べて動かす。`#still` で撮影用に止める。
 
 ## 開発用の機能
 

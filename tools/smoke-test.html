@@ -18,6 +18,7 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
 <script src="scripts/drone/mainScreen.js"></script>
 <script src="scripts/drone/dragons.js"></script>
 <script src="scripts/drone/forces.js"></script>
+<script src="scripts/drone/enemyArt.js"></script>
 <script src="scripts/drone/upgradeScreen.js"></script>
 <script src="scripts/drone/gameoverScreen.js"></script>
 <script src="scripts/drone/story.js"></script>
@@ -140,6 +141,18 @@ try{
     key("Escape");
     bossDebug.god = false; bossDebug.gear = 1;
     check("Escでメニューを閉じる", !bossDebug.menu);
+
+    //雑魚敵の見た目(enemyArt.js)：9種類とも新しい絵で描け、被弾・撃つ直前・自爆直前などの状態でも止まらない
+    var artTypes = ["bug","dasher","shooter","tank","spinner","bomber","mdrone","heli","panzer"], artOk = [], artErr = errors.length;
+    for(var i=0; i<artTypes.length; i++){
+        var T = ENEMY_TYPES[artTypes[i]];
+        var ae = { type:artTypes[i], r:T.r, x:200, y:200, vx:1, vy:0, t:0, timer:10, flash:0, hp:3, maxHp:5, slow:2, wet:30,
+                   face:0.5, spin:0, firing:1, fuse:20, aimX:1, aimY:0, turret:1 };
+        var drawn = true;
+        for(var j=0; j<8; j++){ ae.t += 7; ae.flash = j % 2 ? 3 : 0; ae.timer = j < 4 ? 10 : 0; drawn = enemyArt.draw(ae, ae.flash ? "#fff" : null) && drawn; mainScreen.drawEnemy(ae); }
+        if(drawn) artOk.push(artTypes[i]);
+    }
+    check("雑魚敵9種類を新しい絵で描ける(被弾・撃つ直前・自爆直前など)", artOk.length == artTypes.length && errors.length == artErr, artOk.length + "/" + artTypes.length + "種類");
 
     //戦闘画面の右下：当たり判定・ポインタの表示ボタン
     var keepView = localStorage.getItem(viewOpt.KEY), keepHit = viewOpt.hitbox, keepPtr = viewOpt.pointer;
