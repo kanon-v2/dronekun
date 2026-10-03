@@ -115,32 +115,43 @@ try{
     check("能力リセットでパーツ返却", game.level.speed == 1 && refund > 0, "返却 " + refund);
     upgradeScreen.tab = "equip"; draw1();
 
-    // 5. ストーリー確認モード(Qキー)
-    page.change(0);
-    document.dispatchEvent(new KeyboardEvent("keydown", { code:"KeyQ" }));
-    check("Qキーでストーリー確認モード", page.number == 4 && storyDebug.active);
-    document.dispatchEvent(new KeyboardEvent("keydown", { code:"Escape" }));
-    check("Escでタイトルへ", page.number == 0 && !storyDebug.active);
-
-    // 6. ボス戦デバッグ(Bキー)
-    function key(_code){ document.dispatchEvent(new KeyboardEvent("keydown", { code:_code })); }
+    // 5・6. デバッグのメニュー(入口は #debug のリンクだけ。キーボードの操作はない)
+    var tap = function(_r){ inputMode = "mouse"; MouseIn = true; MouseX = _r.X + _r.width/2; MouseY = _r.Y + _r.height/2; Click = 1; if(!sound.handleClick()) screens[page.number].update(); Click = 0; };
+    //「DEBUG：戻る」の位置は、出ているボタンに合わせて shown() で決まる(画面では毎フレーム描くときに決まる)
+    var backBtn = function(){ sound.shown(); for(var i=0; i<sound.buttons.length; i++) if(sound.buttons[i].key == "debugBack") return sound.buttons[i].rect; };
+    page.change(0); bossDebug.menu = false;
+    //#debug がないときは、デバッグのボタンもキーも効かない
+    var noLink = !debugUrl();
+    tap(debugButton);
+    ["KeyB","KeyQ"].forEach(function(c){ document.dispatchEvent(new KeyboardEvent("keydown", { code:c })); });
+    check("#debug がないとデバッグに入れない(ボタンなし・B/Qキーも効かない)", noLink && !bossDebug.menu && !storyDebug.active && page.number == 0);
+    history.replaceState(null, "", location.pathname + "#debug");
+    tap(debugButton);
+    var menuOpen = bossDebug.menu;
+    tap(bossDebug.tools()[0]);
+    check("ストーリー確認モード", menuOpen && page.number == 4 && storyDebug.active);
+    draw1();
+    tap(backBtn());
+    check("「DEBUG：戻る」でメニューへ", page.number == 0 && !storyDebug.active && bossDebug.menu);
     var saveBefore = localStorage.getItem("dronekun_save"), bestBefore = localStorage.getItem("dronekun_best");
-    page.change(0);
-    key("KeyB"); var menuOpen = bossDebug.menu; draw1();
-    key("KeyE");    //装備「最強」
-    key("Digit2");
-    check("Bキーでボス戦デバッグ → WAVE10", menuOpen && page.number == 1 && game.wave == 10 && mainScreen.bossWave && bossDebug.gear == 2);
+    draw1();
+    tap(bossDebug.tools()[1]);    //装備「最強」
+    tap(bossDebug.rows()[1]);
+    check("ボス戦デバッグ → WAVE10", page.number == 1 && game.wave == 10 && mainScreen.bossWave && bossDebug.gear == 2);
     var fb = 0; while(page.number == 1 && fb < 60*150){ bot(); fb++; mainScreen.hp = mainScreen.maxHp; mainScreen.update(); if(fb % 20 == 0) draw1(); }
     check("ボスを倒すとメニューへ戻る", page.number == 0 && bossDebug.menu && bossDebug.msg.indexOf("撃破") >= 0, bossDebug.msg);
     check("ボス戦デバッグでセーブ・ハイスコアは変わらない", localStorage.getItem("dronekun_save") == saveBefore && localStorage.getItem("dronekun_best") == bestBefore);
-    key("KeyM"); key("Digit1");
+    tap(bossDebug.tools()[2]);    //無敵
+    tap(bossDebug.rows()[0]);
     var hpB = mainScreen.hp; mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.damage();
     var godOk = mainScreen.hp == hpB;
-    key("Escape");
-    check("無敵・Escで中断してメニューへ", godOk && page.number == 0 && bossDebug.menu && !bossDebug.active);
-    key("Escape");
+    draw1();
+    tap(backBtn());
+    check("無敵・「DEBUG：戻る」で中断してメニューへ", godOk && page.number == 0 && bossDebug.menu && !bossDebug.active);
+    tap(bossDebug.tools()[3]);
     bossDebug.god = false; bossDebug.gear = 1;
-    check("Escでメニューを閉じる", !bossDebug.menu);
+    check("閉じるでメニューを閉じる", !bossDebug.menu);
+    history.replaceState(null, "", location.pathname);
 
     //雑魚敵の見た目(enemyArt.js)：9種類とも新しい絵で描け、被弾・撃つ直前・自爆直前などの状態でも止まらない
     var artTypes = ["bug","dasher","shooter","tank","spinner","bomber","mdrone","heli","panzer"], artOk = [], artErr = errors.length;
@@ -237,10 +248,7 @@ function finish2(){
         var backE = droneSkin.current == "E" && droneSheets.id == "E";
         document.dispatchEvent(new KeyboardEvent("keydown",{ code:"Escape" }));
         check("標準に戻して、Escで設定を閉じる", backE && !startScreen.settings);
-        //設定を開いている間はデバッグのキーが効かない
         clickAt(settingsButton);
-        document.dispatchEvent(new KeyboardEvent("keydown",{ code:"KeyB" }));
-        check("設定を開いている間はBキーのメニューが出ない", startScreen.settings && !bossDebug.menu);
         clickAt(settingsClose);
         check("閉じるボタンで設定を閉じる", !startScreen.settings);
     }catch(e){ fails++; L("NG   例外 " + e.stack); }

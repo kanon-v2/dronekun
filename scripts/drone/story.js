@@ -95,7 +95,7 @@ const STORY_AFTER = { 3:"s3", 5:"s5", 8:"s8", 10:"s10", 12:"s12", 15:"reveal", 1
 
 //------------------------------------------------------------------------------
 //  デバッグ：ストーリー確認モード
-//  タイトル画面でQキー → 戦闘なしで全ストーリーを順に流す。Escでタイトルへ戻る
+//  デバッグのメニュー(#debug。bossDebug.js)から始める → 戦闘なしで全ストーリーを順に流す。右下の「DEBUG：戻る」で戻る
 //  (セーブ・見たストーリーの記録・ハイスコア・クリア済みの印は変えない)
 //------------------------------------------------------------------------------
 const STORY_ORDER = ["prologue","s3","s5","s8","s10","s12","reveal","s17","s19","ending"];
@@ -117,13 +117,6 @@ var storyDebug = {
         page.change(0);
     }
 };
-document.addEventListener("keydown",function(e){
-    if(e.code == "KeyQ" && page.number == 0 && !storyDebug.active && !startScreen.settings){
-        storyDebug.start();
-    }else if(e.code == "Escape" && storyDebug.active){
-        storyDebug.stop();
-    }
-},false);
 
 //強化画面へ進む(まだ見ていないストーリーがあれば先に流す)
 function goUpgrade(){
@@ -372,7 +365,7 @@ var storyScreen = {
             ctx.textAlign = "left";
             ctx.fillStyle = "#f44";
             ctx.font = "bold 13px sans-serif";
-            ctx.fillText("DEBUG ストーリー確認 " + storyDebug.i + "/" + STORY_ORDER.length + "「" + this.id + "」　スキップで次の話・Escでタイトルへ",40,52);
+            ctx.fillText("DEBUG ストーリー確認 " + storyDebug.i + "/" + STORY_ORDER.length + "「" + this.id + "」　スキップで次の話・右下の「DEBUG：戻る」で戻る",40,52);
         }
     },
 

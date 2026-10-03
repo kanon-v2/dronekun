@@ -1,10 +1,16 @@
 //------------------------------------------------------------------------------
-//  デバッグ：ボス戦だけを遊ぶ(タイトル画面で B キー)
+//  デバッグのメニュー(ボス戦だけを遊ぶ・ストーリー確認)
+//  入口は専用のリンクだけ：URL に #debug を付けて開くと、タイトルに「DEBUG」ボタンが出る(キーボードの操作はない)。
 //  ボス・装備の強さ・無敵を選んで、すぐボスのWAVEを始める。演出や強さの確認用
-//  セーブ・ハイスコアは変えない(始める前の状態を覚えておき、終わったら戻す)。Esc でメニューへ
+//  セーブ・ハイスコアは変えない(始める前の状態を覚えておき、終わったら戻す)。
+//  途中でメニューへ戻るのは右下の「DEBUG：戻る」(sound.js の debugBack)
 //------------------------------------------------------------------------------
 const BOSS_DEBUG_WAVES = [5,10,15,20];
 const BOSS_DEBUG_GEAR = ["弱い","標準","最強"];
+
+//URL に #debug が付いているか(タイトルに「DEBUG」ボタンを出す)
+function debugUrl(){ return /debug/.test(location.hash); }
+var debugButton = new drawRect(CW - 196, 18, 104, 34);
 
 var bossDebug = {
     menu:false,     //タイトル画面にメニューを出している
@@ -69,17 +75,32 @@ var bossDebug = {
         if(this.active && mainScreen.state == "play") this.startTime++;
     },
 
-    //メニュー：ボスの行をクリック、または数字キー
+    //メニュー：ボスの行を押す
     rows:function(){
         var out = [];
         for(var i=0; i<BOSS_DEBUG_WAVES.length; i++) out.push(new drawRect(CW/2, GS*5.4 + i*GS*1.7, GS*16, GS*1.4));
         return out;
     },
+    //メニューの下のボタン：ストーリー確認・装備・無敵・閉じる
+    tools:function(){
+        var out = [];
+        for(var i=0; i<4; i++) out.push(new drawRect(CW/2 + (i - 1.5)*145, GS*12.5, 135, 36));
+        return out;
+    },
+    toggleGear:function(){ this.gear = (this.gear + 1) % BOSS_DEBUG_GEAR.length; sound.play("click"); },
+    toggleGod:function(){ this.god = !this.god; sound.play("click"); },
+    //メニューは開いたままにする(ストーリー確認が終わるとメニューに戻る)
+    startStory:function(){ storyDebug.start(); },
     updateMenu:function(){
         var r = this.rows();
         for(var i=0; i<r.length; i++){
             if(r[i].clicked()){ this.start(BOSS_DEBUG_WAVES[i]); return; }
         }
+        var t = this.tools();
+        if(t[0].clicked()){ this.startStory(); return; }
+        if(t[1].clicked()){ this.toggleGear(); return; }
+        if(t[2].clicked()){ this.toggleGod(); return; }
+        if(t[3].clicked()){ this.close(); return; }
     },
     drawMenu:function(){
         ctx.fillStyle = "rgba(255,255,255,0.75)";   //後ろのタイトル画面を薄く隠す
@@ -94,23 +115,25 @@ var bossDebug = {
         ctx.textBaseline = "middle";
         ctx.fillStyle = "#c33";
         ctx.font = "bold 26px sans-serif";
-        ctx.fillText("DEBUG ボス戦", CW/2, GS*2.7);
+        ctx.fillText("DEBUG", CW/2, GS*2.7);
         ctx.font = "13px sans-serif";
         ctx.fillStyle = "#555";
-        ctx.fillText("セーブ・ハイスコアは変わりません。戦闘中は Esc でここへ戻ります", CW/2, GS*3.8);
+        ctx.fillText("セーブ・ハイスコアは変わりません。途中で右下の「DEBUG：戻る」を押すと、ここへ戻ります", CW/2, GS*3.8);
         var r = this.rows();
         for(var i=0; i<r.length; i++){
             var w = BOSS_DEBUG_WAVES[i];
             ctx.font = "bold 17px sans-serif";
-            r[i].button((i + 1) + "：WAVE " + w + "　" + BOSS_TYPES[bossTypeFor(w)].name);
+            r[i].button("ボス戦 WAVE " + w + "　" + BOSS_TYPES[bossTypeFor(w)].name);
         }
-        ctx.textAlign = "center";
-        ctx.font = "bold 15px sans-serif";
-        ctx.fillStyle = "#000";
-        ctx.fillText("E：装備 「" + BOSS_DEBUG_GEAR[this.gear] + "」　　M：無敵 「" + (this.god ? "オン" : "オフ") + "」　　Esc：閉じる", CW/2, GS*12.6);
+        var t = this.tools();
+        var labels = ["ストーリー確認", "装備「" + BOSS_DEBUG_GEAR[this.gear] + "」", "無敵「" + (this.god ? "オン" : "オフ") + "」", "閉じる"];
+        ctx.font = "bold 14px sans-serif";
+        for(var i=0; i<t.length; i++) t[i].button(labels[i]);
         if(this.msg){
+            ctx.textAlign = "center";
+            ctx.font = "bold 15px sans-serif";
             ctx.fillStyle = "#c33";
-            ctx.fillText(this.msg, CW/2, GS*13.8);
+            ctx.fillText(this.msg, CW/2, GS*14.2);
         }
         ctx.fillStyle = "#000";
     },
@@ -122,21 +145,7 @@ var bossDebug = {
         ctx.textBaseline = "middle";
         ctx.font = "bold 12px sans-serif";
         ctx.fillStyle = "#c33";
-        ctx.fillText("DEBUG ボス戦　装備「" + BOSS_DEBUG_GEAR[this.gear] + "」" + (this.god ? "　無敵" : "") + "　Escで戻る", CW/2, 24);
+        ctx.fillText("DEBUG ボス戦　装備「" + BOSS_DEBUG_GEAR[this.gear] + "」" + (this.god ? "　無敵" : "") + "　右下の「DEBUG：戻る」で戻る", CW/2, 24);
         ctx.fillStyle = "#000";
     }
 };
-
-document.addEventListener("keydown",function(e){
-    if(page.number == 0 && !storyDebug.active && !coop.inRoom && !startScreen.settings){
-        if(e.code == "KeyB" && !bossDebug.menu){ bossDebug.open(); return; }
-        if(!bossDebug.menu) return;
-        if(e.code == "Escape"){ bossDebug.close(); return; }
-        if(e.code == "KeyE"){ bossDebug.gear = (bossDebug.gear + 1) % BOSS_DEBUG_GEAR.length; sound.play("click"); return; }
-        if(e.code == "KeyM"){ bossDebug.god = !bossDebug.god; sound.play("click"); return; }
-        var n = ["Digit1","Digit2","Digit3","Digit4"].indexOf(e.code);
-        if(n >= 0) bossDebug.start(BOSS_DEBUG_WAVES[n]);
-        return;
-    }
-    if(page.number == 1 && bossDebug.active && e.code == "Escape") bossDebug.finish("quit");
-},false);

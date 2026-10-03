@@ -79,6 +79,11 @@ var startScreen = {
             this.updateSettings();
             return;
         }
+        //デバッグのメニューを開く(URL に #debug を付けたときだけボタンが出る。スマホ用。bossDebug.js)
+        if(debugUrl() && debugButton.clicked()){
+            bossDebug.open();
+            return;
+        }
         //設定の窓を開く(見た目をすべて用意しておく。並べて見せるため)
         if(settingsButton.clicked()){
             sound.play("click");
@@ -329,6 +334,7 @@ var startScreen = {
             ctx.restore();
         }
         this.drawSettingsButton();
+        if(debugUrl()) this.drawDebugButton();
         ctx.fillStyle = "#000";
     },
 
@@ -364,6 +370,23 @@ var startScreen = {
         ctx.fillStyle = on ? "#fff" : TITLE_INK;
         ctx.fillText("設定", b.X + 42, gy + 1);
         ctx.globalAlpha = 1;
+    },
+
+    //デバッグのメニューを開くボタン(赤い枠。乗せると赤く反転)
+    drawDebugButton:function(){
+        var b = debugButton;
+        var on = b.contains(MouseX,MouseY) && !this.settings && !bossDebug.menu;
+        ctx.fillStyle = on ? TITLE_ACCENT : "#fff";
+        ctx.fillRect(b.X, b.Y, b.width, b.height);
+        ctx.strokeStyle = TITLE_ACCENT;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(b.X + 1, b.Y + 1, b.width - 2, b.height - 2);
+        ctx.lineWidth = 1;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = "bold 15px " + TITLE_UI_FONT;
+        ctx.fillStyle = on ? "#fff" : TITLE_ACCENT;
+        ctx.fillText("DEBUG", b.X + b.width/2, b.Y + b.height/2 + 1);
     },
 
     //設定の窓：ドローン君の見た目を選ぶ。選ぶとすぐ切り替わり、覚える。Esc か「閉じる」で閉じる
