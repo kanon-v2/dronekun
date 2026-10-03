@@ -175,7 +175,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 - スクリプトがすること：確認(変更が残っていない・`develop` と `main` が GitHub と同じ・`main` をそのまま進められる) → テスト → `main` を `develop` まで進める → 公開版のタグ(`v年.月.日`、同じ日の2回目からは `.2`…)を付ける → `main` とタグを一緒に push → GitHub の Releases を作る。タグのメモと Releases の本文は同じ。
 - 公開を頼まれたら、Claude が本文をまとめる：
   1. 前の公開版のタグから `develop` までのコミットと変更を読み、遊ぶ人から見た変化を、見出し(`### 見た目・演出` など)と短い箇条書きでまとめる。開発用の変更は最後に分ける。ストーリーのネタバレ(同胞・人間の兵器・真実)は書かない。
-  2. 本文はユーザーに確認を取らずに、ファイルに書いて `powershell -ExecutionPolicy Bypass -File toolselease.ps1 -NotesFile <本文.md>` を実行する(`-DryRun` で、確認と本文の表示だけを試せる)。公開したあとで、本文と Releases の URL を伝える。
+  2. 本文はユーザーに確認を取らずに、ファイルに書いて `powershell -ExecutionPolicy Bypass -File tools\release.ps1 -NotesFile <本文.md>` を実行する(`-DryRun` で、確認と本文の表示だけを試せる)。公開したあとで、本文と Releases の URL を伝える。
   - 本文を渡さずに実行すると、コミット一覧の下書きをメモ帳で開く(人が自分で公開するとき用)。
 - `.githooks/pre-push` が、公開版のタグの付いていないコミットを `main` に push するのを止める。クローンごとに一度 `git config core.hooksPath .githooks` で有効にする。
 - Releases の作成には `gh`(GitHub CLI。`gh auth login` 済み)が要る。
