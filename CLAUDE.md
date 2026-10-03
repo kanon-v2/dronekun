@@ -14,7 +14,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 ```
 
 - ヘッドレスのEdgeで次の2つを開き、すべて `RESULT: OK` なら成功(終了コード0)。
-  - `tools/smoke-test.html`: ストーリーの流れ・各WAVEの戦闘・全シナジー・強化画面(ショップも)・ストーリー確認モード・ドローン君の絵と振り向き・タイトルの設定(見た目の切り替え)・雑魚敵の見た目
+  - `tools/smoke-test.html`: ストーリーの流れ・各WAVEの戦闘・全シナジー・強化画面(ショップも)・デバッグのメニュー(ボス戦・武器試用・ストーリー確認)・ドローン君の絵と振り向き・タイトルの設定(見た目の切り替え)・雑魚敵の見た目
   - `tools/coop-test.html`: 協力プレイ。ゲーム2つ(`tools/coop-frame.html`)を iframe で開き、偽のPeerJS(`tools/fake-peer.js`)の通信を親ページが中継する。部屋作り・コード違い・参加・出撃・WAVEクリアの同期・ゲストの攻撃の反映(追加の装備の燃やす・凍らせる・渦の吸い寄せ・バリアで防いだ弾も)・退出と、対戦(参加・開始・決着・勝敗の一致・もう一度・退出)を確かめる(インターネット不要)
 - 新しい機能を足したら、`tools/smoke-test.html`(協力プレイに関わるものは `tools/coop-test.html`)にも確認項目を足す。
 - 見た目の確認はヘッドレスEdgeのスクリーンショットで行う:
@@ -46,7 +46,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | `upgradeScreen.js` | 強化画面(報酬カード・能力強化・装備・ショップ・能力リセット) |
 | `gameoverScreen.js` | ゲームオーバー画面 |
 | `story.js` | ストーリー(`STORIES`)・ストーリー画面・エンディング・ストーリー確認モード |
-| `bossDebug.js` | デバッグ：ボス戦だけを遊ぶ(タイトルで B キー) |
+| `bossDebug.js` | デバッグのメニュー：ボス戦だけを遊ぶ・武器試用・ストーリー確認(`#debug` で開いたときだけ) |
 | `lib/peerjs.min.js` | PeerJS 1.5.5(外部ライブラリ。MITライセンス、`lib/PEERJS-LICENSE`)。協力プレイの通信に使う。手を加えない |
 | `coop.js` | ふたりで協力プレイ(下記「協力プレイ」参照)。対戦も同じ部屋・通信を使う |
 | `versus.js` | ふたりで対戦(下記「対戦」参照)。page 7 |
@@ -128,6 +128,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 
 - **デバッグのメニューの入口は専用のリンクだけ**(キーボードの操作はない)。URL に `#debug` を付けて開く(`…/dronekun/#debug`、手元なら `index.html#debug`)と、タイトルの「設定」の左に「DEBUG」ボタンが出る(`bossDebug.js` の `debugUrl()`)。スマホでも同じ。セーブ・ハイスコア・見たストーリーの記録は変えない(始める前の状態に戻す)。
   - ボス戦：WAVE5/10/15/20のボスをすぐ始める。「装備」で強さ(弱い/標準/最強)、「無敵」で被弾しない。
+  - 武器試用：装備を3つまで選び(押した順に装備枠へ)、装備のレベル・能力のレベル・敵の強さ(`TRIAL_WAVES` のWAVEの雑魚敵)を決めて戦う。敵は尽きずに出続け(`TRIAL_MAX_ENEMIES` 体まで)、いつも無敵。画面上に直近 `TRIAL_DPS_SEC` 秒の毎秒ダメージと撃破数、戻ると始めからの平均を出す(`mainScreen.hitEnemy` から `bossDebug.dealt` で数える)。
   - ストーリー確認：戦闘なしで全ストーリーを順に流す。終わるとメニューへ戻る。
   - 途中でメニューへ戻るのは、右下の「DEBUG：戻る」(`sound.buttons` の `debugBack`)。
 - `common.js` の `DEBUG = true` で、マウス座標などを左上に表示。

@@ -428,6 +428,11 @@ var mainScreen = {
     },
 
     spawn:function(){
+        //デバッグの武器試用：敵は尽きずに出続ける(多すぎるときは待つ。bossDebug.js)
+        if(bossDebug.trial){
+            this.toSpawn = 1;
+            if(enemies.length >= TRIAL_MAX_ENEMIES) return;
+        }
         if(this.toSpawn <= 0) return;
         this.spawnTimer--;
         if(this.spawnTimer > 0) return;
@@ -507,8 +512,8 @@ var mainScreen = {
     },
 
     damage:function(){
-        //デバッグのボス戦で無敵にしているときは減らない(当たった音と点滅だけ)
-        if(bossDebug.active && bossDebug.god){
+        //デバッグのボス戦で無敵にしているとき・武器試用は減らない(当たった音と点滅だけ)
+        if(bossDebug.active && (bossDebug.god || bossDebug.trial)){
             this.invincible = 30;
             sound.play("damage");
             return;
@@ -561,6 +566,7 @@ var mainScreen = {
         //ゲストの攻撃はダメージをホストへ送るだけ(敵を動かしているのはホスト)
         if(coop.isGuest()){ coop.guestHit(_e,_dmg,_src); return; }
         if(_e.dead) return;
+        bossDebug.dealt(_e,_dmg);
         _e.hp -= _dmg;
         _e.flash = 6;
         if(_e.hp > 0){
@@ -1244,7 +1250,7 @@ var mainScreen = {
         ctx.font = "bold 20px sans-serif";
         ctx.fillText("WAVE " + game.wave + " / " + FINAL_WAVE,CW - 14,20);
         ctx.font = "bold 14px sans-serif";
-        ctx.fillText("残りの敵 " + (this.toSpawn + enemies.length) + "　SCORE " + game.score + "　パーツ " + game.parts,CW - 14,44);
+        ctx.fillText((bossDebug.trial ? "敵 " + enemies.length : "残りの敵 " + (this.toSpawn + enemies.length)) + "　SCORE " + game.score + "　パーツ " + game.parts,CW - 14,44);
         if(this.graze > 0){
             ctx.font = "bold 12px sans-serif";
             ctx.fillStyle = "#3a7bd5";

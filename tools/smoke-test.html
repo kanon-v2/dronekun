@@ -175,20 +175,42 @@ try{
     check("「DEBUG：戻る」でメニューへ", page.number == 0 && !storyDebug.active && bossDebug.menu);
     var saveBefore = localStorage.getItem("dronekun_save"), bestBefore = localStorage.getItem("dronekun_best");
     draw1();
-    tap(bossDebug.tools()[1]);    //装備「最強」
+    tap(bossDebug.tools()[2]);    //装備「最強」
     tap(bossDebug.rows()[1]);
     check("ボス戦デバッグ → WAVE10", page.number == 1 && game.wave == 10 && mainScreen.bossWave && bossDebug.gear == 2);
     var fb = 0; while(page.number == 1 && fb < 60*150){ bot(); fb++; mainScreen.hp = mainScreen.maxHp; mainScreen.update(); if(fb % 20 == 0) draw1(); }
     check("ボスを倒すとメニューへ戻る", page.number == 0 && bossDebug.menu && bossDebug.msg.indexOf("撃破") >= 0, bossDebug.msg);
     check("ボス戦デバッグでセーブ・ハイスコアは変わらない", localStorage.getItem("dronekun_save") == saveBefore && localStorage.getItem("dronekun_best") == bestBefore);
-    tap(bossDebug.tools()[2]);    //無敵
+    tap(bossDebug.tools()[3]);    //無敵
     tap(bossDebug.rows()[0]);
     var hpB = mainScreen.hp; mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.damage();
     var godOk = mainScreen.hp == hpB;
     draw1();
     tap(backBtn());
     check("無敵・「DEBUG：戻る」で中断してメニューへ", godOk && page.number == 0 && bossDebug.menu && !bossDebug.active);
-    tap(bossDebug.tools()[3]);
+    //武器試用：選んだ装備で、尽きずに出てくる雑魚敵と戦う(無敵。与えたダメージを数える)
+    bossDebug.god = false;    //武器試用は無敵の設定によらず無敵
+    tap(bossDebug.tools()[1]);
+    var pickOpen = bossDebug.picking;
+    tap(bossDebug.trialOpts()[3]);    //選び直す
+    ["fire","disc","freeze","gun"].forEach(function(id){ tap(bossDebug.armButtons()[WEAPON_IDS.indexOf(id)]); });   //4つ目は入らない
+    tap(bossDebug.trialOpts()[0]);    //装備 Lv.3 → 1
+    draw1();
+    tap(bossDebug.trialGo()[0]);
+    var trialSlots = game.slots.join(",") == "fire,disc,freeze" && game.owned.fire == 1 && !game.owned.gun;
+    check("武器試用を始める(選んだ装備・レベル)", pickOpen && page.number == 1 && bossDebug.trial && trialSlots && !mainScreen.bossWave, game.slots.join(","));
+    var hpT = mainScreen.maxHp, ft = 0;
+    while(page.number == 1 && ft < 60*25){ bot(); ft++; mainScreen.update(); if(ft % 30 == 0) draw1(); }
+    check("武器試用：敵が出続け、ダメージ・撃破を数え、被弾しない",
+          page.number == 1 && mainScreen.state == "play" && bossDebug.dmg > 0 && bossDebug.kills > 0 && bossDebug.dps(true) > 0 && mainScreen.hp == hpT && enemies.length <= TRIAL_MAX_ENEMIES,
+          "ダメージ" + bossDebug.dmg.toFixed(1) + " 撃破" + bossDebug.kills + " 敵" + enemies.length);
+    tap(backBtn());
+    check("武器試用：「DEBUG：戻る」で選ぶ画面へ戻り、結果が出る",
+          page.number == 0 && bossDebug.menu && bossDebug.picking && !bossDebug.active && !bossDebug.trial && bossDebug.msg.indexOf("毎秒ダメージ") >= 0, bossDebug.msg);
+    check("武器試用でセーブ・ハイスコアは変わらない", localStorage.getItem("dronekun_save") == saveBefore && localStorage.getItem("dronekun_best") == bestBefore);
+    tap(bossDebug.trialGo()[1]);
+    bossDebug.trialArms = ["gun","missile","tesla"]; bossDebug.trialLv = MAX_WEAPON_LEVEL;
+    tap(bossDebug.tools()[4]);    //閉じる
     bossDebug.god = false; bossDebug.gear = 1;
     check("閉じるでメニューを閉じる", !bossDebug.menu);
     history.replaceState(null, "", location.pathname);
