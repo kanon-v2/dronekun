@@ -118,7 +118,7 @@ var storyDebug = {
     }
 };
 document.addEventListener("keydown",function(e){
-    if(e.code == "KeyQ" && page.number == 0 && !storyDebug.active){
+    if(e.code == "KeyQ" && page.number == 0 && !storyDebug.active && !startScreen.settings){
         storyDebug.start();
     }else if(e.code == "Escape" && storyDebug.active){
         storyDebug.stop();

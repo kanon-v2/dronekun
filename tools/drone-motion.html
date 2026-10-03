@@ -27,7 +27,7 @@ body{ margin:0; background:#e4e1da; font:14px "Hiragino Sans","Meiryo",sans-seri
 //--- 案を並べるページ ---
 var single = location.hash.indexOf("art=") >= 0;
 if(!single){
-    var names = { E:"E：元の絵の2次元のテイスト" };   //保留中の案A～Dは feature/drone-art-3d-candidates ブランチ
+    var names = { E:"標準(案E)", O:"クラシック(元の絵)" };   //保留中の案A～Dは feature/drone-art-3d-candidates ブランチ
     for(var id in names){
         var d = document.createElement("div");
         d.innerHTML = "<b>" + names[id] + "</b><iframe src='tools/drone-motion.html#art=" + id + "'></iframe>";
@@ -115,8 +115,8 @@ if(single){
             film.style.display = "block";
             document.body.appendChild(film);
         };
-        //絵の用意ができてから(案Eはすぐ、画像のスキンは読み込みのあと)
-        if(droneSheets.length) makeFilm(); else droneSheetImg.addEventListener("load",function(){ setTimeout(makeFilm,0); });
+        //絵の用意ができてから(標準はすぐ、画像の見た目は読み込みのあと)
+        droneSkin.onReady(makeFilm);
     }else{
         //iframe の中では requestAnimationFrame が動かないことがあるので、setInterval で進める
         setInterval(function(){ step(); render(); }, 1000/60);

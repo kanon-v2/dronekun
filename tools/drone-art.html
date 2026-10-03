@@ -550,7 +550,7 @@ function sceneCanvas(_frames,_dark){
 var only = (location.hash.match(/only=(\w)/) || [])[1];
 function buildPage(){
     var cards = document.getElementById("cards");
-    //元の絵(feature/drone-art-3d-candidates ブランチにだけある。見つからなければ欄ごと隠す)
+    //元の絵(クラシックの見た目。見つからなければ欄ごと隠す)
     var card = el("div","card",cards);
     el("h2","",card,"元の絵(40×40px)");
     var vs = el("div","views",card);

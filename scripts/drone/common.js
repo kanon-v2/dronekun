@@ -321,9 +321,11 @@ var save = {
 //  ドローン君の絵
 //  向きごとの絵を1枚に並べたもの(シート)を使う。横に水平の向き16段(22.5度ずつ。0が正面、
 //  増えると左を向く)、縦に高さ5段(見上げる → 見下ろす)。ゲームでは DRONE_SIZE px で描く
-//  ・ふだんの絵(案E)：元の絵の2次元のテイストのまま、図形で描く(drawFlatDrone)。画像ファイルはない
-//  ・ほかの絵(スキン)：tools/drone-art.html の3Dの絵を tools/bake-drone.ps1 で書き出した画像。
-//    index.html#art=A のように選ぶ(案A～Dは feature/drone-art-3d-candidates ブランチに保留)
+//  見た目(スキン)はタイトルの設定で選べる(droneSkin)
+//  ・標準(E)：元の絵の2次元のテイストのまま、図形で描く(drawFlatDrone)。画像ファイルはない
+//  ・クラシック(O)：元の6方向のドット絵(images/game/Drone/Drone_*.png)をシートに並べ直したもの
+//  ・開発用：index.html#art=A のように選ぶと、tools/drone-art.html の3Dの絵を tools/bake-drone.ps1 で
+//    書き出した images/game/Drone/drone_A.png を使う(案A～Dは feature/drone-art-3d-candidates ブランチに保管)
 //------------------------------------------------------------------------------
 const DRONE_FRAME = 160;    //シートの1コマの大きさ(px。等倍の4倍)
 const DRONE_SIZE = 40;      //ゲームでの等倍の大きさ(px)
@@ -331,7 +333,6 @@ const DRONE_YAWS = 16;      //水平の向きの段数
 const DRONE_ELEVS = 5;      //高さの段数
 const DRONE_ELEV_LEVEL = 2; //ふだんの高さの段(正面・左右・後ろ)
 const DRONE_ART_DEFAULT = "E";
-var DRONE_ART = (location.hash.match(/art=([A-Z])/) || [0,DRONE_ART_DEFAULT])[1];
 
 //案Eの色(元の絵に合わせた灰色と黒)
 var FLAT_COLOR = {
@@ -457,7 +458,7 @@ function drawFlatDrone(_g,_yaw,_pitch){
     g.stroke();
 }
 
-//案Eのシートを、等倍・2倍・4倍それぞれの大きさで直接描く(縮めないので、どの大きさでもくっきり)
+//標準(E)のシートを、等倍・2倍・4倍それぞれの大きさで直接描く(縮めないので、どの大きさでもくっきり)
 function buildFlatSheets(){
     var list = [];
     for(var lv=0; lv<3; lv++){
@@ -474,49 +475,148 @@ function buildFlatSheets(){
                 g.restore();
             }
         }
-        c._key = "drone" + DRONE_ART + "/" + lv;
         list.push(c);
     }
     return list;
 }
 
-//ゲームで使う形にそろえる：droneSheets は[等倍, 2倍, 4倍]の3枚
-var droneSheets = [];   //用意できるまでは空
-function useDroneSheets(_list){
-    droneSheets = _list;
-    //正面の絵だけを切り出したもの(ストーリーの残骸など、1枚の絵として使うところ向け)
-    var f = DRONE_SIZE*2;
-    Drone_front.width = Drone_front.height = f;
-    var g = Drone_front.getContext("2d");
-    g.drawImage(_list[1],0,DRONE_ELEV_LEVEL*f,f,f,0,0,f,f);
+//クラシック(O)：元の6方向の絵を、角度に合わせてシートのコマに割り当てる
+//(正面±33.75度は正面、後ろ±33.75度は後ろ、そのあいだは左右。正面のまま見上げる・見下ろすと上・下の絵)
+var ORIG_IMAGES = { front:"Drone_front2", up:"Drone_up", down:"Drone_down", left:"Drone_left", right:"Drone_right", back:"Drone_back" };
+function origFrame(_col,_row){
+    var a = _col*360/DRONE_YAWS;
+    if(a > 180) a -= 360;
+    var side = Math.abs(a) <= 33.75 ? "front" : Math.abs(a) >= 146.25 ? "back" : a > 0 ? "left" : "right";
+    if(side == "front" && _row == 0) return "up";
+    if(side == "front" && _row == DRONE_ELEVS - 1) return "down";
+    return side;
 }
-//書き出した画像のスキンは、縮めたものを先に作っておく(縮めて描くときにぼやけたり、ちらついたりしないよう)
-var droneSheetImg = new Image();
-droneSheetImg.onload = function(){
-    var list = [droneSheetImg];
-    droneSheetImg._key = "drone" + DRONE_ART + "/2";
-    for(var i=1; i>=0; i--){
+//ドット絵なので、拡大はなめらかにせず、そのまま大きくする
+function buildOrigSheets(_imgs){
+    var list = [];
+    for(var lv=0; lv<3; lv++){
+        var f = DRONE_SIZE << lv;
+        var c = document.createElement("canvas");
+        c.width = f*DRONE_YAWS; c.height = f*DRONE_ELEVS;
+        var g = c.getContext("2d");
+        g.imageSmoothingEnabled = false;
+        for(var r=0; r<DRONE_ELEVS; r++){
+            for(var y=0; y<DRONE_YAWS; y++) g.drawImage(_imgs[origFrame(y,r)], y*f, r*f, f, f);
+        }
+        list.push(c);
+    }
+    list.pixel = true;
+    return list;
+}
+
+//書き出した画像(開発用の3Dの絵)は、縮めたものを先に作っておく(縮めて描くときにぼやけたり、ちらついたりしないよう)
+function buildBakedSheets(_img){
+    var list = [_img];
+    for(var i=0; i<2; i++){
         var src = list[0];
         var c = document.createElement("canvas");
-        c.width = src.width/2; c.height = src.height/2;
+        c.width = (src.naturalWidth || src.width)/2; c.height = (src.naturalHeight || src.height)/2;
         var g = c.getContext("2d");
         g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
         g.drawImage(src,0,0,c.width,c.height);
-        c._key = "drone" + DRONE_ART + "/" + i;
         list.unshift(c);
     }
-    useDroneSheets(list);
-};
-//選んだ絵が見つからなければ、ふだんの絵にする
-droneSheetImg.onerror = function(){
-    DRONE_ART = DRONE_ART_DEFAULT;
-    useDroneSheets(buildFlatSheets());
-};
+    return list;
+}
+
+//今使っているシート：[等倍, 2倍, 4倍]の3枚(用意できるまでは空)。pixel が true ならドット絵
+var droneSheets = [];
+//1枚の絵として使うところ(ストーリーの残骸など)向けに、正面の絵だけを切り出したもの
 var Drone_front = document.createElement("canvas");
 Drone_front.width = Drone_front.height = 1;   //用意できるまでは透明な1px
 Drone_front._key = "droneFront";
-if(DRONE_ART == DRONE_ART_DEFAULT) useDroneSheets(buildFlatSheets());
-else droneSheetImg.src = "images/game/Drone/drone_" + DRONE_ART + ".png";
+function useDroneSheets(_list){
+    droneSheets = _list;
+    var f = DRONE_SIZE*2;
+    Drone_front.width = Drone_front.height = f;
+    Drone_front._key = "droneFront" + _list.id;   //色違いの覚えを、見た目ごとに分ける
+    var g = Drone_front.getContext("2d");
+    g.imageSmoothingEnabled = !_list.pixel;
+    g.drawImage(_list[1],0,DRONE_ELEV_LEVEL*f,f,f,0,0,f,f);
+}
+
+//------------------------------------------------------------------------------
+//  ドローン君の見た目(スキン)の選択。選んだものは localStorage に覚える
+//------------------------------------------------------------------------------
+var droneSkin = {
+    KEY:"dronekun_skin",
+    //タイトルの設定に並べるもの
+    list:[
+        { id:"E", name:"標準", sub:"いまのドローン君" },
+        { id:"O", name:"クラシック", sub:"最初のころのドット絵" }
+    ],
+    current:DRONE_ART_DEFAULT,
+    sheets:{},      //見た目ごとのシート(用意できたもの)
+    waiting:{},     //読み込み中の見た目 → 用意できたら呼ぶもの
+    //見た目のシートを用意する(用意できたら _then を呼ぶ。切り替えはしない)
+    prepare:function(_id,_then){
+        var self = this;
+        if(this.sheets[_id]){ if(_then) _then(); return; }
+        if(this.waiting[_id]){ if(_then) this.waiting[_id].push(_then); return; }
+        this.waiting[_id] = _then ? [_then] : [];
+        var done = function(_list){
+            _list.id = _id;
+            for(var i=0; i<_list.length; i++) _list[i]._key = "drone" + _id + "/" + i;
+            self.sheets[_id] = _list;
+            var w = self.waiting[_id];
+            delete self.waiting[_id];
+            for(var i=0; i<w.length; i++) w[i]();
+        };
+        if(_id == "E"){ done(buildFlatSheets()); return; }
+        if(_id == "O"){
+            var imgs = {}, left = 0;
+            for(var k in ORIG_IMAGES) left++;
+            for(var k in ORIG_IMAGES){
+                imgs[k] = new Image();
+                imgs[k].onload = function(){ if(--left == 0) done(buildOrigSheets(imgs)); };
+                imgs[k].onerror = function(){ left = -1; self.fail(_id); };
+                imgs[k].src = "images/game/Drone/" + ORIG_IMAGES[k] + ".png";
+            }
+            return;
+        }
+        var img = new Image();
+        img.onload = function(){ done(buildBakedSheets(img)); };
+        img.onerror = function(){ self.fail(_id); };
+        img.src = "images/game/Drone/drone_" + _id + ".png";
+    },
+    //絵が見つからなければ標準にする
+    fail:function(_id){
+        delete this.waiting[_id];
+        if(this.current == _id) this.use(DRONE_ART_DEFAULT);
+    },
+    //見た目を切り替える(覚えない)
+    use:function(_id){
+        var self = this;
+        this.current = _id;
+        this.prepare(_id,function(){ if(self.current == _id) useDroneSheets(self.sheets[_id]); });
+    },
+    //設定で選んだ見た目に切り替えて、覚える
+    set:function(_id){
+        this.use(_id);
+        try{ localStorage.setItem(this.KEY,_id); }catch(e){}
+    },
+    //今の見た目が用意できたら _fn を呼ぶ(テスト・確認用)
+    onReady:function(_fn){
+        if(droneSheets.length && droneSheets.id == this.current){ _fn(); return; }
+        this.prepare(this.current,function(){ setTimeout(_fn,0); });
+    },
+    //起動時：#art=A(開発用)があればそれ、なければ覚えている見た目
+    init:function(){
+        var m = location.hash.match(/art=([A-Z])/);
+        if(m){ this.use(m[1]); return; }
+        var id = DRONE_ART_DEFAULT;
+        try{ id = localStorage.getItem(this.KEY) || id; }catch(e){}
+        var ok = false;
+        for(var i=0; i<this.list.length; i++) if(this.list[i].id == id) ok = true;
+        this.use(ok ? id : DRONE_ART_DEFAULT);
+    }
+};
+droneSkin.init();
 
 var t=0;
 
@@ -590,8 +690,9 @@ DroneLook.prototype = {
     draw:function(_x,_y,_scale){
         if(!droneSheets.length) return;
         var k = _scale || 1;
-        //描く大きさに近い絵を使う(等倍なら1/4、2倍なら1/2)
-        var lv = k <= 1.25 ? 0 : k <= 2.5 ? 1 : 2;
+        //描く大きさに近い絵を使う(等倍なら1/4、2倍なら1/2)。ドット絵は等倍の絵をそのまま拡大する
+        var pix = droneSheets.pixel;
+        var lv = pix ? 0 : k <= 1.25 ? 0 : k <= 2.5 ? 1 : 2;
         var img = tintedImage(droneSheets[lv], this.tint);
         var f = DRONE_FRAME >> (2 - lv);
         var col = ((Math.round(this.yaw) % DRONE_YAWS) + DRONE_YAWS) % DRONE_YAWS;
@@ -599,9 +700,12 @@ DroneLook.prototype = {
         var bob = Math.sin(this.t*0.08)*1.5;
         var s = DRONE_SIZE*k;
         ctx.save();
-        ctx.translate(_x, _y + bob*k);
+        //ドット絵は、傾いておらず整数倍で描くときはくっきり描く(元の描き方と同じ)
+        var smooth = !pix || Math.abs(this.tilt) > 0.02 || k != Math.round(k);
+        if(pix) ctx.translate(Math.round(_x), Math.round(_y + bob*k));
+        else ctx.translate(_x, _y + bob*k);
         ctx.rotate(this.tilt);
-        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingEnabled = smooth;
         ctx.drawImage(img, col*f, row*f, f, f, -s/2, -s/2, s, s);
         ctx.restore();
         ctx.imageSmoothingEnabled = false;

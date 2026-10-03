@@ -156,21 +156,61 @@ try{
     check("振り向き：上を向くと見上げる高さの絵", Math.round(lk.elev) == DIR_ELEV[1] && Math.round(lk.yaw) == 0);
 }catch(e){ fails++; L("NG   例外 " + e.stack); }
 
-//画像の読み込みを待ってから確かめるもの
+//ドローン君の絵の用意を待ってから確かめるもの
+var keepSkin = null;
+try{ keepSkin = localStorage.getItem(droneSkin.KEY); }catch(e){}
+function checkSheets(_name){
+    check(_name, droneSheets.length == 3 && droneSheets[0].width*4 == droneSheets[2].width
+        && droneSheets[2].width == DRONE_FRAME*DRONE_YAWS && droneSheets[2].height == DRONE_FRAME*DRONE_ELEVS && Drone_front.width == DRONE_SIZE*2,
+        droneSheets.id + " " + droneSheets[2].width + "x" + droneSheets[2].height);
+}
+function clickAt(_r){ MouseIn = true; MouseX = _r.X + _r.width/2; MouseY = _r.Y + _r.height/2; Click = 1; startScreen.update(); Click = 0; }
 function finish(){
     try{
-        check("ドローン君の絵を用意する(等倍・2倍・4倍)", droneSheets.length == 3 && droneSheets[0].width*4 == droneSheets[2].width
-            && droneSheets[2].width == DRONE_FRAME*DRONE_YAWS && droneSheets[2].height == DRONE_FRAME*DRONE_ELEVS && Drone_front.width == DRONE_SIZE*2,
-            DRONE_ART + " " + droneSheets[2].width + "x" + droneSheets[2].height);
+        checkSheets("ドローン君の絵を用意する(等倍・2倍・4倍)");
         var lk2 = new DroneLook(); lk2.tint = "190,20,30";
         for(var i=0; i<20; i++){ lk2.update(i % 6,0); lk2.draw(100,100,i % 4 + 1); }
-        check("色違い・拡大して描ける", !!tintCache["drone" + DRONE_ART + "/1|" + droneSheets[1].width + "|190,20,30"]);
+        var lv = droneSheets.pixel ? 0 : 1;
+        check("色違い・拡大して描ける", !!tintCache["drone" + droneSheets.id + "/" + lv + "|" + droneSheets[lv].width + "|190,20,30"]);
+        //タイトルの設定：開く → クラシックを選ぶ
+        page.change(0);
+        clickAt(settingsButton);
+        var opened = startScreen.settings;
+        startScreen.draw();
+        clickAt(skinCards[1]);
+        check("設定を開いてクラシックを選ぶ", opened && droneSkin.current == "O" && localStorage.getItem(droneSkin.KEY) == "O");
+    }catch(e){ fails++; L("NG   例外 " + e.stack); report(); return; }
+    droneSkin.onReady(finish2);
+}
+function finish2(){
+    try{
+        checkSheets("クラシックの絵(元のドット絵)を用意する");
+        check("クラシックはドット絵としてくっきり描く", droneSheets.pixel === true && droneSheets.id == "O");
+        var lk3 = new DroneLook();
+        for(var i=0; i<20; i++){ lk3.update(i % 6,0); lk3.draw(100,100,i % 3 + 1); }
+        startScreen.draw();
+        //標準に戻して、Escで閉じる
+        clickAt(skinCards[0]);
+        var backE = droneSkin.current == "E" && droneSheets.id == "E";
+        document.dispatchEvent(new KeyboardEvent("keydown",{ code:"Escape" }));
+        check("標準に戻して、Escで設定を閉じる", backE && !startScreen.settings);
+        //設定を開いている間はデバッグのキーが効かない
+        clickAt(settingsButton);
+        document.dispatchEvent(new KeyboardEvent("keydown",{ code:"KeyB" }));
+        check("設定を開いている間はBキーのメニューが出ない", startScreen.settings && !bossDebug.menu);
+        clickAt(settingsClose);
+        check("閉じるボタンで設定を閉じる", !startScreen.settings);
     }catch(e){ fails++; L("NG   例外 " + e.stack); }
+    //テスト前の見た目の設定を戻す
+    try{ if(keepSkin) localStorage.setItem(droneSkin.KEY, keepSkin); else localStorage.removeItem(droneSkin.KEY); }catch(e){}
+    report();
+}
+function report(){
     check("スクリプトエラーなし", errors.length == 0, errors.slice(0,5).join(" / "));
     L("");
     L(fails == 0 ? "RESULT: OK" : "RESULT: NG (" + fails + "件)");
     document.getElementById("result").textContent = out.join("\n");
 }
-if(droneSheets.length) finish(); else droneSheetImg.addEventListener("load", function(){ setTimeout(finish,0); });
+droneSkin.onReady(finish);
 </script>
 </body></html>

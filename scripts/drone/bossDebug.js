@@ -128,7 +128,7 @@ var bossDebug = {
 };
 
 document.addEventListener("keydown",function(e){
-    if(page.number == 0 && !storyDebug.active && !coop.inRoom){
+    if(page.number == 0 && !storyDebug.active && !coop.inRoom && !startScreen.settings){
         if(e.code == "KeyB" && !bossDebug.menu){ bossDebug.open(); return; }
         if(!bossDebug.menu) return;
         if(e.code == "Escape"){ bossDebug.close(); return; }

@@ -23,6 +23,14 @@ var continueButton = new drawRect(TITLE_MENU_X, 214, 300, 46);
 var coopButton     = new drawRect(TITLE_MENU_X, 300, 300, 46);
 var versusButton   = new drawRect(TITLE_MENU_X, 354, 300, 46);
 
+//右上の設定ボタンと、設定の窓(ドローン君の見た目を選ぶ)
+var settingsButton = new drawRect(CW - 78, 18, 104, 34);
+const SETTINGS_W = 520;     //設定の窓の大きさ
+const SETTINGS_H = 310;
+const SETTINGS_Y = 115;
+var settingsClose = new drawRect(CW/2, SETTINGS_Y + SETTINGS_H - 62, 160, 40);
+var skinCards = [new drawRect(CW/2 - 118, SETTINGS_Y + 70, 210, 160), new drawRect(CW/2 + 118, SETTINGS_Y + 70, 210, 160)];
+
 //遠くを横切るドローン君の影(背景の飾り)
 var titleShadows = [];
 for(var i=0; i<TITLE_SHADOWS; i++){
@@ -39,6 +47,8 @@ var startScreen = {
     t:0,            //開いてからのフレーム数(登場の動き・レーダーの回転)
     hover:-1,       //マウスが乗っているメニューの番号
     blips:[],       //レーダーに映る点
+    settings:false, //設定の窓を開いているか
+    setHover:-1,    //設定の窓でマウスが乗っているもの(0,1:見た目 2:閉じる)
     enter:function(){
         this.hasSave = save.exists();
         this.best = save.getBest();
@@ -46,6 +56,7 @@ var startScreen = {
         drone.resetStats();
         this.t = 0;
         this.hover = -1;
+        this.settings = false;
     },
     //メニューの一覧([ボタン, 文字, 押せるか])
     items:function(){
@@ -64,9 +75,22 @@ var startScreen = {
             bossDebug.updateMenu();
             return;
         }
+        if(this.settings){
+            this.updateSettings();
+            return;
+        }
+        //設定の窓を開く(見た目をすべて用意しておく。並べて見せるため)
+        if(settingsButton.clicked()){
+            sound.play("click");
+            this.settings = true;
+            this.setHover = -1;
+            for(var i=0; i<droneSkin.list.length; i++) droneSkin.prepare(droneSkin.list[i].id);
+            return;
+        }
         //マウスが乗ったメニューが変わったら、小さく音を鳴らす
         var list = this.items(), h = -1;
         for(var i=0; i<list.length; i++) if(list[i][2] && list[i][0].contains(MouseX,MouseY)) h = i;
+        if(settingsButton.contains(MouseX,MouseY)) h = list.length;
         if(h != this.hover && h >= 0) sound.play("hover");
         this.hover = h;
 
@@ -152,6 +176,7 @@ var startScreen = {
         //ドローン表示
         drone.draw();
         if(bossDebug.menu) bossDebug.drawMenu();
+        if(this.settings) this.drawSettings();
     },
 
     drawBackground:function(){
@@ -301,7 +326,148 @@ var startScreen = {
             var sub = ["プロローグから", ok ? "セーブから再開" : "セーブなし", "ストーリーをふたりで", "1対1"][i];
             ctx.fillText(sub, b.X + b.width - 14, b.Y + b.height/2 + 1);
             ctx.restore();
+            ctx.restore();
         }
+        this.drawSettingsButton();
+        ctx.fillStyle = "#000";
+    },
+
+    //------------------------------------------------------------------ 設定
+    //右上の設定ボタン(乗せると黒く反転)
+    drawSettingsButton:function(){
+        var b = settingsButton;
+        var on = this.hover == this.items().length && !this.settings && !bossDebug.menu;
+        ctx.globalAlpha = Math.min(1, this.t/TITLE_IN_TIME);
+        ctx.fillStyle = on ? TITLE_INK : "#fff";
+        ctx.fillRect(b.X, b.Y, b.width, b.height);
+        ctx.strokeStyle = TITLE_INK;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(b.X + 1, b.Y + 1, b.width - 2, b.height - 2);
+        ctx.lineWidth = 1;
+        //歯車の印(丸と8本の歯)
+        var gx = b.X + 22, gy = b.Y + b.height/2;
+        ctx.strokeStyle = on ? "#fff" : TITLE_INK;
+        ctx.lineWidth = 2.5;
+        for(var i=0; i<8; i++){
+            var a = i*Math.PI/4;
+            ctx.beginPath();
+            ctx.moveTo(gx + Math.cos(a)*5, gy + Math.sin(a)*5);
+            ctx.lineTo(gx + Math.cos(a)*8, gy + Math.sin(a)*8);
+            ctx.stroke();
+        }
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(gx, gy, 4.5, 0, Math.PI*2); ctx.stroke();
+        ctx.lineWidth = 1;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.font = "bold 15px " + TITLE_UI_FONT;
+        ctx.fillStyle = on ? "#fff" : TITLE_INK;
+        ctx.fillText("設定", b.X + 42, gy + 1);
+        ctx.globalAlpha = 1;
+    },
+
+    //設定の窓：ドローン君の見た目を選ぶ。選ぶとすぐ切り替わり、覚える。Esc か「閉じる」で閉じる
+    updateSettings:function(){
+        var h = -1;
+        for(var i=0; i<skinCards.length; i++) if(skinCards[i].contains(MouseX,MouseY)) h = i;
+        if(settingsClose.contains(MouseX,MouseY)) h = skinCards.length;
+        if(h != this.setHover && h >= 0) sound.play("hover");
+        this.setHover = h;
+        for(var i=0; i<skinCards.length; i++){
+            if(skinCards[i].clicked()){
+                sound.play("click");
+                droneSkin.set(droneSkin.list[i].id);
+                return;
+            }
+        }
+        if(settingsClose.clicked()){
+            sound.play("click");
+            this.closeSettings();
+        }
+    },
+    closeSettings:function(){
+        this.settings = false;
+        this.hover = -1;
+    },
+
+    drawSettings:function(){
+        //後ろを薄く隠す
+        ctx.fillStyle = "rgba(247,247,244,0.85)";
+        ctx.fillRect(0,0,CW,CH);
+        //窓
+        var px = CW/2 - SETTINGS_W/2, py = SETTINGS_Y;
+        ctx.fillStyle = "rgba(0,0,0,0.12)";
+        ctx.fillRect(px + 6, py + 6, SETTINGS_W, SETTINGS_H);
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(px, py, SETTINGS_W, SETTINGS_H);
+        ctx.strokeStyle = TITLE_INK;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(px + 1, py + 1, SETTINGS_W - 2, SETTINGS_H - 2);
+        ctx.lineWidth = 1;
+        ctx.fillStyle = TITLE_ACCENT;
+        ctx.fillRect(px + 2, py + 2, 5, 44);
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.font = "bold 20px " + TITLE_UI_FONT;
+        ctx.fillStyle = TITLE_INK;
+        ctx.fillText("設定", px + 26, py + 25);
+        ctx.font = "bold 12px " + TITLE_UI_FONT;
+        ctx.fillStyle = "#6a6f6c";
+        ctx.fillText("ドローン君の見た目", px + 26, py + 58);
+
+        //見た目のカード(ドローン君がゆっくり回って見える)
+        for(var i=0; i<skinCards.length; i++){
+            var c = skinCards[i], s = droneSkin.list[i];
+            var sel = droneSkin.current == s.id, on = this.setHover == i;
+            ctx.fillStyle = on && !sel ? "#f0f0ec" : "#fff";
+            ctx.fillRect(c.X, c.Y, c.width, c.height);
+            ctx.strokeStyle = sel || on ? TITLE_INK : "#c9ccc7";
+            ctx.lineWidth = sel ? 3 : 2;
+            ctx.strokeRect(c.X + 1, c.Y + 1, c.width - 2, c.height - 2);
+            ctx.lineWidth = 1;
+            var sh = droneSkin.sheets[s.id];
+            if(sh){
+                var col = Math.floor(this.t/14) % DRONE_YAWS;
+                var bob = Math.round(Math.sin(this.t*0.08)*2);
+                var src = sh.pixel ? sh[0] : sh[1], f = sh.pixel ? DRONE_SIZE : DRONE_SIZE*2;
+                ctx.imageSmoothingEnabled = !sh.pixel;
+                ctx.drawImage(src, col*f, DRONE_ELEV_LEVEL*f, f, f, c.X + c.width/2 - 40, c.Y + 22 + bob, 80, 80);
+                ctx.imageSmoothingEnabled = false;
+            }
+            ctx.textAlign = "center";
+            ctx.font = "bold 16px " + TITLE_UI_FONT;
+            ctx.fillStyle = TITLE_INK;
+            ctx.fillText(s.name, c.X + c.width/2, c.Y + 122);
+            ctx.font = "11px " + TITLE_UI_FONT;
+            ctx.fillStyle = "#8a8f8b";
+            ctx.fillText(s.sub, c.X + c.width/2, c.Y + 143);
+            //選んでいる印
+            if(sel){
+                ctx.fillStyle = TITLE_ACCENT;
+                ctx.fillRect(c.X, c.Y, 62, 22);
+                ctx.font = "bold 11px " + TITLE_UI_FONT;
+                ctx.fillStyle = "#fff";
+                ctx.fillText("使用中", c.X + 31, c.Y + 11);
+            }
+        }
+
+        //閉じる
+        var b = settingsClose, on = this.setHover == skinCards.length;
+        ctx.fillStyle = on ? TITLE_INK : "#fff";
+        ctx.fillRect(b.X, b.Y, b.width, b.height);
+        ctx.strokeStyle = TITLE_INK;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(b.X + 1, b.Y + 1, b.width - 2, b.height - 2);
+        ctx.lineWidth = 1;
+        ctx.textAlign = "center";
+        ctx.font = "bold 15px " + TITLE_UI_FONT;
+        ctx.fillStyle = on ? "#fff" : TITLE_INK;
+        ctx.fillText("閉じる", b.X + b.width/2, b.Y + b.height/2 + 1);
         ctx.fillStyle = "#000";
     }
 };
+
+//Escで設定の窓を閉じる
+document.addEventListener("keydown",function(e){
+    if(page.number == 0 && startScreen.settings && e.code == "Escape") startScreen.closeSettings();
+},false);
