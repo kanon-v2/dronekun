@@ -1,0 +1,18 @@
+#!/bin/sh
+# 公開版(main)の push を、公開版のタグ(v…)が付いたコミットだけに限る。
+# main の更新は tools/release.ps1 で行う(タグと Releases の変更内容を必ず残すため)。
+# このフックを有効にするには、クローンごとに一度だけ: git config core.hooksPath .githooks
+
+while read local_ref local_sha remote_ref remote_sha; do
+    [ "$remote_ref" = "refs/heads/main" ] || continue
+    # main を消す push はここでは扱わない
+    case "$local_sha" in *[!0]*) ;; *) continue ;; esac
+    if [ -z "$(git tag --points-at "$local_sha" --list 'v*')" ]; then
+        echo "" >&2
+        echo "main への push を止めました: このコミットには公開版のタグ(v…)がありません。" >&2
+        echo "公開版の更新は tools/release.ps1 で行ってください(タグと Releases の変更内容を残します)。" >&2
+        echo "" >&2
+        exit 1
+    fi
+done
+exit 0
