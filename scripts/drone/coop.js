@@ -573,7 +573,7 @@ var coop = {
         }
     },
 
-    //------------------------------------------------------------ 出来事(龍の大技・ボス撃破)
+    //------------------------------------------------------------ 出来事(衝撃波・ボス撃破・ジャスト衝撃波)
     addEvent:function(_type,_x,_y){
         this.events.push([++this.evSeq, _type, Math.round(_x), Math.round(_y)]);
         if(this.events.length > 6) this.events.shift();
@@ -586,20 +586,30 @@ var coop = {
             if(e[0] <= this.evSeen) continue;
             this.evSeen = e[0];
             if(e[1] == 1 && page.number == 1){
-                //相方の五龍(見た目だけ)
-                dragonBlast.cast(e[2], e[3], true);
+                //相方の衝撃波(見た目だけ)
+                mainScreen.blastFx(e[2], e[3], true);
             }else if(e[1] == 2 && this.role == "guest"){
                 //ボス撃破：ゲストにも報酬
                 game.pendingReward = (game.pendingReward || 0) + 1;
                 popup(e[2], e[3] - 60, "ボス撃破！ 報酬+1", "#c33");
+            }else if(e[1] == 3 && page.number == 1){
+                //相方のジャスト衝撃波：敵と弾を動かしているホストがゆっくりにする(ゲストの画面にもそのまま届く)
+                if(this.role == "host") mainScreen.slowmo = Math.max(mainScreen.slowmo, JUST_COOP_SLOW);
+                fx.ring(e[2], e[3], 90, JUST_COLOR, 22, 4);
+                popup(e[2], Math.max(40, e[3] - 50), "JUST!", "rgb(" + JUST_COLOR + ")", true);
             }
         }
     },
-    //衝撃波を出した(mainScreen.blast・dragonBlast.finaleから)
+    //衝撃波を出した(mainScreen.blast から)
     onBlast:function(_x,_y,_cast){
         if(!this.active) return;
         if(_cast) this.addEvent(1,_x,_y);
         if(this.role == "guest") this.blast = [this.blast[0] + 1, Math.round(_x), Math.round(_y)];
+    },
+    //ジャスト衝撃波を出した(mainScreen.justBlast から)。相方に知らせ、ホストが敵と弾をゆっくりにする
+    onJust:function(_x,_y){
+        if(!this.active) return;
+        this.addEvent(3,_x,_y);
     },
     onBossKill:function(_e){
         if(this.isHost()) this.addEvent(2,_e.x,_e.y);
@@ -679,7 +689,6 @@ var coop = {
             M.updateFuel();
             if(Click == 1 && M.state == "play") M.blast();
         }
-        dragonBlast.update();
         this.guestSync();
         arms.update(M.state == "play" && !M.down);
         this.guestCollide();

@@ -115,6 +115,15 @@ var steps = [
         });
     },
     function(next){
+        //ゲストのジャスト衝撃波が相方に届き、ホストが敵と弾をゆっくりにする
+        var j0 = st.host.extra.justSlow;
+        cmd("guest", { cmd:"just" });
+        waitFor(function(){ return st.host.extra.justSlow > j0; }, 5000, function(ok){
+            check("ゲストのジャスト衝撃波で、ホストが敵と弾をゆっくりにする", ok && st.guest.just > 0, "ゲストのジャスト" + st.guest.just + "・ホストのスロー" + st.host.extra.justSlow);
+            next();
+        });
+    },
+    function(next){
         cmd("host", { cmd:"die" }); cmd("guest", { cmd:"die" });
         waitFor(function(){ return both(function(s){ return s.page == 3; }); }, 15000, function(ok){
             check("ふたりとも撃墜でゲームオーバー", ok, desc()); next();

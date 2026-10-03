@@ -12,7 +12,7 @@ const KAI_RELAYS = [0.0, 0.34, 0.6, 0.79, 0.93, 1.04, 1.13, 1.2, 1.26, 1.31, 1.3
 //同じ効果音が短時間に重なりすぎないよう、最低この間隔(秒)をあける
 const SE_INTERVAL = {
     shot:0.045, typing:0.04, water:0.07, steam:0.08, hit:0.035, kill:0.03, blade:0.04, zap:0.06, explode:0.05,
-    part:0.025, graze:0.04, enemyShot:0.06, mine:0.08, bug:0.08, dash:0.1, bossShot:0.05, summon:0.1, dragonBite:0.05
+    part:0.025, graze:0.04, enemyShot:0.06, mine:0.08, bug:0.08, dash:0.1, bossShot:0.05, summon:0.1
 };
 
 //BGMの曲データ
@@ -130,7 +130,7 @@ const TRACKS = {
 
 var sound = {
     ctx:null,
-    master:null, bgmGain:null, seGain:null,
+    master:null, bgmGain:null, bgmFilter:null, seGain:null,
     noiseBuf:null,
     bgmOn:true,
     seOn:true,
@@ -175,7 +175,12 @@ var sound = {
             this.master.connect(comp);
             this.bgmGain = c.createGain();
             this.bgmGain.gain.value = this.bgmOn ? BGM_VOLUME : 0;
-            this.bgmGain.connect(this.master);
+            //BGMはこもらせられるよう、フィルターを通す(ジャスト衝撃波のゆっくりの間。timeWarp)
+            this.bgmFilter = c.createBiquadFilter();
+            this.bgmFilter.type = "lowpass";
+            this.bgmFilter.frequency.value = 20000;
+            this.bgmGain.connect(this.bgmFilter);
+            this.bgmFilter.connect(this.master);
             this.seGain = c.createGain();
             this.seGain.gain.value = this.seOn ? SE_VOLUME : 0;
             this.seGain.connect(this.master);
@@ -421,18 +426,35 @@ var sound = {
                 break;
             case "fuel":      this.tone("triangle",660,1320,0.16,0.08,S); break;
             case "graze":     this.tone("triangle",2400,2000,0.03,0.035,S); break;
-            //五龍の衝撃波：陣が浮かぶ音＋低くうなる咆哮
+            //ジャスト衝撃波：鋭い「キンッ」(ヒットストップの間に鳴る)のあと、きらっと上がる和音
+            case "just":
+                this.tone("square",3200,2600,0.06,0.09,S,0,0,6000);
+                this.tone("triangle",4800,4700,0.35,0.07,S);
+                this.tone("sine",1600,1590,0.5,0.08,S);
+                this.noise(0.08,0.12,"highpass",5000,7000,S);
+                this.jingle([88,91,96,100],0.04,"triangle",0.06,0.18);
+                break;
+            //ゆっくりになる「ブゥゥン」：低くうなりながら沈んでいく音
+            case "slowIn":
+                this.tone("sawtooth",220,42,1.6,0.16,S,0,0.02,900);
+                this.tone("sawtooth",226,44,1.6,0.12,S,0,0.02,700);
+                this.tone("sine",110,30,1.9,0.3,S,0,0.02);
+                this.noise(1.2,0.08,"lowpass",1800,120,S);
+                break;
+            //元の速さへ戻る「ヒュウン」：低いところから上がっていく音
+            case "slowOut":
+                this.tone("sawtooth",50,260,0.55,0.1,S,0,0.15,1400);
+                this.tone("sine",60,180,0.5,0.18,S,0,0.15);
+                this.noise(0.5,0.06,"highpass",300,3000,S);
+                break;
+            //はね返した弾が当たった(「カンッ」と金属に当たる高い音)
+            case "justHit":   this.tone("square",2100,1500,0.05,0.06,S,0,0,5000); this.tone("sine",3150,3100,0.12,0.04,S); break;
+            //ドローン君改の黒い龍：陣が浮かぶ音＋低くうなる咆哮
             case "dragon":
                 this.jingle([72,79,84,91,96],0.035,"triangle",0.07,0.12);
                 this.tone("sawtooth",110,48,0.95,0.16,S,now + 0.08,0.06,700);
                 this.tone("sawtooth",117,52,0.95,0.12,S,now + 0.08,0.06,700);
                 this.noise(0.9,0.14,"bandpass",700,180,S,now + 0.08);
-                break;
-            case "dragonBite":  this.tone("square",420,110,0.14,0.08,S,0,0,1600); this.noise(0.18,0.14,"lowpass",2500,300,S); break;
-            case "dragonFinale":
-                this.noise(1.4,0.45,"lowpass",3500,50,S);
-                this.tone("sine",180,30,1.2,0.35,S);
-                this.jingle([84,0,88,91,96],0.07,"triangle",0.05,0.2);
                 break;
             //ストーリー
             case "glitch":
@@ -607,6 +629,13 @@ var sound = {
     },
 
     //一時停止中はBGMを小さくする
+    //ジャスト衝撃波のゆっくりの間、BGMを低くこもらせる(水の中で聞くように)。false で元に戻す
+    timeWarp:function(_on){
+        if(!this.ctx || !this.bgmFilter) return;
+        var t = this.ctx.currentTime;
+        this.bgmFilter.frequency.cancelScheduledValues(t);
+        this.bgmFilter.frequency.setTargetAtTime(_on ? 320 : 20000, t, _on ? 0.06 : 0.25);
+    },
     duck:function(_on){
         if(_on == this.ducked) return;
         this.ducked = _on;

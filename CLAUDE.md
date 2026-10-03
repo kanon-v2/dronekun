@@ -15,7 +15,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 
 - ヘッドレスのEdgeで次の2つを開き、すべて `RESULT: OK` なら成功(終了コード0)。
   - `tools/smoke-test.html`: ストーリーの流れ・各WAVEの戦闘・全シナジー・強化画面(ショップも)・デバッグのメニュー(ボス戦・武器試用・ストーリー確認)・ドローン君の絵と振り向き・タイトルの設定(見た目の切り替え)・雑魚敵の見た目
-  - `tools/coop-test.html`: 協力プレイ。ゲーム2つ(`tools/coop-frame.html`)を iframe で開き、偽のPeerJS(`tools/fake-peer.js`)の通信を親ページが中継する。部屋作り・コード違い・参加・出撃・WAVEクリアの同期・ゲストの攻撃の反映(追加の装備の燃やす・凍らせる・渦の吸い寄せ・バリアで防いだ弾も)・退出と、対戦(参加・開始・決着・勝敗の一致・もう一度・退出)を確かめる(インターネット不要)
+  - `tools/coop-test.html`: 協力プレイ。ゲーム2つ(`tools/coop-frame.html`)を iframe で開き、偽のPeerJS(`tools/fake-peer.js`)の通信を親ページが中継する。部屋作り・コード違い・参加・出撃・WAVEクリアの同期・ゲストの攻撃の反映(追加の装備の燃やす・凍らせる・渦の吸い寄せ・バリアで防いだ弾も)・ゲストのジャスト衝撃波でホストがゆっくりになる・退出と、対戦(参加・開始・決着・勝敗の一致・もう一度・退出)を確かめる(インターネット不要)
 - 新しい機能を足したら、`tools/smoke-test.html`(協力プレイに関わるものは `tools/coop-test.html`)にも確認項目を足す。
 - 見た目の確認はヘッドレスEdgeのスクリーンショットで行う:
   `msedge --headless=new --disable-gpu --allow-file-access-from-files --virtual-time-budget=3000 --window-size=960,540 --screenshot=<出力.png> <file:///...html>`
@@ -40,7 +40,6 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | `bosses.js` | レア敵・ボス(女王蜂・移動要塞・ドローン君改)。`special` |
 | `startScreen.js` | タイトル画面 |
 | `mainScreen.js` | 戦闘画面。敵の種類(`ENEMY_TYPES`)・敵の弾・アイテム・HUD |
-| `dragons.js` | 衝撃波(クリック)＝五龍の大技 |
 | `forces.js` | 同胞(色違いのドローン君)と人間の兵器。`ENEMY_TYPES` に種類を追加している |
 | `enemyArt.js` | 雑魚敵(`mainScreen.js` の6種類と人間の兵器3種類)の見た目(`enemyArt`)。`mainScreen.drawEnemy` から呼ぶ |
 | `upgradeScreen.js` | 強化画面(報酬カード・能力強化・装備・ショップ・能力リセット) |
@@ -92,7 +91,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | シナジーの組み合わせ・色 | `equipment.js` の `SYNERGIES`・`SYN_COLOR`(追加の装備のものは `armsExtra.js`) |
 | 敵の種類・弾幕の増え方 | `mainScreen.js` の `ENEMY_TYPES`・`danmaku()`・`HIT_CORE`・`GRAZE_RANGE` |
 | 雑魚敵の見た目・色 | `enemyArt.js` の `enemyArt`・`ENEMY_COLOR` |
-| 衝撃波(五龍) | `mainScreen.js` の `BLAST_*`、`dragons.js` の `DRAGON_*` |
+| 衝撃波・ジャスト衝撃波 | `mainScreen.js` の `BLAST_*`・`JUST_*`、対戦でのダメージは `versus.js` の `VS_DAMAGE_MUL.blast` |
 | レア敵・ボス | `bosses.js` の `RARE_*`・`BOSS_EVERY`・`makeBoss()`・`KAI_PATTERNS` |
 | 同胞・人間の兵器 | `forces.js` の `kinRate()`・`pickHuman()` |
 | ストーリーの文章・背景・流れる時期 | `story.js` の `STORIES`・`STORY_SKY`・`STORY_AFTER` |
@@ -139,6 +138,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 - ホストが敵・弾・アイテムを動かし、状態を約30回/秒でゲストへ送る。ゲストは自分のドローン君と武器を自分の画面で動かし、与えたダメージ・拾ったアイテム・衝撃波を「合計値」で送り返す。被弾判定はそれぞれが自分について行う。
 - 送る量は1回 `COOP_LIMIT`(12000バイト)以内。超えるときはゲストから遠いものから削る。
 - 敵の状態：減速(EMP)・濡れ(水鉄砲)・燃える(火炎放射)・凍る(冷凍)は、ゲストが付けた回数をダメージと一緒に送り(`guestHit` の `dm`)、ホストが自分の敵に付ける。ホストからは状態の印を送る(`packEnemy` の `flags`)。燃えて削れる分と、凍った敵への2倍はホストだけで数える。ゲストの重力弾の渦は、相方の武器の見た目(`armsSummary`)で届いた位置でホストが敵を吸い寄せる。ゲストのバリアが防いだ弾は、防いだ位置を送り(`br`)、ホストがいちばん近い弾を消す。
+- ジャスト衝撃波(`mainScreen.justBlast`)：ひとり用は画面のすべてをゆっくりにするが、協力プレイでは画面がずれないよう、出来事(`addEvent` の3)で相方に知らせ、敵と弾を動かしているホストが `slowmo` でゆっくりにする(`JUST_COOP_SLOW`)。
 - 協力プレイ中は敵の体力2倍(`COOP_HP_MUL`)、強化・装備は各自、セーブしない。
 - 拾ったパーツはふたりとも受け取る。自分が拾った数の合計(`partsGot`)を送り合い、増えた分を足す(`shareParts`)。報酬カプセル・燃料は拾った人だけ。
 - コンティニュー：強化画面で `save.write` が呼ばれると、協力プレイ中はセーブの代わりに `coop.checkpoint` に覚える。ふたりとも撃墜されたらゲームオーバー画面でコンティニューを押せて、ふたりとも押すと(相方がいなければすぐ)ホストが `checkpoint` に戻して強化画面へ。ゲストはホストが強化画面へ戻ったのを見てついていく(`continueGame`)。
@@ -158,7 +158,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 - 対戦中は `coop.active` は false(協力プレイ用の処理が動かないように)。`versus.active` で見分ける。
 - 流れ：装備選び(`select`) → ふたりとも準備OKで戦闘(`fight`。最初の `VS_COUNTDOWN` は秒読み) → 結果(`result`) → 「もう一度」でラウンドを進めて装備選びへ。
 - 相手は自分の画面では `enemies` に入った敵(`rival:true`)。装備はいつもどおり自動で狙い、`mainScreen.hitEnemy` が `versus.hit` へ回す。与えたダメージ(`VS_DAMAGE_MUL` をかけた値)の合計を送り、受けた側が自分の耐久から引く。被弾の判定は攻撃した側の画面で行う。
-- 衝撃波は五龍が相手に食らいつく。出した直後(`mainScreen.guard`)は受けたダメージを無視する。相手の衝撃波は `dragonBlast.cast(…, true, [versus.me])` で、龍が自分に向かってくる見た目だけ描く。
+- 衝撃波は円い衝撃波で、範囲(`BLAST_RADIUS`)にいる相手にダメージ。出した直後(`mainScreen.guard`)は受けたダメージを無視する。相手の衝撃波は `mainScreen.blastFx(…, true)` で見た目だけ描く。
 - 能力・装備は対戦用に `game` を作り直す(ひとり用のセーブには書き込まない。つづきからはセーブから読み直す)。
 - 追加の装備の対戦での効き方：冷凍は凍らせる代わりに相手を遅くする(`VS_ICE_SLOW`。EMPと同じく回数を送る)。バリアは、受けたダメージを板1枚で `VS_BARRIER_ABSORB` 防ぐ(`arms.absorbVs`)。重力弾は相手を吸い寄せない(相手の位置は相手の画面で決まる)が、渦のダメージは入る。
 - バランス調整：`tools/vs-balance.html`(組み合わせを変えて自動で何戦もする。`#8` で戦数)と `tools/vs-dps.html`(装備1つずつの毎秒のダメージ。`#ids=fire,disc` で測る装備を選べる。全部だと時間がかかる)。自動プレイは近づかないので、ブレード・地雷は実際より弱く出る。

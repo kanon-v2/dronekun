@@ -7,15 +7,35 @@ const FUEL_PER_PX     = 0.025;  //移動1pxあたりの燃料消費
 const FUEL_REGEN      = 0.065;  //毎フレームの燃料回復
 const FUEL_RESUME     = 20;     //燃料切れから復帰する燃料
 const BLAST_COST      = 40;     //衝撃波の燃料消費
-const BLAST_RADIUS    = 150;    //衝撃波の届く範囲(弾を消す範囲・締めの大爆発の範囲)
+const BLAST_RADIUS    = 150;    //衝撃波の届く範囲(弾を消し、敵にダメージを与える範囲)
 const BLAST_GUARD     = 30;     //衝撃波を出してから無敵の時間
 const BLAST_SLOWMO    = 14;     //衝撃波を出した直後、周りがゆっくりになる時間
+const BLAST_DMG       = 4;      //衝撃波が範囲内の敵に与えるダメージ(実弾1発は1)
+const BLAST_PUSH      = 9;      //衝撃波で敵をはじき飛ばす速さ
 const MAGNET_RANGE    = 75;     //アイテムを吸い寄せる距離
 const PICKUP_LIFE     = 600;    //アイテムが消えるまでの時間
 const FUEL_DROP_RATE  = 0.12;   //燃料缶を落とす確率
 const HIT_CORE        = 6;      //敵の弾に対するドローンの当たり判定(中心の小さな点)
 const GRAZE_RANGE     = 22;     //弾がこの距離までかすめると「かすり」
 const GRAZE_FUEL      = 1.5;    //かすり1回で回復する燃料
+//ジャスト衝撃波：弾が当たる直前に衝撃波を出すと、周りの弾を敵へはね返し、時間がゆっくりになる
+const JUST_FRAMES     = 12;     //この時間(フレーム)のうちに当たる弾があれば「ジャスト」
+const JUST_MARGIN     = 4;      //当たるかどうかの見込みに足す余裕(px)
+const JUST_REFUND     = 30;     //成功したとき戻る燃料(衝撃波は BLAST_COST 使う)
+const JUST_DMG        = 3;      //はね返した弾1発のダメージ(実弾は1)
+const JUST_PIERCE     = 1;      //はね返した弾が貫く敵の数
+const JUST_MAX        = 24;     //はね返す弾の数の上限(残りは今までどおり消す)
+const JUST_SPEED      = 1.2;    //はね返した弾の速さ(実弾 SHOT_SPEED の何倍か)
+const JUST_TURN       = 0.18;   //はね返した弾が狙った敵へ曲がる強さ(1フレームのラジアン)
+const JUST_SLOW_TIME  = 130;    //成功したあと、画面のすべてがゆっくりになる時間(実際のフレーム)
+const JUST_SLOW_RATE  = 0.2;    //いちばんゆっくりのときの速さ(1で元どおり)
+const JUST_SLOW_HOLD  = 0.5;    //ゆっくりの時間のうち、いちばんゆっくりのまま保つ割合(残りでだんだん元の速さへ戻る)
+const JUST_SLOW_ZOOM  = 0.06;   //ゆっくりの間、ドローン君へ寄る大きさ(1割で0.1)
+const JUST_SLOW_ECHO  = 0.6;    //ゆっくりの間の残像の濃さ(前のコマを重ねる)
+const JUST_GUARD      = 50;     //成功したあとの無敵の時間(ふつうは BLAST_GUARD)
+const JUST_TEXT_TIME  = 90;     //「JUST!」の文字を出しておく時間(実際のフレーム)
+const JUST_COOP_SLOW  = 40;     //協力プレイで、敵と弾がゆっくりになる時間(ふたりの画面で同じ。ふつうの衝撃波は BLAST_SLOWMO)
+const JUST_COLOR      = "90,220,255";
 //敵を倒したときの爆発(killBlast)
 const KILL_FX_MIN     = 0.8;    //爆発の大きさの倍率の下限(敵の半径/12 をこの範囲に収める)
 const KILL_FX_MAX     = 2.2;
@@ -234,6 +254,15 @@ var mainScreen = {
     rareMsgTime:0,
     clock:0,            //このWAVEが始まってからのフレーム数(演出の間隔に使う)
     graze:0,            //このWAVEのかすり回数
+    just:0,             //このWAVEのジャスト衝撃波の回数
+    justT:0,            //「JUST!」の文字を出している残り時間
+    justSlow:0,         //ジャスト衝撃波のあと、画面のすべてがゆっくりになっている残り時間
+    slowAcc:0,          //ゆっくりの間、次の1コマを進めるまでのたまり具合
+    slowPow:0,          //ゆっくりの演出の強さ(1がいちばんゆっくり、0でふつう)
+    slowBack:false,     //元の速さへ戻り始めたか
+    echo:null,          //ゆっくりの間の残像に使う、前のコマの絵
+    justHits:0,         //最後のジャスト衝撃波ではね返した弾が当たった数
+    justN:0,            //最後のジャスト衝撃波ではね返した弾の数
     guard:0,            //衝撃波のあとの無敵時間(点滅しない無敵)
     slowmo:0,           //周りがゆっくりになっている残り時間
     tint:null,          //画面全体の色づけ(連鎖爆破など)
@@ -268,6 +297,11 @@ var mainScreen = {
         this.kinForced = false;
         this.clock = 0;
         this.graze = 0;
+        this.just = 0;
+        this.justT = 0;
+        this.justSlow = 0;
+        this.slowPow = 0;
+        sound.timeWarp(false);
         this.guard = 0;
         this.slowmo = 0;
         this.bossIntro = 0;
@@ -280,7 +314,6 @@ var mainScreen = {
         this.droneIn = 0;
         this.beatT = 0;
         this.kaiDark = 0;
-        dragonBlast.reset();
         this.tint = null;
         this.spawnTimer = 0;
         this.invincible = 0;
@@ -303,6 +336,26 @@ var mainScreen = {
         if(this.paused) return;
         //ボスの着地の瞬間は、画面ごと少し止める(ヒットストップ)
         if(this.hitStop > 0){ this.hitStop--; return; }
+        //ジャスト衝撃波のあとは、画面のすべてをゆっくりにする(何フレームかに1回だけ進め、だんだん元の速さへ)
+        if(this.justSlow > 0){
+            this.justSlow--;
+            if(this.justT > 0) this.justT--;    //文字は実際の時間で消す
+            //はじめはいちばんゆっくりのまま保ち、そのあと元の速さへ戻していく
+            var k = 1 - this.justSlow/JUST_SLOW_TIME;
+            var u = Math.max(0, (k - JUST_SLOW_HOLD)/(1 - JUST_SLOW_HOLD));
+            if(u > 0 && !this.slowBack){
+                this.slowBack = true;
+                sound.timeWarp(false);
+                sound.play("slowOut");
+            }
+            var rate = JUST_SLOW_RATE + (1 - JUST_SLOW_RATE)*u*u;
+            this.slowPow = (1 - rate)/(1 - JUST_SLOW_RATE);     //演出の強さ(1がいちばんゆっくり)
+            this.slowAcc += rate;
+            if(this.slowAcc < 1) return;
+            this.slowAcc -= 1;
+        }else{
+            this.slowPow = 0;
+        }
         this.stateTime++;
         this.clock++;
         if(this.tint && --this.tint.life <= 0) this.tint = null;
@@ -379,7 +432,6 @@ var mainScreen = {
             this.slowmo--;
             frozen = this.slowmo % 2 == 0;
         }
-        dragonBlast.update();
         if(!frozen){
             arms.update(this.state == "play" && !this.down);
             this.updateEnemies();
@@ -397,6 +449,7 @@ var mainScreen = {
     //演出の時間を進める(登場の演出中も止めない分)
     tickTimers:function(){
         if(this.shake > 0) this.shake--;
+        if(this.justT > 0 && !this.justSlow) this.justT--;
         if(this.bossIntro > 0) this.bossIntro--;
         if(this.donT > 0) this.donT--;
         if(this.zoomT > 0) this.zoomT--;
@@ -467,17 +520,132 @@ var mainScreen = {
             return;
         }
         this.fuel -= BLAST_COST;
+        var just = this.isJust();
         //ピンチを切り抜けられるよう、周りの弾はすぐ消して少しのあいだ無敵に
+        //ジャストのときは、消す代わりに近い順に敵へはね返す
+        var near = [];
         for(var i=enemyShots.length-1; i>=0; i--){
-            if(Math.hypot(enemyShots[i].x - drone.X, enemyShots[i].y - drone.Y) < BLAST_RADIUS){
+            var d = Math.hypot(enemyShots[i].x - drone.X, enemyShots[i].y - drone.Y);
+            if(d < BLAST_RADIUS){
+                if(just) near.push({ s:enemyShots[i], d:d });
                 enemyShots.splice(i,1);
             }
         }
         this.guard = BLAST_GUARD;
         this.slowmo = BLAST_SLOWMO;
-        //五龍が敵に食らいつき、戻ってきて大爆発する(dragons.js)
-        dragonBlast.cast(drone.X,drone.Y);
+        if(just){
+            //ジャスト：はね返した弾で攻撃する(どの弾が当たったか見えるように)
+            this.justBlast(near);
+            coop.onBlast(drone.X,drone.Y,false);
+            return;
+        }
+        //ふつうの衝撃波：周りの敵にまとめてダメージを与え、外へはじき飛ばす
+        for(var i=0; i<enemies.length; i++){
+            var e = enemies[i];
+            if(e.dead || e.harmless) continue;
+            var dx = e.x - drone.X, dy = e.y - drone.Y, d = Math.hypot(dx,dy) || 1;
+            if(d > BLAST_RADIUS + e.r) continue;
+            //敵を動かしているのはホストなので、ゲストの画面でははじき飛ばさない
+            if(!e.boss && !coop.isGuest()){ e.vx = dx/d*BLAST_PUSH; e.vy = dy/d*BLAST_PUSH; }
+            fx.sparks(e.x, e.y, 5, "255,200,120", 5, 2.5);
+            this.hitEnemy(e,BLAST_DMG,"blast");
+        }
+        this.blastFx(drone.X,drone.Y);
         coop.onBlast(drone.X,drone.Y,true);
+    },
+    //衝撃波の見た目(相方の衝撃波も同じ見た目で描く。coop.readEvents)
+    blastFx:function(_x,_y,_partner){
+        fx.flare(_x, _y, 60, "255,235,200", 12);
+        fx.ring(_x, _y, BLAST_RADIUS, "255,170,80", 18, 8);
+        fx.ring(_x, _y, BLAST_RADIUS*0.7, "255,255,255", 12, 4);
+        fx.sparks(_x, _y, 18, "255,190,110", 8, 3);
+        if(!_partner) fx.shake(6);    //相方の衝撃波では自分の画面を揺らさない
+        sound.play("blast");
+    },
+    //今出せばジャストか：このまま進むと JUST_FRAMES のうちに当たる弾があるか
+    //(ドローン君は止まっているとみなし、弾はまっすぐ進むとみなす)
+    isJust:function(){
+        if(this.down) return false;
+        for(var i=0; i<enemyShots.length; i++){
+            var b = enemyShots[i];
+            var px = b.x - drone.X, py = b.y - drone.Y;
+            var vv = b.vx*b.vx + b.vy*b.vy;
+            //いちばん近づく時刻(0〜JUST_FRAMES に収める)
+            var t = vv > 0 ? Math.max(0, Math.min(JUST_FRAMES, -(px*b.vx + py*b.vy)/vv)) : 0;
+            if(Math.hypot(px + b.vx*t, py + b.vy*t) < (b.r || 5) + HIT_CORE + JUST_MARGIN) return true;
+        }
+        return false;
+    },
+    //ジャスト成功：弾をはね返し、燃料を戻し、スローモーション・閃光・音で手ごたえを出す
+    justBlast:function(_near){
+        _near.sort(function(a,b){ return a.d - b.d; });
+        var n = Math.min(JUST_MAX, _near.length);
+        var marked = [];
+        for(var i=0; i<n; i++){
+            var s = _near[i].s;
+            //いちばん近い敵を追いかける。敵がいなければ来た向きへ返す
+            var t = arms.nearest(s.x,s.y,600);
+            var a = t ? Math.atan2(t.y - s.y, t.x - s.x) : Math.atan2(-s.vy,-s.vx);
+            var sp = SHOT_SPEED*JUST_SPEED;
+            arms.bullets.push({ x:s.x, y:s.y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, life:90,
+                                pierce:JUST_PIERCE, hit:[], just:true, dmg:JUST_DMG, target:t });
+            fx.flare(s.x, s.y, 14, JUST_COLOR, 12);
+            //狙う敵へ光の線を引き、照準の輪を付ける(はね返った弾の行き先が分かるように)
+            if(t){
+                fx.line(s.x, s.y, t.x, t.y, JUST_COLOR, 1.5, 14);
+                if(marked.indexOf(t) < 0){
+                    marked.push(t);
+                    fx.ring(t.x, t.y, t.r + 16, JUST_COLOR, 26, 3);
+                }
+            }
+        }
+        this.just++;
+        this.justHits = 0;
+        this.fuel = Math.min(this.maxFuel, this.fuel + JUST_REFUND);
+        this.guard = JUST_GUARD;
+        //ひとり用は画面のすべてをゆっくりにする。協力プレイは画面のずれを防ぐため、敵と弾だけをゆっくりにする
+        //(敵と弾を動かしているのはホスト。ゲストのジャストは相方に知らせ、ホストがゆっくりにする。coop.readEvents)
+        if(coop.active){
+            this.slowmo = JUST_COOP_SLOW;
+            coop.onJust(drone.X,drone.Y);
+        }else{
+            this.slowmo = 0;
+            this.justSlow = JUST_SLOW_TIME;
+            this.slowPow = 1;
+            this.slowBack = false;
+            this.echoFresh = true;
+            //「ブゥゥン」：低くうなる音とともに、BGMがこもる(元の速さへ戻り始めると晴れる)
+            sound.timeWarp(true);
+            sound.play("slowIn");
+            this.slowAcc = 0;
+        }
+        this.justT = JUST_TEXT_TIME;
+        this.zoomT = Math.round(ZOOM_TIME*0.7); this.zoomX = drone.X; this.zoomY = drone.Y;
+        this.flashT = 4;
+        fx.tint(JUST_COLOR, 30);
+        fx.flare(drone.X, drone.Y, 70, "255,255,255", 14);
+        fx.ring(drone.X, drone.Y, BLAST_RADIUS*1.15, JUST_COLOR, 22, 6);
+        fx.ring(drone.X, drone.Y, 60, "255,255,255", 12, 3);
+        fx.sparks(drone.X, drone.Y, 26, JUST_COLOR, 9, 3);
+        fx.shake(10);
+        //文字はドローン君に重ならないよう上に離して出す(画面の上の端では下に)
+        this.justX = Math.max(110,Math.min(drone.X,CW-110));
+        this.justY = drone.Y > 150 ? drone.Y - 95 : drone.Y + 95;
+        this.justN = n;
+        sound.play("just");
+    },
+    //はね返した弾が敵に当たった(equipment.js の updateBullets から)
+    justHit:function(_b,_e){
+        this.justHits++;
+        fx.flare(_b.x, _b.y, 26, JUST_COLOR, 12);
+        fx.flare(_b.x, _b.y, 10, "255,255,255", 8);
+        fx.sparks(_b.x, _b.y, 7, JUST_COLOR, 6, 2.5);
+        popup(_e.x + (Math.random() - 0.5)*16, _e.y - _e.r - 6, "-" + _b.dmg, "rgb(30,150,200)");
+        //同じフレームにいくつ当たっても音は1回
+        if(this.justHitClock != this.clock){
+            this.justHitClock = this.clock;
+            sound.play("justHit");
+        }
     },
 
     //タッチ操作用の衝撃波ボタン(右下)
@@ -853,6 +1021,13 @@ var mainScreen = {
             ctx.scale(z, z);
             ctx.translate(-this.zoomX, -this.zoomY);
         }
+        //ジャスト衝撃波のゆっくりの間は、ドローン君へ寄る
+        if(this.slowPow > 0){
+            var z = 1 + JUST_SLOW_ZOOM*this.slowPow;
+            ctx.translate(drone.X, drone.Y);
+            ctx.scale(z, z);
+            ctx.translate(-drone.X, -drone.Y);
+        }
         this.drawBackground();
 
         //ボスの登場の演出中はドローン君を出さない(着地のあとに現れる)
@@ -873,7 +1048,6 @@ var mainScreen = {
         //ドローンの装備(弾・ミサイル・虫など)
         arms.draw(this.state != "over");
         //五龍の衝撃波
-        dragonBlast.draw();
 
         //敵の弾(種類ごとに色と大きさが違う。白い芯で見やすく)
         for(var i=0; i<enemyShots.length; i++){
@@ -949,6 +1123,7 @@ var mainScreen = {
             ctx.fillText("燃料が足りない！",drone.X,drone.Y - 34);
         }
         ctx.restore();
+        if(this.slowPow > 0) this.drawSlowFx();
 
         //連鎖爆破などで画面全体がうっすら色づく
         if(this.tint){
@@ -961,6 +1136,7 @@ var mainScreen = {
             ctx.fillRect(0,0,CW,CH);
         }
         this.drawDon();     //閃光の上に出す
+        this.drawJust();
 
         this.drawHud();
         coop.drawHud();
@@ -1256,6 +1432,11 @@ var mainScreen = {
             ctx.fillStyle = "#3a7bd5";
             ctx.fillText("かすり " + this.graze,CW - 14,64);
         }
+        if(this.just > 0){
+            ctx.font = "bold 12px sans-serif";
+            ctx.fillStyle = "#1a8fb0";
+            ctx.fillText("ジャスト " + this.just,CW - 14,80);
+        }
 
         //操作のヒント(最初の2WAVEだけ)
         var touch = inputMode == "touch";
@@ -1269,6 +1450,12 @@ var mainScreen = {
                 ctx.fillText("敵には自動で攻撃します　／　クリック：衝撃波（燃料" + BLAST_COST + "・弾も消す）　／　動くと燃料を使い、止まると回復",14,CH - 36);
             }
             ctx.fillText("弾は中心の赤い点に当たらなければ大丈夫。すれすれでかすると燃料が回復",14,CH - 16);
+        }else if(game.wave <= 4 && this.just == 0){
+            //操作に慣れたころに、ジャスト衝撃波を教える(一度成功したら消す)
+            ctx.textAlign = "left";
+            ctx.font = "13px sans-serif";
+            ctx.fillStyle = "#777";
+            ctx.fillText("弾が当たる直前に衝撃波を出すと「ジャスト」：周りの弾を敵へはね返し、燃料が" + JUST_REFUND + "戻る",14,CH - 16);
         }
         if(touch && this.state != "over") this.drawTouchBlast();
         ctx.fillStyle = "#000";
@@ -1477,6 +1664,95 @@ var mainScreen = {
             }
         }
         ctx.restore();
+    },
+    //ジャスト衝撃波のゆっくりの間の演出：残像・外へ流れるぶれ・周りが暗く青く・時間の波紋・上下の黒い帯
+    //(キャンバスの絵を写し取るので、位置には renderScale を掛ける)
+    drawSlowFx:function(){
+        var p = this.slowPow, W = canvas.width, H = canvas.height, rs = renderScale;
+        if(!this.echo){ this.echo = document.createElement("canvas"); this.echoCtx = this.echo.getContext("2d"); }
+        if(this.echo.width != W || this.echo.height != H){ this.echo.width = W; this.echo.height = H; this.echoFresh = true; }
+        ctx.save();
+        ctx.setTransform(1,0,0,1,0,0);
+        //残像：前のコマ(それ自体も残像を含む)を重ねて、動きが尾を引くように
+        if(!this.echoFresh){
+            ctx.globalAlpha = JUST_SLOW_ECHO*p;
+            ctx.drawImage(this.echo,0,0);
+        }
+        //ドローン君から外へ流れるぶれ：少し大きくした今のコマを薄く重ねる
+        var cx = drone.X*rs, cy = drone.Y*rs;
+        ctx.globalAlpha = 0.16*p;
+        for(var i=1; i<=2; i++){
+            var s = 1 + 0.025*i*p;
+            ctx.setTransform(s,0,0,s,cx*(1 - s),cy*(1 - s));
+            ctx.drawImage(canvas,0,0);
+        }
+        ctx.setTransform(1,0,0,1,0,0);
+        this.echoCtx.clearRect(0,0,W,H);
+        this.echoCtx.drawImage(canvas,0,0);
+        this.echoFresh = false;
+        ctx.restore();
+
+        //周りを暗く青く(まんなかのドローン君だけがはっきり見える)
+        var g = ctx.createRadialGradient(drone.X,drone.Y,90,drone.X,drone.Y,620);
+        g.addColorStop(0,"rgba(20,60,110,0)");
+        g.addColorStop(1,"rgba(10,30,60," + (0.6*p) + ")");
+        ctx.fillStyle = g;
+        ctx.fillRect(0,0,CW,CH);
+        ctx.fillStyle = "rgba(" + JUST_COLOR + "," + (0.1*p) + ")";
+        ctx.fillRect(0,0,CW,CH);
+        //時間の波紋：ドローン君からゆっくり広がる輪(実際の時間で広がる)
+        var t = JUST_SLOW_TIME - this.justSlow;
+        ctx.lineWidth = 2;
+        for(var i=0; i<3; i++){
+            var ph = (t*2.2 + i*110) % 330;
+            ctx.strokeStyle = "rgba(255,255,255," + ((1 - ph/330)*0.5*p) + ")";
+            ctx.beginPath(); ctx.arc(drone.X,drone.Y,30 + ph,0,Math.PI*2); ctx.stroke();
+        }
+        ctx.lineWidth = 1;
+        //上下の黒い帯(映画のように)
+        var bh = 34*p;
+        ctx.fillStyle = "rgba(0,0,0,0.85)";
+        ctx.fillRect(0,0,CW,bh);
+        ctx.fillRect(0,CH - bh,CW,bh);
+        ctx.fillStyle = "#000";
+    },
+    //ジャスト衝撃波の「JUST!」(大きく出てぎゅっと縮み、光の線が横に走る)
+    drawJust:function(){
+        if(this.justT <= 0) return;
+        var age = JUST_TEXT_TIME - this.justT;
+        var sc = age < 5 ? 2.2 - age*0.24 : 1;
+        var a = Math.min(1, this.justT/12);
+        ctx.save();
+        ctx.globalAlpha = a;
+        ctx.translate(this.justX, this.justY - Math.max(0, age - 20)*0.4);
+        //横に走る光の線(出た瞬間に広がる)
+        var w = 40 + Math.min(1, age/8)*110;
+        ctx.fillStyle = "rgba(" + JUST_COLOR + "," + (0.5*a) + ")";
+        ctx.fillRect(-w, -2, w*2, 4);
+        ctx.scale(sc, sc);
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = "italic 900 34px sans-serif";
+        ctx.lineJoin = "round";
+        ctx.lineWidth = 8;
+        ctx.strokeStyle = "rgba(10,30,50,0.9)";
+        ctx.strokeText("JUST!",0,0);
+        ctx.fillStyle = age < 3 ? "#fff" : "rgb(" + JUST_COLOR + ")";
+        ctx.fillText("JUST!",0,0);
+        //下に小さく、得たもの(燃料・はね返した数・そのうち当たった数。当たるたびに数が増える)
+        if(age >= 4){
+            var sub = "燃料+" + JUST_REFUND + (this.justN > 0 ? "　反射×" + this.justN + "　命中 " + this.justHits : "");
+            ctx.font = "bold 14px sans-serif";
+            ctx.lineWidth = 5;
+            ctx.strokeStyle = "rgba(255,255,255,0.95)";
+            ctx.strokeText(sub,0,28);
+            ctx.fillStyle = "#1a7fa0";
+            ctx.fillText(sub,0,28);
+        }
+        ctx.restore();
+        ctx.lineJoin = "miter";
+        ctx.lineWidth = 1;
+        ctx.fillStyle = "#000";
     },
     //着地の「ドンッ!!」(ぽんと大きく出て、少し縮んで、消える)
     drawDon:function(){

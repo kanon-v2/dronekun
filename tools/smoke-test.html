@@ -17,7 +17,6 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
 <script src="scripts/drone/bosses.js"></script>
 <script src="scripts/drone/startScreen.js"></script>
 <script src="scripts/drone/mainScreen.js"></script>
-<script src="scripts/drone/dragons.js"></script>
 <script src="scripts/drone/forces.js"></script>
 <script src="scripts/drone/enemyArt.js"></script>
 <script src="scripts/drone/upgradeScreen.js"></script>
@@ -84,6 +83,28 @@ try{
     mainScreen.fuel = FUEL_RESUME + 1; MouseX = drone.X; MouseY = drone.Y;
     mainScreen.update();
     check("燃料切れで遅くなり、回復で戻る", outNow && !mainScreen.fuelOut && !drone.slow);
+
+    // ジャスト衝撃波：当たる直前の弾があればはね返して燃料が戻る。遠い弾だけならふつうの衝撃波
+    setup(2, { gun:1 }, ["gun",null,null], 1);
+    page.change(1); MouseIn = true;
+    while(mainScreen.state != "play") mainScreen.update();
+    enemies = []; enemyShots = [];
+    var je = makeEnemy(pickEnemyType()); je.x = drone.X + 220; je.y = drone.Y; je.vx = je.vy = 0; je.hp = je.maxHp = 999; enemies.push(je);
+    var je2 = makeEnemy(pickEnemyType()); je2.x = drone.X + 80; je2.y = drone.Y; je2.hp = je2.maxHp = 999; enemies.push(je2);     //衝撃波の範囲内の敵
+    enemyShots.push({ x:drone.X - 200, y:drone.Y, vx:-3, vy:0, r:5 });     //遠ざかる弾
+    mainScreen.maxFuel = 200; mainScreen.fuel = 100; mainScreen.blast();
+    var normalOk = mainScreen.just == 0 && mainScreen.fuel == 100 - BLAST_COST && enemyShots.length == 1 && je2.hp == 999 - BLAST_DMG;
+    enemies.splice(enemies.indexOf(je2),1);
+    enemyShots = [{ x:drone.X - 30, y:drone.Y + 2, vx:4, vy:0, r:5 }, { x:drone.X + 50, y:drone.Y - 60, vx:0, vy:0, r:5 }];
+    mainScreen.maxFuel = 200; mainScreen.fuel = 100; mainScreen.blast();
+    var justBullets = arms.bullets.filter(function(b){ return b.just; }).length, jf = mainScreen.fuel, jn = mainScreen.just, jh = mainScreen.justSlow + "/" + mainScreen.justT;
+    var justOk = mainScreen.just == 1 && mainScreen.fuel == Math.min(mainScreen.maxFuel, 100 - BLAST_COST + JUST_REFUND) && justBullets == 2 && mainScreen.justSlow > 0 && mainScreen.justT > 0;
+    var st0 = mainScreen.stateTime, jerr = errors.length;
+    for(var i=0; i<20; i++){ mainScreen.update(); if(i % 5 == 0) draw1(); }
+    var slowOk = mainScreen.stateTime - st0 < 14;      //ゆっくりの間は20コマで14コマより少なく進む
+    for(var i=0; i<80; i++){ mainScreen.update(); if(i % 5 == 0) draw1(); }
+    check("衝撃波は周りの敵にダメージ(龍は出ない)。ジャスト衝撃波は直前の弾をはね返して敵に当て、燃料が戻り、ゆっくりになる(遠い弾だけならふつう)", normalOk && justOk && slowOk && mainScreen.justHits > 0 && je.hp < 999 && errors.length == jerr,
+          "ふつう" + normalOk + " ジャスト" + justOk + " 反射" + justBullets + " 敵" + je.hp + " 燃料" + jf + " 回数" + jn + " ゆっくり" + jh + "/" + slowOk + " 命中" + mainScreen.justHits);
 
     // ボスの登場：WARNINGから着地までは、ボスと演出以外は止まる。着地したら動き出す
     setup(5, { gun:2 }, ["gun",null,null], 2);

@@ -22,7 +22,8 @@ const VS_START_X = 0.18;       //開始位置(画面の幅に対する割合。�
 //(離れて戦ったときの値 毎秒：水5.5 ミサイル4.6 実弾4.2 虫1.6 レーザー1.5 電撃1.2 地雷0.8 EMP0.8。
 // ブレードは触れると強い(光刃なら毎秒10ほど)ので倍率は低め)
 const VS_DAMAGE_MUL = { gun:0.85, missile:0.8, water:0.65, laser:2.6, bug:2.0, tesla:3.0, emp:3.0, mine:1.8, blade:0.8,
-                        fire:1.6, disc:1.3, gravity:5.0, barrier:1.0, sniper:0.5, freeze:2.6 };   //追加の装備はtools/vs-dps.htmlで今の装備(約3.6/秒)にそろえた
+                        fire:1.6, disc:1.3, gravity:5.0, barrier:1.0, sniper:0.5, freeze:2.6,   //追加の装備はtools/vs-dps.htmlで今の装備(約3.6/秒)にそろえた
+                        blast:3.0 };    //衝撃波(範囲内なら、龍がすべて当たったときと同じくらい)
 
 var versus = {
     active:false,       //対戦中か(装備選び・戦闘・結果のどれか)
@@ -95,7 +96,6 @@ var versus = {
         M.maxFuel = game.stat("fuel"); M.fuel = M.maxFuel;
         M.guard = 0; M.invincible = 0; M.shake = 0; M.tint = null; M.slowmo = 0; M.noFuelMsg = 0; M.fuelOut = false; M.clock = 0;
         arms.reset();
-        dragonBlast.reset();
         drone.applyStats();
         drone.slow = false;
         var myX = CW*(this.isHost ? VS_START_X : 1 - VS_START_X), rivalX = CW - myX;
@@ -154,7 +154,7 @@ var versus = {
         sound.play("hit");
     },
 
-    //クリック：五龍が相手に食らいつく。出した直後は無敵
+    //クリック：円い衝撃波。範囲内にいる相手にダメージ。出した直後は無敵
     blast:function(){
         var M = mainScreen;
         if(M.fuel < BLAST_COST){
@@ -164,7 +164,12 @@ var versus = {
         }
         M.fuel -= BLAST_COST;
         M.guard = BLAST_GUARD;
-        dragonBlast.cast(drone.X,drone.Y);
+        //相手の位置は相手の画面で決まるので、はじき飛ばさずダメージだけ
+        for(var i=0; i<enemies.length; i++){
+            var e = enemies[i];
+            if(e.rival && Math.hypot(e.x - drone.X, e.y - drone.Y) < BLAST_RADIUS + e.r) M.hitEnemy(e,BLAST_DMG,"blast");
+        }
+        M.blastFx(drone.X,drone.Y);
         this.blasts++;
         this.lastBlast = [drone.X, drone.Y];
     },
@@ -190,10 +195,10 @@ var versus = {
     read:function(_v){
         if(!_v) return;
         this.other = _v;
-        //相手の衝撃波：龍が自分に向かってくる(見た目だけ。ダメージは相手の画面で数えて届く)
+        //相手の衝撃波(見た目だけ。ダメージは相手の画面で数えて届く)
         var bl = _v.bl || [0,0,0];
         if(bl[0] > this.blastSeen){
-            if(this.phase == "fight" && _v.r == this.round) dragonBlast.cast(bl[1], bl[2], true, [this.me]);
+            if(this.phase == "fight" && _v.r == this.round) mainScreen.blastFx(bl[1], bl[2], true);
             this.blastSeen = bl[0];
         }
         if(_v.r != this.round || this.phase != "fight") return;
@@ -274,7 +279,6 @@ var versus = {
         this.me.x = drone.X; this.me.y = drone.Y;
         if(this.live() && Click == 1) this.blast();
         this.updateRival(o);
-        dragonBlast.update();
         arms.update(this.live());
         M.updateEffects();
         if(M.guard > 0) M.guard--;
@@ -312,7 +316,6 @@ var versus = {
             this.draws++;
         }
         mainScreen.updateEffects();
-        dragonBlast.update();
         if(mainScreen.shake > 0) mainScreen.shake--;
         if(this.t < 60) return;   //結果が出た直後の押し間違いを防ぐ
         if(vsAgainButton.clicked()){
@@ -432,7 +435,6 @@ var versus = {
 
         arms.draw(this.phase == "fight" && this.hp > 0);
         if(o && o.a && o.r == this.round && this.phase == "fight") coop.drawArms(o.a, R.x, R.y);
-        dragonBlast.draw();
 
         //相手(衝撃波の無敵中はうすく)
         var rivalAlive = !(this.phase == "result" && this.result != "lose");
