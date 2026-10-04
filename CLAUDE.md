@@ -52,6 +52,8 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | `draw.js` | 1/60秒刻みの更新ループと描画。最後に読み込む |
 
 画像は `images/game/` 以下(ポインタと、ドローン君の見た目「クラシック」用の元の6方向のドット絵 `Drone/Drone_*.png`)。それ以外の見た目はすべてキャンバスに図形で描いている(下の「ドローン君の絵」参照)。
+`images/icon-180.png`・`icon-192.png`・`icon-512.png` はホーム画面のアイコン(`tools/make-icon.html` で描いてヘッドレスEdgeで撮る。作り方はファイルの先頭)。
+iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面ボタンの代わりに「ホーム画面に追加」の案内(`#homeHint`)を出す。ホーム画面から開くと(`manifest.webmanifest`・`apple-mobile-web-app-capable`)ブラウザの枠なしになり、`index.html` の先頭で `html` に `app` を付けて、ゲーム画面だけを黒地に最大化する。ホーム画面から開いたときのセーブは、Safari で開いたときと別になる。
 `images/ogp.png`(1200×630)は、リンクを貼ったときのプレビュー画像(`index.html` の OGP タグ)。WAVE5の女王蜂戦をヘッドレスEdgeで撮ったもの。ページの紹介文やプレビューには、ストーリーのネタバレ(同胞・人間の兵器・真実)を出さない。
 
 ## 仕組み

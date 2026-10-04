@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<!--
+    ホーム画面のアイコンを作る
+    ・ゲームと同じ描き方(drawFlatDrone)で、正面を向いたドローン君を描く
+    ・#180 のように大きさ(px)を付けて開き、ヘッドレスEdgeで同じ大きさのウィンドウにして撮る
+      msedge --headless=new --disable-gpu --allow-file-access-from-files --window-size=180,180 --screenshot=images\icon-180.png file:///…/tools/make-icon.html#180
+-->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<base href="../">
+<title>アイコン</title>
+<style>html,body{ margin:0; overflow:hidden; background:#fff; } #Bigbox{ display:none; } #icon{ display:block; }</style>
+</head>
+<body>
+<div id="Bigbox"><canvas id="Canvas" width="960" height="540"></canvas></div>
+<canvas id="icon"></canvas>
+<script src="scripts/drone/common.js"></script>
+<script>
+    var S = parseInt(location.hash.slice(1),10) || 180;
+    var icon = document.getElementById("icon");
+    icon.width = icon.height = S;
+    var g = icon.getContext("2d");
+    //ゲーム画面の地の色。四隅はiPhoneが丸く切るので、絵は内側に収める
+    g.fillStyle = "#eceeea";
+    g.fillRect(0,0,S,S);
+    //drawFlatDrone は40×40の座標で描く。棒の先(縦およそ5)から胴体の下(38)までが真ん中に来るようにずらす
+    var k = S*0.72/40;
+    g.translate(S/2 - 20*k, S/2 - 21.5*k);
+    g.scale(k,k);
+    drawFlatDrone(g,0,0.15);
+</script>
+</body>
+</html>

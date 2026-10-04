@@ -17,6 +17,20 @@
 <meta property="og:locale" content="ja_JP">
 <meta name="twitter:card" content="summary_large_image">
 <title>ドローン君</title>
+<!-- ホーム画面に追加したとき：アイコンと、ブラウザの枠なしで開く設定(iPhone は全画面のボタンが使えないため) -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="images/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ドローン君">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<script>
+  //ホーム画面から開いたとき(ブラウザの枠なし)は、ゲーム画面だけを画面いっぱいに出す。
+  //キャンバスの細かさ(common.js の fitCanvas)を決める前に見た目を変えたいので、ここで印を付ける
+  if(navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone), (display-mode: fullscreen)").matches)){
+    document.documentElement.classList.add("app");
+  }
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Zen+Kaku+Gothic+New:wght@400;700&display=swap">
@@ -98,6 +112,24 @@
   }
   #Bigbox:fullscreen #Canvas{
     width:min(100vw, calc(100vh * 16 / 9));
+  }
+  /* ホーム画面から開いたとき：説明などを隠し、黒地の中央に16:9で最大化(ノッチ・角の丸みをよける) */
+  html.app, html.app body{ background:#000; height:100%; overflow:hidden; }
+  html.app .wrap > :not(#Bigbox){ display:none; }
+  html.app #Bigbox{
+    position:fixed;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:#000;
+    border:0;
+    box-shadow:none;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  html.app #Canvas{
+    width:min(calc(100vw - env(safe-area-inset-left) - env(safe-area-inset-right)),
+              calc((100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)) * 16 / 9));
   }
   .bar{
     display:flex;
@@ -184,6 +216,7 @@
   <div class="bar">
     <p>スマホ・タブレットは横向きがおすすめです。</p>
     <button id="fullBtn" type="button" hidden>全画面で遊ぶ</button>
+    <p id="homeHint" hidden>全画面で遊ぶには、共有ボタンから「ホーム画面に追加」して、ホーム画面のアイコンから開いてください。</p>
   </div>
 
   <ul class="how">
@@ -224,10 +257,15 @@
 <script src="scripts/drone/draw.js"></script>
 <script>
   //全画面ボタン(使えないブラウザでは出さない)。スマホでは横向きに固定を試す
+  //iPhone は全画面にできないので、代わりにホーム画面に追加する案内を出す(ホーム画面から開いたときは出さない)
   (function(){
     var btn = document.getElementById("fullBtn");
     var box = document.getElementById("Bigbox");
-    if(!document.fullscreenEnabled || !box.requestFullscreen) return;
+    if(!document.fullscreenEnabled || !box.requestFullscreen){
+      var ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform == "MacIntel" && navigator.maxTouchPoints > 1);
+      if(ios && !document.documentElement.classList.contains("app")) document.getElementById("homeHint").hidden = false;
+      return;
+    }
     btn.hidden = false;
     btn.addEventListener("click", function(){
       box.requestFullscreen().then(function(){
