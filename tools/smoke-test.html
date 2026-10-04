@@ -106,6 +106,26 @@ try{
     check("衝撃波は周りの敵にダメージ(龍は出ない)。ジャスト衝撃波は直前の弾をはね返して敵に当て、燃料が戻り、ゆっくりになる(遠い弾だけならふつう)", normalOk && justOk && slowOk && mainScreen.justHits > 0 && je.hp < 999 && errors.length == jerr,
           "ふつう" + normalOk + " ジャスト" + justOk + " 反射" + justBullets + " 敵" + je.hp + " 燃料" + jf + " 回数" + jn + " ゆっくり" + jh + "/" + slowOk + " 命中" + mainScreen.justHits);
 
+    // ジャスト・カウンター：ぶつかる直前の突進は、衝撃波で敵の方へ弾き返す(遠ざかる突進・虫はそのまま)
+    setup(2, { gun:1 }, ["gun",null,null], 1);
+    page.change(1); MouseIn = true;
+    while(mainScreen.state != "play") mainScreen.update();
+    enemies = []; enemyShots = []; MouseX = drone.X; MouseY = drone.Y;
+    var kerr = errors.length;
+    var kt = makeEnemy("bug"); kt.x = drone.X - 260; kt.y = drone.Y - 20; kt.vx = kt.vy = 0; kt.speed = 0; kt.hp = kt.maxHp = 999; enemies.push(kt);
+    var kd = makeEnemy("dasher"); kd.x = drone.X + 40; kd.y = drone.Y; kd.timer = 0; kd.vx = -5; kd.vy = 0; enemies.push(kd);    //ぶつかる直前の突進
+    var kf = makeEnemy("dasher"); kf.x = drone.X + 400; kf.y = drone.Y + 120; kf.timer = 0; kf.vx = 5; kf.vy = 0; enemies.push(kf);  //遠ざかる突進
+    mainScreen.maxFuel = 200; mainScreen.fuel = 100; var kj = mainScreen.just;
+    var kJust = mainScreen.isJust();
+    mainScreen.blast();
+    var kStart = mainScreen.just == kj + 1 && mainScreen.justRamN == 1 && kd.countered > 0 && kd.vx < 0 && !kf.countered;
+    var kHp = mainScreen.hp, kScore = game.score;
+    for(var i=0; i<300 && !kd.dead; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
+    var kHitT = kd.cHit && kd.cHit.indexOf(kt) >= 0;
+    check("ジャスト・カウンター：ぶつかる直前の突進を敵へ弾き返し、通り道の敵にダメージ、最後は砕けて倒した扱い(ドローン君は無傷)",
+          kJust && kStart && kHitT && kd.dead && kt.hp < 999 && mainScreen.hp == kHp && game.score > kScore && mainScreen.justHits > 0 && errors.length == kerr,
+          "判定" + kJust + " 開始" + kStart + " 命中" + kHitT + " 砕けた" + kd.dead + " 敵" + kt.hp + " 体力" + kHp + "→" + mainScreen.hp + " 点" + kScore + "→" + game.score);
+
     // かすりコンボ：かするとコンボが増えて威力が上がり、時間切れ・被弾で途切れる
     setup(2, { gun:1 }, ["gun",null,null], 1);
     page.change(1); MouseIn = true;

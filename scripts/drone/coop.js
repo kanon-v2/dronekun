@@ -427,7 +427,7 @@ var coop = {
             case "panzer":  p1 = r((_e.turret || 0)*100); break;
         }
         var flags = (_e.flash > 0 ? 1 : 0) | (_e.slow > 0 ? 2 : 0) | (_e.wet > 0 ? 4 : 0) | (_e.enraged ? 8 : 0)
-                  | (_e.frozen > 0 ? 16 : 0) | (_e.burn > 0 ? 32 : 0);
+                  | (_e.frozen > 0 ? 16 : 0) | (_e.burn > 0 ? 32 : 0) | (_e.countered ? 64 : 0);
         _s.e.push(_e.id, COOP_TYPES.indexOf(_e.type), r(_e.x), r(_e.y), r(Math.max(0,_e.hp)/_e.maxHp*100), p1, p2, flags);
         if(_e.boss){
             var aimA = Math.atan2(_e.aimY || 0,_e.aimX || 1);
@@ -597,6 +597,11 @@ var coop = {
                 if(this.role == "host") mainScreen.slowmo = Math.max(mainScreen.slowmo, JUST_COOP_SLOW);
                 fx.ring(e[2], e[3], 90, JUST_COLOR, 22, 4);
                 popup(e[2], Math.max(40, e[3] - 50), "JUST!", "rgb(" + JUST_COLOR + ")", true);
+            }else if(e[1] == 4 && this.role == "host" && page.number == 1){
+                //ゲストのジャスト・カウンター：その突進をホストの画面で弾き返す(e[2] は敵の番号)
+                for(var j=0; j<enemies.length; j++){
+                    if(enemies[j].id == e[2] && enemies[j].type == "dasher") mainScreen.counter(enemies[j]);
+                }
             }
         }
     },
@@ -610,6 +615,10 @@ var coop = {
     onJust:function(_x,_y){
         if(!this.active) return;
         this.addEvent(3,_x,_y);
+    },
+    //ゲストがジャスト・カウンターで突進を弾き返した(mainScreen.counter から)。動かすのはホストなので知らせる
+    onCounter:function(_e){
+        if(this.isGuest()) this.addEvent(4,_e.id,0);
     },
     onBossKill:function(_e){
         if(this.isHost()) this.addEvent(2,_e.x,_e.y);
@@ -744,6 +753,7 @@ var coop = {
             e.frozen = (fl & 16) ? 3 : 0;      //凍っている・燃えている(見た目だけ。数えるのはホスト)
             e.burn = (fl & 32) ? 3 : 0;
             e.enraged = !!(fl & 8);
+            e.countered = (fl & 64) ? 3 : 0;   //弾き返した突進(ジャスト・カウンター。動かすのはホスト)
             switch(type){
                 case "dasher":  e.aimX = Math.cos(p1); e.aimY = Math.sin(p1); e.timer = p2; break;
                 case "shooter": e.face = p1; e.timer = p2; break;
@@ -818,7 +828,7 @@ var coop = {
             var e = enemies[i];
             if(e.dead) continue;
             var d = Math.hypot(drone.X - e.x, drone.Y - e.y);
-            if(d < e.r + drone.R && M.canBeHit() && !e.harmless){
+            if(d < e.r + drone.R && M.canBeHit() && !e.harmless && !e.countered){
                 M.damage();
                 M.hitEnemy(e,1);
             }

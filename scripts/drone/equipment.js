@@ -233,6 +233,7 @@ var arms = {
         for(var i=0; i<enemies.length; i++){
             var e = enemies[i];
             if(e.dead || e.x < 0 || e.x > CW || e.y < 0 || e.y > CH) continue;
+            if(e.countered) continue;   //弾き返した突進(ジャスト・カウンター)はもう味方の弾なので狙わない
             if(_exclude && _exclude.indexOf(e) >= 0) continue;
             var d = Math.hypot(e.x - _x, e.y - _y);
             if(d < best){ best = d; target = e; }

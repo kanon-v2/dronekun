@@ -54,6 +54,12 @@ const JUST_GUARD      = 50;     //成功したあとの無敵の時間(ふつう
 const JUST_TEXT_TIME  = 90;     //「JUST!」の文字を出しておく時間(実際のフレーム)
 const JUST_COOP_SLOW  = 40;     //協力プレイで、敵と弾がゆっくりになる時間(ふたりの画面で同じ。ふつうの衝撃波は BLAST_SLOWMO)
 const JUST_COLOR      = "90,220,255";
+//ジャスト・カウンター：突進(dasher)がぶつかる直前に衝撃波を出すとジャストになり、突進を敵の群れへ弾き返す
+const COUNTER_SPEED   = 11;     //弾き返した突進の速さ(突進そのものは5)
+const COUNTER_TURN    = 0.08;   //狙った敵へ曲がる強さ(1フレームのラジアン)
+const COUNTER_RANGE   = 700;    //狙う敵を探す距離(いなければ来た向きへ返す)
+const COUNTER_DMG     = 8;      //通り道の敵1体に与えるダメージ(実弾1発は1。強化弾頭・かすりコンボの倍率もかかる)
+const COUNTER_LIFE    = 80;     //弾き返してから、突進が砕けるまでの時間(画面の端に着いても砕ける)
 //敵を倒したときの爆発(killBlast)
 const KILL_FX_MIN     = 0.8;    //爆発の大きさの倍率の下限(敵の半径/12 をこの範囲に収める)
 const KILL_FX_MAX     = 2.2;
@@ -287,6 +293,8 @@ var mainScreen = {
     echo:null,          //ゆっくりの間の残像に使う、前のコマの絵
     justHits:0,         //最後のジャスト衝撃波ではね返した弾が当たった数
     justN:0,            //最後のジャスト衝撃波ではね返した弾の数
+    justRams:[],        //ジャストになった突進(isJust が集める)
+    justRamN:0,         //最後のジャスト衝撃波で弾き返した突進の数
     guard:0,            //衝撃波のあとの無敵時間(点滅しない無敵)
     slowmo:0,           //周りがゆっくりになっている残り時間
     tint:null,          //画面全体の色づけ(連鎖爆破など)
@@ -561,7 +569,7 @@ var mainScreen = {
         this.slowmo = BLAST_SLOWMO;
         if(just){
             //ジャスト：はね返した弾で攻撃する(どの弾が当たったか見えるように)
-            this.justBlast(near);
+            this.justBlast(near,this.justRams);
             coop.onBlast(drone.X,drone.Y,false);
             return;
         }
@@ -588,22 +596,90 @@ var mainScreen = {
         if(!_partner) fx.shake(6);    //相方の衝撃波では自分の画面を揺らさない
         sound.play("blast");
     },
-    //今出せばジャストか：このまま進むと JUST_FRAMES のうちに当たる弾があるか
-    //(ドローン君は止まっているとみなし、弾はまっすぐ進むとみなす)
+    //今出せばジャストか：このまま進むと JUST_FRAMES のうちに当たる弾か突進(dasher)があるか
+    //(ドローン君は止まっているとみなし、弾と突進はまっすぐ進むとみなす)。ジャストになった突進は justRams に集める
     isJust:function(){
+        this.justRams = [];
         if(this.down) return false;
-        for(var i=0; i<enemyShots.length; i++){
+        var just = false;
+        for(var i=0; i<enemyShots.length && !just; i++){
             var b = enemyShots[i];
-            var px = b.x - drone.X, py = b.y - drone.Y;
-            var vv = b.vx*b.vx + b.vy*b.vy;
-            //いちばん近づく時刻(0〜JUST_FRAMES に収める)
-            var t = vv > 0 ? Math.max(0, Math.min(JUST_FRAMES, -(px*b.vx + py*b.vy)/vv)) : 0;
-            if(Math.hypot(px + b.vx*t, py + b.vy*t) < (b.r || 5) + HIT_CORE + JUST_MARGIN) return true;
+            if(this.willHit(b.x,b.y,b.vx,b.vy,(b.r || 5) + HIT_CORE)) just = true;
         }
-        return false;
+        for(var i=0; i<enemies.length; i++){
+            var e = enemies[i];
+            if(e.dead || e.type != "dasher" || e.timer > 0 || e.countered || e.rival) continue;
+            if(this.willHit(e.x,e.y,e.vx,e.vy,e.r + drone.R)) this.justRams.push(e);
+        }
+        return just || this.justRams.length > 0;
     },
-    //ジャスト成功：弾をはね返し、燃料を戻し、スローモーション・閃光・音で手ごたえを出す
-    justBlast:function(_near){
+    //(_x,_y)から速さ(_vx,_vy)でまっすぐ進むものが、JUST_FRAMES のうちにドローン君から _r 以内に入るか
+    willHit:function(_x,_y,_vx,_vy,_r){
+        var px = _x - drone.X, py = _y - drone.Y;
+        var vv = _vx*_vx + _vy*_vy;
+        //いちばん近づく時刻(0〜JUST_FRAMES に収める)
+        var t = vv > 0 ? Math.max(0, Math.min(JUST_FRAMES, -(px*_vx + py*_vy)/vv)) : 0;
+        return Math.hypot(px + _vx*t, py + _vy*t) < _r + JUST_MARGIN;
+    },
+    //ジャスト・カウンター：突進を弾き返す。いちばん近いほかの敵へ向かって飛び、通り道の敵にぶつかってダメージを与える
+    //(敵を動かしているのはホストなので、ゲストは相方に知らせてホストの画面で弾き返す。coop.readEvents)
+    counter:function(_e){
+        if(coop.isGuest()){ coop.onCounter(_e); return; }
+        if(_e.dead || _e.countered) return;
+        var t = arms.nearest(_e.x,_e.y,COUNTER_RANGE,[_e]);
+        var a = t ? Math.atan2(t.y - _e.y, t.x - _e.x) : Math.atan2(-_e.vy,-_e.vx);
+        _e.countered = COUNTER_LIFE;
+        _e.cTarget = t;
+        _e.cHit = [];
+        _e.frozen = 0;
+        _e.vx = Math.cos(a)*COUNTER_SPEED; _e.vy = Math.sin(a)*COUNTER_SPEED;
+        _e.aimX = Math.cos(a); _e.aimY = Math.sin(a);
+        fx.flare(_e.x, _e.y, 30, JUST_COLOR, 14);
+        fx.sparks(_e.x, _e.y, 12, JUST_COLOR, 8, 3);
+        if(t){
+            fx.line(_e.x, _e.y, t.x, t.y, JUST_COLOR, 2.5, 16);
+            fx.ring(t.x, t.y, t.r + 18, JUST_COLOR, 26, 3);
+        }
+    },
+    //弾き返した突進の1フレーム(updateEnemies から。動かすのはホストとひとり用だけ)
+    updateCounter:function(_e){
+        //狙った敵へ少しずつ曲がる(倒れていたら、そのまままっすぐ)
+        var t = _e.cTarget;
+        if(t && !t.dead){
+            var a = turnTo(Math.atan2(_e.vy,_e.vx), Math.atan2(t.y - _e.y, t.x - _e.x), COUNTER_TURN);
+            _e.vx = Math.cos(a)*COUNTER_SPEED; _e.vy = Math.sin(a)*COUNTER_SPEED;
+        }
+        //通り道の敵に1体1回ずつぶつかる
+        for(var i=0; i<enemies.length; i++){
+            var o = enemies[i];
+            if(o == _e || o.dead || _e.cHit.indexOf(o) >= 0) continue;
+            if(Math.hypot(o.x - _e.x, o.y - _e.y) > o.r + _e.r) continue;
+            _e.cHit.push(o);
+            this.justHits++;
+            fx.flare(o.x, o.y, 34, JUST_COLOR, 12);
+            fx.flare(o.x, o.y, 12, "255,255,255", 8);
+            fx.sparks(o.x, o.y, 10, JUST_COLOR, 7, 3);
+            fx.shake(4);
+            popup(o.x, o.y - o.r - 6, "-" + Math.round(COUNTER_DMG*this.comboMul()), "rgb(30,150,200)");
+            sound.play("justHit");
+            //ぶつかった雑魚敵は進む向きへ押しのける
+            if(!o.boss){ o.vx += _e.vx*0.5; o.vy += _e.vy*0.5; }
+            this.hitEnemy(o,COUNTER_DMG,"counter");
+        }
+        //時間切れか画面の端で砕ける(倒した扱い。スコアとパーツを落とす)
+        if(--_e.countered <= 0 || _e.x < _e.r || _e.x > CW - _e.r || _e.y < _e.r || _e.y > CH - _e.r){
+            _e.x = Math.max(_e.r, Math.min(CW - _e.r, _e.x));
+            _e.y = Math.max(_e.r, Math.min(CH - _e.r, _e.y));
+            _e.countered = 1;   //倒しきれなかったときのため、砕けるまで弾き返したままにする
+            this.hitEnemy(_e, Math.max(_e.hp, 1), "counter");
+        }
+    },
+    //ジャスト成功：弾をはね返し、突進を弾き返し、燃料を戻し、スローモーション・閃光・音で手ごたえを出す
+    justBlast:function(_near,_rams){
+        _rams = _rams || [];
+        this.justHits = 0;
+        for(var i=0; i<_rams.length; i++) this.counter(_rams[i]);
+        this.justRamN = _rams.length;
         _near.sort(function(a,b){ return a.d - b.d; });
         var n = Math.min(JUST_MAX, _near.length);
         var marked = [];
@@ -626,7 +702,6 @@ var mainScreen = {
             }
         }
         this.just++;
-        this.justHits = 0;
         this.fuel = Math.min(this.maxFuel, this.fuel + JUST_REFUND);
         this.guard = JUST_GUARD;
         //ひとり用は画面のすべてをゆっくりにする。協力プレイは画面のずれを防ぐため、敵と弾だけをゆっくりにする
@@ -864,6 +939,7 @@ var mainScreen = {
     revenge:function(_e){
         if(game.wave < 4 || this.state != "play") return;
         if(_e.type != "bug" && _e.type != "dasher") return;
+        if(_e.countered) return;    //弾き返した突進は撃ち返さない
         if(Math.random() > Math.min(1, 0.3 + (game.wave - 4)*0.1)) return;
         var tgt = nearestPlayer(_e.x,_e.y);
         var dx = tgt.X - _e.x, dy = tgt.Y - _e.y;
@@ -889,7 +965,7 @@ var mainScreen = {
             aimAt = tgt;
             var dx = tgt.X - e.x, dy = tgt.Y - e.y, d = Math.hypot(dx,dy) || 1;
             //凍った敵は動かず、攻撃もしない(冷凍。armsExtra.js。ボス・レア敵は凍らず遅くなるだけ)
-            if(e.frozen > 0 && !e.boss && !e.rare) continue;
+            if(e.frozen > 0 && !e.boss && !e.rare && !e.countered) continue;
             e.face = Math.atan2(dy,dx);
 
             //レア敵・ボスの動きはbosses.js
@@ -953,7 +1029,9 @@ var mainScreen = {
                     }
                     break;
                 case "dasher":
-                    if(e.timer > 0){
+                    if(e.countered){
+                        //ジャスト・カウンターで弾き返された(動きは移動のあとで updateCounter)
+                    }else if(e.timer > 0){
                         //狙っている間は止まってドローンの方を向く
                         e.timer--;
                         e.aimX = dx/d; e.aimY = dy/d;
@@ -986,6 +1064,12 @@ var mainScreen = {
             e.x += e.vx*sp;
             e.y += e.vy*sp;
             if(e.dead) continue;  //逃げていったレア敵
+
+            //弾き返した突進：ほかの敵にぶつかり、時間切れか画面の端で砕ける。ドローン君には当たらない
+            if(e.countered){
+                this.updateCounter(e);
+                continue;
+            }
 
             //突進した敵は画面の外に出たら消える(倒した扱いにはしない)
             if(e.type == "dasher" && e.timer <= 0 &&
@@ -1398,6 +1482,18 @@ var mainScreen = {
 
     drawEnemy:function(_e){
         var body = _e.flash > 0 ? "#fff" : null;
+        //弾き返した突進(ジャスト・カウンター)：水色の光の尾を引く
+        if(_e.countered){
+            var sp = Math.hypot(_e.vx,_e.vy) || 1;
+            var ux = _e.vx/sp, uy = _e.vy/sp;
+            ctx.lineCap = "round";
+            ctx.strokeStyle = "rgba(" + JUST_COLOR + ",0.35)"; ctx.lineWidth = _e.r*1.8;
+            ctx.beginPath(); ctx.moveTo(_e.x,_e.y); ctx.lineTo(_e.x - ux*48,_e.y - uy*48); ctx.stroke();
+            ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(_e.x,_e.y); ctx.lineTo(_e.x - ux*30,_e.y - uy*30); ctx.stroke();
+            ctx.lineCap = "butt"; ctx.lineWidth = 1;
+            body = body || "rgb(" + JUST_COLOR + ")";
+        }
         ctx.save();
         ctx.translate(_e.x,_e.y);
         //レア敵・ボスの見た目はbosses.js、雑魚敵はenemyArt.js、同胞はforces.js
@@ -1567,7 +1663,7 @@ var mainScreen = {
             ctx.textAlign = "left";
             ctx.font = "13px sans-serif";
             ctx.fillStyle = "#777";
-            ctx.fillText("弾が当たる直前に衝撃波を出すと「ジャスト」：周りの弾を敵へはね返し、燃料が" + JUST_REFUND + "戻る",14,CH - 16);
+            ctx.fillText("弾や突進が当たる直前に衝撃波を出すと「ジャスト」：弾と突進を敵へはね返し、燃料が" + JUST_REFUND + "戻る",14,CH - 16);
         }
         if(touch && this.state != "over") this.drawTouchBlast();
         ctx.fillStyle = "#000";
@@ -1945,7 +2041,9 @@ var mainScreen = {
         ctx.fillText("JUST!",0,0);
         //下に小さく、得たもの(燃料・はね返した数・そのうち当たった数。当たるたびに数が増える)
         if(age >= 4){
-            var sub = "燃料+" + JUST_REFUND + (this.justN > 0 ? "　反射×" + this.justN + "　命中 " + this.justHits : "");
+            var sub = "燃料+" + JUST_REFUND + (this.justRamN > 0 ? "　カウンター" + (this.justRamN > 1 ? "×" + this.justRamN : "") : "")
+                    + (this.justN > 0 ? "　反射×" + this.justN : "")
+                    + (this.justN + this.justRamN > 0 ? "　命中 " + this.justHits : "");
             ctx.font = "bold 14px sans-serif";
             ctx.lineWidth = 5;
             ctx.strokeStyle = "rgba(255,255,255,0.95)";

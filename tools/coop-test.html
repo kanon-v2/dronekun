@@ -124,6 +124,15 @@ var steps = [
         });
     },
     function(next){
+        //ゲストのジャスト・カウンターが相方に届き、ホストが突進を弾き返す(ゲストにも弾き返した突進が見える)
+        cmd("host", { cmd:"dasher" });
+        cmd("guest", { cmd:"counter" });
+        waitFor(function(){ return st.host.extra.counter > 0 && st.guest.extra.cSeen > 0; }, 5000, function(ok){
+            check("ゲストのジャスト・カウンターで、ホストが突進を弾き返す", ok, "ホストが弾き返した" + st.host.extra.counter + "・ゲストに見えた" + st.guest.extra.cSeen);
+            next();
+        });
+    },
+    function(next){
         cmd("host", { cmd:"die" }); cmd("guest", { cmd:"die" });
         waitFor(function(){ return both(function(s){ return s.page == 3; }); }, 15000, function(ok){
             check("ふたりとも撃墜でゲームオーバー", ok, desc()); next();

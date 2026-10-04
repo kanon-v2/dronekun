@@ -32,6 +32,7 @@ window.requestAnimationFrame = function(){};   //ループはこのページで�
 var forceReady = false, auto = false, unarmed = false, geared = -1, frames = 0, ticks = 0;
 var shootPartner = false;   //ホスト：相方のすぐそばから弾を撃つ(相方のバリアに防がせる)
 var wantJust = false;       //戦闘が始まったらジャスト衝撃波を1回出す
+var wantCounter = false;    //ゲスト：突進が見えたらジャスト・カウンターで弾き返す
 var gearList = ["gun","missile","tesla"];   //協力プレイの強化画面で付ける装備(親ページの gear で変える)
 function bot(){
     frames++; MouseIn = true;
@@ -56,6 +57,11 @@ function autoPlay(){
     }
     else if(page.number == 1){
         bot(); mainScreen.hp = Math.max(mainScreen.hp, 1); if(!unarmed && frames % 300 == 0) Click = 1;
+        if(wantCounter && mainScreen.state == "play"){
+            var cd = enemies.filter(function(e){ return e.type == "dasher" && !e.countered; })[0];
+            if(cd){ wantCounter = false; mainScreen.counter(cd); }
+        }
+        if(coop.role == "guest" && enemies.some(function(e){ return e.countered; })) extra.cSeen++;
         if(wantJust && mainScreen.state == "play"){ wantJust = false; enemyShots.push({ x:drone.X - 30, y:drone.Y, vx:4, vy:0, r:5 }); mainScreen.fuel = mainScreen.maxFuel; mainScreen.blast(); }
         if(shootPartner && coop.partner && frames % 15 == 0){
             var a = Math.random()*Math.PI*2, px = coop.partner.pos.X, py = coop.partner.pos.Y;
@@ -96,8 +102,12 @@ coop.readGuest = function(){
 var pullWell0 = arms.pullWell;
 arms.pullWell = function(_x,_y,_pull){ if(coop.role == "host" && _pull == 1.0) extra.pull++; return pullWell0.apply(this, arguments); };
 //相方のジャスト衝撃波が届いて、ホストが敵と弾をゆっくりにした回数
-var readEvents0 = coop.readEvents;
-coop.readEvents = function(){ var s0 = mainScreen.slowmo; var ret = readEvents0.apply(this, arguments); if(coop.role == "host" && mainScreen.slowmo > s0 && mainScreen.slowmo == JUST_COOP_SLOW) extra.justSlow++; return ret; };
+var readEvents0 = coop.readEvents, inEvents = false;
+coop.readEvents = function(){ var s0 = mainScreen.slowmo; inEvents = true; var ret = readEvents0.apply(this, arguments); inEvents = false; if(coop.role == "host" && mainScreen.slowmo > s0 && mainScreen.slowmo == JUST_COOP_SLOW) extra.justSlow++; return ret; };
+//相方のジャスト・カウンターが届いて、ホストが突進を弾き返した回数(extra.counter)と、ゲストに弾き返した突進が見えた回数(extra.cSeen)
+extra.counter = 0; extra.cSeen = 0;
+var counter0 = mainScreen.counter;
+mainScreen.counter = function(_e){ if(coop.role == "host" && inEvents && !_e.countered) extra.counter++; return counter0.apply(this, arguments); };
 //対戦で与えたダメージの内訳(装備ごと。バランス調整用)
 var vsSrc = {}, vsHit0 = versus.hit;
 versus.hit = function(_e,_d,_src){ if(versus.live()) vsSrc[_src] = Math.round(((vsSrc[_src] || 0) + _d*(VS_DAMAGE_MUL[_src] || 1))*10)/10; return vsHit0.apply(this, arguments); };
@@ -131,6 +141,9 @@ window.addEventListener("message", function(ev){
     if(m.cmd == "continue") coop.wantContinue = true;
     //ジャスト衝撃波：当たる直前の弾を置いてから衝撃波を出す
     if(m.cmd == "just") wantJust = true;
+    //ジャスト・カウンター：ホストが止まった突進を出し、ゲストがそれを弾き返す
+    if(m.cmd == "dasher" && page.number == 1){ var nd = makeEnemy("dasher"); nd.x = 480; nd.y = 60; nd.timer = 99999; enemies.push(nd); }
+    if(m.cmd == "counter") wantCounter = true;
     if(m.cmd == "clearSrc") vsSrc = {};
     if(m.cmd == "forfeit" && versus.phase == "fight") versus.hp = 0;
     if(m.cmd == "join"){ coop.init(); page.change(6); coop.joinRoom(m.code); }
