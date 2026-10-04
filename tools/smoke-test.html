@@ -106,6 +106,41 @@ try{
     check("衝撃波は周りの敵にダメージ(龍は出ない)。ジャスト衝撃波は直前の弾をはね返して敵に当て、燃料が戻り、ゆっくりになる(遠い弾だけならふつう)", normalOk && justOk && slowOk && mainScreen.justHits > 0 && je.hp < 999 && errors.length == jerr,
           "ふつう" + normalOk + " ジャスト" + justOk + " 反射" + justBullets + " 敵" + je.hp + " 燃料" + jf + " 回数" + jn + " ゆっくり" + jh + "/" + slowOk + " 命中" + mainScreen.justHits);
 
+    // かすりコンボ：かするとコンボが増えて威力が上がり、時間切れ・被弾で途切れる
+    setup(2, { gun:1 }, ["gun",null,null], 1);
+    page.change(1); MouseIn = true;
+    while(mainScreen.state != "play") mainScreen.update();
+    enemies = []; enemyShots = []; MouseX = drone.X; MouseY = drone.Y;
+    var cerr = errors.length;
+    enemyShots.push({ x:drone.X + 18, y:drone.Y, vx:0, vy:0, r:5 });    //当たらずにかすめる位置
+    mainScreen.update();
+    var grazed = mainScreen.combo == 1;
+    for(var i=0; i<COMBO_TIERS[1] - 1; i++) mainScreen.addCombo();
+    var tierOk = mainScreen.combo == COMBO_TIERS[1] && mainScreen.comboTier() == 2 && Math.abs(mainScreen.comboMul() - (1 + COMBO_TIERS[1]*COMBO_POWER)) < 1e-9;
+    var ce = makeEnemy(pickEnemyType()); ce.hp = ce.maxHp = 999; enemies.push(ce);
+    mainScreen.hitEnemy(ce,1,"gun");
+    var mulOk = Math.abs((999 - ce.hp) - mainScreen.comboMul()) < 1e-9;
+    draw1();
+    for(var i=0; i<COMBO_TIME + 2; i++) mainScreen.comboStep();
+    var timeOut = mainScreen.combo == 0 && mainScreen.comboEnd && !mainScreen.comboEnd.broke && mainScreen.comboBest == COMBO_TIERS[1];
+    for(var i=0; i<5; i++) mainScreen.addCombo();
+    mainScreen.hp = 99; mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.damage();
+    var broke = mainScreen.combo == 0 && mainScreen.comboEnd && mainScreen.comboEnd.broke;
+    draw1();
+    check("かすりコンボ：かすると増えて威力が上がり、時間切れ・被弾で途切れる", grazed && tierOk && mulOk && timeOut && broke && errors.length == cerr,
+          "かすり" + grazed + " 段階" + tierOk + " 威力" + mulOk + " 時間切れ" + !!timeOut + " 被弾" + !!broke);
+    // かすりバースト：SKILL_EVERY コンボで金色の星を放ち、敵に当たる
+    enemies = []; enemyShots = []; arms.bullets = []; mainScreen.combo = 0; mainScreen.hitStop = 0;
+    var se = makeEnemy(pickEnemyType()); se.x = drone.X + 200; se.y = drone.Y - 80; se.vx = se.vy = 0; se.hp = se.maxHp = 999; enemies.push(se);
+    var serr = errors.length;
+    for(var i=0; i<SKILL_EVERY - 1; i++) mainScreen.addCombo();
+    var before = arms.bullets.filter(function(b){ return b.skill; }).length;
+    mainScreen.addCombo();
+    var stars = arms.bullets.filter(function(b){ return b.skill; }).length;
+    for(var i=0; i<90; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
+    check("かすりバースト：" + SKILL_EVERY + "コンボで星を放ち、敵に当たる", before == 0 && stars == SKILL_SHOTS && se.hp < 999 && errors.length == serr,
+          "星" + before + "→" + stars + " 敵" + Math.round(se.hp));
+
     // ボスの登場：WARNINGから着地までは、ボスと演出以外は止まる。着地したら動き出す
     setup(5, { gun:2 }, ["gun",null,null], 2);
     page.change(1); MouseIn = true;
@@ -287,27 +322,28 @@ try{
           [tNoJump, tMoved, tTap, tOpen, tClose].map(function(b){ return b ? 1 : 0; }).join(""));
     inputMode = "mouse";
 
-    //戦闘画面の右下：当たり判定・ポインタの表示ボタン
-    var keepView = localStorage.getItem(viewOpt.KEY), keepHit = viewOpt.hitbox, keepPtr = viewOpt.pointer;
-    viewOpt.hitbox = true; viewOpt.pointer = true;
+    //戦闘画面の右下：かすり範囲・当たり判定・ポインタの表示ボタン
+    var keepView = localStorage.getItem(viewOpt.KEY), keepHit = viewOpt.hitbox, keepGraze = viewOpt.graze, keepPtr = viewOpt.pointer;
+    viewOpt.hitbox = true; viewOpt.graze = true; viewOpt.pointer = true;
     var btn = function(_key){ for(var i=0; i<sound.buttons.length; i++) if(sound.buttons[i].key == _key) return sound.buttons[i]; };
     var press = function(_key){ var r = btn(_key).rect; inputMode = "mouse"; MouseX = r.X + r.width/2; MouseY = r.Y + r.height/2; Click = 1; var ok = sound.handleClick(); Click = 0; return ok; };
     page.change(0);
-    var titleHidden = sound.shown().indexOf(btn("hitbox")) < 0 && sound.shown().indexOf(btn("pointer")) < 0;
+    var titleHidden = sound.shown().indexOf(btn("hitbox")) < 0 && sound.shown().indexOf(btn("graze")) < 0 && sound.shown().indexOf(btn("pointer")) < 0;
     setup(3, game.owned, game.slots, 1); page.change(1); draw1();
-    var shownInBattle = sound.shown().length == 4;
+    var shownInBattle = sound.shown().length == 5;
     var hitOff = press("hitbox") && !viewOpt.hitbox && btn("hitbox").label() == "当たり判定：非表示";
     var ptrOff = press("pointer") && !viewOpt.pointer && !viewOpt.showPointer();
+    var grazeOff = press("graze") && !viewOpt.graze && btn("graze").label() == "かすり範囲：非表示";
     draw1();
     var saved = JSON.parse(localStorage.getItem(viewOpt.KEY) || "{}");
-    check("戦闘画面の右下で当たり判定・ポインタを非表示にする", titleHidden && shownInBattle && hitOff && ptrOff && saved.hitbox === false && saved.pointer === false);
+    check("戦闘画面の右下でかすり範囲・当たり判定・ポインタを非表示にする", titleHidden && shownInBattle && hitOff && ptrOff && grazeOff && saved.hitbox === false && saved.graze === false && saved.pointer === false);
     page.change(0);
     var ptrMenu = viewOpt.showPointer();
     page.change(1);
-    press("hitbox"); press("pointer");
-    check("ポインタはメニューでは出す・もう一度押すと表示に戻る", ptrMenu && viewOpt.hitbox && viewOpt.pointer && viewOpt.showPointer());
+    press("hitbox"); press("pointer"); press("graze");
+    check("ポインタはメニューでは出す・もう一度押すと表示に戻る", ptrMenu && viewOpt.hitbox && viewOpt.graze && viewOpt.pointer && viewOpt.showPointer());
     //テスト前の設定に戻す
-    viewOpt.hitbox = keepHit; viewOpt.pointer = keepPtr;
+    viewOpt.hitbox = keepHit; viewOpt.graze = keepGraze; viewOpt.pointer = keepPtr;
     if(keepView) localStorage.setItem(viewOpt.KEY, keepView); else localStorage.removeItem(viewOpt.KEY);
     page.change(0);
     //新しい装備(armsExtra.js)：それぞれの効果が働く

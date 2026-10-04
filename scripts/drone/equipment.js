@@ -515,11 +515,13 @@ var arms = {
         for(var i=0; i<this.bullets.length; i++){
             var b = this.bullets[i];
             //ジャスト衝撃波ではね返した弾は、狙った敵へ曲がって必ず当たりに行く(倒れたら次に近い敵へ)
-            if(b.just){
+            //かすりバーストの弾は、はじめ少しのあいだ外へ広がってから曲がり始める(b.delay)
+            if(b.just && b.delay > 0) b.delay--;
+            else if(b.just){
                 if(!b.target || b.target.dead || b.hit.indexOf(b.target) >= 0) b.target = this.nearest(b.x,b.y,600,b.hit);
                 if(b.target){
                     var sp = Math.hypot(b.vx,b.vy);
-                    var a = turnTo(Math.atan2(b.vy,b.vx), Math.atan2(b.target.y - b.y, b.target.x - b.x), JUST_TURN);
+                    var a = turnTo(Math.atan2(b.vy,b.vx), Math.atan2(b.target.y - b.y, b.target.x - b.x), b.turn || JUST_TURN);
                     b.vx = Math.cos(a)*sp; b.vy = Math.sin(a)*sp;
                 }
             }
@@ -529,8 +531,8 @@ var arms = {
                 var e = enemies[j];
                 if(e.dead || b.hit.indexOf(e) >= 0) continue;
                 if(Math.hypot(e.x - b.x, e.y - b.y) < e.r + 3){
-                    //ジャスト衝撃波ではね返した弾は決まったダメージ(mainScreen.justBlast)
-                    if(b.just){ mainScreen.justHit(b,e); mainScreen.hitEnemy(e,b.dmg,"just"); }
+                    //ジャスト衝撃波ではね返した弾・かすりバーストの弾は決まったダメージ(mainScreen.justBlast・comboSkill)
+                    if(b.just){ mainScreen.justHit(b,e); mainScreen.hitEnemy(e,b.dmg,b.skill ? "skill" : "just"); }
                     else mainScreen.hitEnemy(e,this.gunDmg(),"gun");    //照準の間は2倍(armsExtra.js)
                     b.hit.push(e);
                     if(this.syn.pierce){
@@ -828,28 +830,30 @@ var arms = {
             ctx.stroke();
         }
         ctx.lineWidth = 1;
-        //ジャスト衝撃波ではね返した弾(水色に光る長い光の筋)
+        //ジャスト衝撃波ではね返した弾(水色)・かすりバーストの弾(金色)：光る長い筋と、先に光る玉
         ctx.lineCap = "round";
-        for(var pass=0; pass<2; pass++){
-            ctx.strokeStyle = pass == 0 ? "rgba(" + JUST_COLOR + ",0.35)" : "#e8fbff";
-            ctx.lineWidth = pass == 0 ? 10 : 3.5;
-            ctx.beginPath();
+        for(var kind=0; kind<2; kind++){
+            var col = kind == 0 ? JUST_COLOR : SKILL_COLOR, skill = kind == 1;
+            for(var pass=0; pass<2; pass++){
+                ctx.strokeStyle = pass == 0 ? "rgba(" + col + ",0.35)" : (skill ? "#fff6d8" : "#e8fbff");
+                ctx.lineWidth = pass == 0 ? (skill ? 12 : 10) : 3.5;
+                ctx.beginPath();
+                for(var i=0; i<this.bullets.length; i++){
+                    var s = this.bullets[i];
+                    if(!s.just || !!s.skill != skill) continue;
+                    ctx.moveTo(s.x,s.y);
+                    ctx.lineTo(s.x - s.vx*2.2, s.y - s.vy*2.2);
+                }
+                ctx.stroke();
+            }
             for(var i=0; i<this.bullets.length; i++){
                 var s = this.bullets[i];
-                if(!s.just) continue;
-                ctx.moveTo(s.x,s.y);
-                ctx.lineTo(s.x - s.vx*2.2, s.y - s.vy*2.2);
+                if(!s.just || !!s.skill != skill) continue;
+                ctx.fillStyle = "rgba(" + col + ",0.4)";
+                ctx.beginPath(); ctx.arc(s.x,s.y,skill ? 9 : 7,0,Math.PI*2); ctx.fill();
+                ctx.fillStyle = "#fff";
+                ctx.beginPath(); ctx.arc(s.x,s.y,skill ? 4.5 : 3.5,0,Math.PI*2); ctx.fill();
             }
-            ctx.stroke();
-        }
-        //弾の先に光る玉(ふつうの実弾と見分けやすく)
-        for(var i=0; i<this.bullets.length; i++){
-            var s = this.bullets[i];
-            if(!s.just) continue;
-            ctx.fillStyle = "rgba(" + JUST_COLOR + ",0.4)";
-            ctx.beginPath(); ctx.arc(s.x,s.y,7,0,Math.PI*2); ctx.fill();
-            ctx.fillStyle = "#fff";
-            ctx.beginPath(); ctx.arc(s.x,s.y,3.5,0,Math.PI*2); ctx.fill();
         }
         ctx.lineCap = "butt";
         ctx.lineWidth = 1;

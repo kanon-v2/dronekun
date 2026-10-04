@@ -70,7 +70,10 @@ function autoPlay(){
 }
 function step(){
     if(Click == 1 && sound.handleClick()) Click = 0;
+    var pg = page.number;
     coop.update();
+    //自動プレイの戦闘中のクリックが、相方に合わせて切り替わった次の画面(ゲームオーバーなど)のボタンを押さないように
+    if(page.number != pg) Click = 0;
     screens[page.number].update();
     coop.send();
     Click = 0;

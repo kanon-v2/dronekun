@@ -18,6 +18,22 @@ const FUEL_DROP_RATE  = 0.12;   //燃料缶を落とす確率
 const HIT_CORE        = 6;      //敵の弾に対するドローンの当たり判定(中心の小さな点)
 const GRAZE_RANGE     = 22;     //弾がこの距離までかすめると「かすり」
 const GRAZE_FUEL      = 1.5;    //かすり1回で回復する燃料
+const GRAZE_FLASH_TIME = 10;    //かすった瞬間、かすりの範囲の輪が光る時間
+//かすりコンボ：続けてかすると回数が積み上がり、装備・衝撃波の威力が上がる。被弾するか、しばらくかすらないと途切れる
+const COMBO_TIME      = 120;    //最後のかすりから、この時間(フレーム)かすらないと途切れる
+const COMBO_POWER     = 0.02;   //コンボ1つあたりの威力の上がり方(0.02で+2%)
+const COMBO_MAX       = 25;     //威力が上がるのはこのコンボまで(25で+50%)
+const COMBO_TIERS     = [5, 15, 25];    //段階が上がるコンボ数(届くと演出が出て、色が変わる)
+const COMBO_COLORS    = ["80,160,255", "60,210,230", "255,190,40", "255,70,120"];   //段階ごとの色(0:段階なし)
+//かすりバースト(強スキル)：かすりコンボがこの数に届くたびに、金色の星を周りに放ち、画面中の敵へ追いかけさせる
+const SKILL_EVERY     = 5;      //このコンボごとに発動(5・10・15…)
+const SKILL_SHOTS     = 20;     //放つ星の数(画面の敵に順に割りふる)
+const SKILL_DMG       = 5;      //星1つのダメージ(実弾は1。かすりコンボの倍率もかかる)
+const SKILL_SPEED     = 9;      //星の速さ
+const SKILL_DELAY     = 10;     //放ってから、敵へ曲がり始めるまでの時間(はじめは外へ広がる)
+const SKILL_TURN      = 0.22;   //敵へ曲がる強さ(1フレームのラジアン)
+const SKILL_GUARD     = 40;     //発動したあとの無敵の時間
+const SKILL_COLOR     = "255,200,60";
 //ジャスト衝撃波：弾が当たる直前に衝撃波を出すと、周りの弾を敵へはね返し、時間がゆっくりになる
 const JUST_FRAMES     = 12;     //この時間(フレーム)のうちに当たる弾があれば「ジャスト」
 const JUST_MARGIN     = 4;      //当たるかどうかの見込みに足す余裕(px)
@@ -254,6 +270,12 @@ var mainScreen = {
     rareMsgTime:0,
     clock:0,            //このWAVEが始まってからのフレーム数(演出の間隔に使う)
     graze:0,            //このWAVEのかすり回数
+    combo:0,            //今のかすりコンボ
+    comboT:0,           //コンボが途切れるまでの残り時間
+    comboBest:0,        //このWAVEのいちばん長いコンボ
+    comboPop:0,         //コンボの数字がぽんと大きくなる残り時間
+    comboEnd:null,      //途切れたときの表示 { n:コンボ数, t:残り時間, broke:被弾で途切れたか }
+    grazeFlash:0,       //かすりの範囲の輪が光っている残り時間
     just:0,             //このWAVEのジャスト衝撃波の回数
     justT:0,            //「JUST!」の文字を出している残り時間
     justSlow:0,         //ジャスト衝撃波のあと、画面のすべてがゆっくりになっている残り時間
@@ -297,6 +319,7 @@ var mainScreen = {
         this.kinForced = false;
         this.clock = 0;
         this.graze = 0;
+        this.combo = 0; this.comboT = 0; this.comboBest = 0; this.comboPop = 0; this.comboEnd = null; this.grazeFlash = 0;
         this.just = 0;
         this.justT = 0;
         this.justSlow = 0;
@@ -449,6 +472,7 @@ var mainScreen = {
     //演出の時間を進める(登場の演出中も止めない分)
     tickTimers:function(){
         if(this.shake > 0) this.shake--;
+        this.comboStep();
         if(this.justT > 0 && !this.justSlow) this.justT--;
         if(this.bossIntro > 0) this.bossIntro--;
         if(this.donT > 0) this.donT--;
@@ -634,13 +658,14 @@ var mainScreen = {
         this.justN = n;
         sound.play("just");
     },
-    //はね返した弾が敵に当たった(equipment.js の updateBullets から)
+    //はね返した弾・かすりバーストの星が敵に当たった(equipment.js の updateBullets から)
     justHit:function(_b,_e){
-        this.justHits++;
-        fx.flare(_b.x, _b.y, 26, JUST_COLOR, 12);
+        var col = _b.skill ? SKILL_COLOR : JUST_COLOR;
+        if(!_b.skill) this.justHits++;
+        fx.flare(_b.x, _b.y, 26, col, 12);
         fx.flare(_b.x, _b.y, 10, "255,255,255", 8);
-        fx.sparks(_b.x, _b.y, 7, JUST_COLOR, 6, 2.5);
-        popup(_e.x + (Math.random() - 0.5)*16, _e.y - _e.r - 6, "-" + _b.dmg, "rgb(30,150,200)");
+        fx.sparks(_b.x, _b.y, 7, col, 6, 2.5);
+        popup(_e.x + (Math.random() - 0.5)*16, _e.y - _e.r - 6, "-" + Math.round(_b.dmg*this.comboMul()), _b.skill ? "rgb(210,140,0)" : "rgb(30,150,200)");
         //同じフレームにいくつ当たっても音は1回
         if(this.justHitClock != this.clock){
             this.justHitClock = this.clock;
@@ -675,11 +700,85 @@ var mainScreen = {
         ctx.fillStyle = "#000";
     },
 
+    //------------------------------------------------------------ かすりコンボ
+    //今のコンボの段階(0:段階なし。COMBO_TIERS のいくつに届いたか)
+    comboTier:function(_n){
+        var n = _n == null ? this.combo : _n, t = 0;
+        while(t < COMBO_TIERS.length && n >= COMBO_TIERS[t]) t++;
+        return t;
+    },
+    //今のコンボでの威力の倍率
+    comboMul:function(){
+        return 1 + Math.min(this.combo, COMBO_MAX)*COMBO_POWER;
+    },
+    //かすった：コンボを1つ増やし、途切れるまでの時間を戻す
+    addCombo:function(_b){
+        var before = this.comboTier();
+        this.combo++;
+        this.comboT = COMBO_TIME;
+        this.comboPop = 8;
+        this.comboEnd = null;
+        if(this.combo > this.comboBest) this.comboBest = this.combo;
+        //かするたびに、コンボが長いほど音が高くなる
+        sound.grazeCombo = this.combo;
+        var tier = this.comboTier();
+        if(tier > before){
+            //段階が上がった：ドローン君のまわりに光の輪、文字、音
+            var c = COMBO_COLORS[tier];
+            fx.ring(drone.X, drone.Y, 70 + tier*16, c, 22, 4 + tier);
+            fx.flare(drone.X, drone.Y, 40 + tier*10, c, 14);
+            fx.sparks(drone.X, drone.Y, 10 + tier*6, c, 6, 2.5);
+            popup(Math.max(90,Math.min(drone.X,CW-90)), Math.max(40, drone.Y - 48),
+                  (this.combo >= COMBO_MAX ? "MAX " : "") + this.combo + " COMBO！ 威力+" + Math.round((this.comboMul() - 1)*100) + "%",
+                  "rgb(" + c + ")", true);
+            sound.play("comboUp");
+        }
+        //かすりバースト：SKILL_EVERY コンボごとに発動
+        if(this.combo % SKILL_EVERY == 0) this.comboSkill();
+    },
+    //かすりバースト(強スキル)：金色の星を周りへ放ち、画面中の敵へ順に割りふって追いかけさせる
+    comboSkill:function(){
+        var list = enemies.filter(function(e){ return !e.dead && !e.harmless && e.x > 0 && e.x < CW && e.y > 0 && e.y < CH; });
+        list.sort(function(a,b){ return Math.hypot(a.x - drone.X, a.y - drone.Y) - Math.hypot(b.x - drone.X, b.y - drone.Y); });
+        for(var i=0; i<SKILL_SHOTS; i++){
+            var a = i/SKILL_SHOTS*Math.PI*2 + this.clock*0.1;
+            arms.bullets.push({ x:drone.X, y:drone.Y, vx:Math.cos(a)*SKILL_SPEED, vy:Math.sin(a)*SKILL_SPEED, life:150,
+                                pierce:0, hit:[], just:true, skill:true, dmg:SKILL_DMG,
+                                target:list.length ? list[i % list.length] : null, delay:SKILL_DELAY, turn:SKILL_TURN });
+        }
+        this.guard = Math.max(this.guard, SKILL_GUARD);
+        //発動の手ごたえ：白い閃光・金色の大きな輪・止め・文字・音
+        this.hitStop = 4;
+        this.flashT = 5;
+        fx.tint(SKILL_COLOR, 36);
+        fx.flare(drone.X, drone.Y, 90, "255,255,255", 16);
+        fx.ring(drone.X, drone.Y, 180, SKILL_COLOR, 26, 8);
+        fx.ring(drone.X, drone.Y, 110, "255,255,255", 16, 4);
+        fx.sparks(drone.X, drone.Y, 36, SKILL_COLOR, 10, 3.5);
+        fx.shake(12);
+        popup(Math.max(100,Math.min(drone.X,CW-100)), Math.max(30, drone.Y - 80), "かすりバースト！", "rgb(" + SKILL_COLOR + ")", true);
+        sound.play("skill");
+    },
+    //コンボが途切れた(被弾・時間切れ)。2つ以上続いていたら、いくつ続いたかを出す
+    breakCombo:function(_hit){
+        if(this.combo >= 2) this.comboEnd = { n:this.combo, t:70, broke:!!_hit };
+        if(this.combo >= COMBO_TIERS[0]) sound.play(_hit ? "comboBreak" : "comboEnd");
+        this.combo = 0;
+        this.comboT = 0;
+    },
+    comboStep:function(){
+        if(this.comboPop > 0) this.comboPop--;
+        if(this.grazeFlash > 0) this.grazeFlash--;
+        if(this.comboEnd && --this.comboEnd.t <= 0) this.comboEnd = null;
+        if(this.combo > 0 && --this.comboT <= 0) this.breakCombo(false);
+    },
+
     canBeHit:function(){
         return (this.state == "play" || this.state == "start") && this.invincible == 0 && this.guard == 0 && !this.down;
     },
 
     damage:function(){
+        this.breakCombo(true);     //被弾するとかすりコンボは途切れる
         //デバッグのボス戦で無敵にしているとき・武器試用は減らない(当たった音と点滅だけ)
         if(bossDebug.active && (bossDebug.god || bossDebug.trial)){
             this.invincible = 30;
@@ -722,6 +821,8 @@ var mainScreen = {
     hitEnemy:function(_e,_dmg,_src){
         //ショップのバフ(強化弾頭)。相方の攻撃は相方の画面でもうかけてある
         if(_src != "partner") _dmg *= 1 + BUFF_POWER*game.buff("power");
+        //かすりコンボ。相方の攻撃は相方のコンボで、相方の画面でもうかけてある
+        if(_src != "partner") _dmg *= this.comboMul();
         //凍った敵：次の一撃が2倍で、氷が砕ける(冷凍。armsExtra.js。ゲストの攻撃はホストに届いてから数える)
         if(_e.frozen > 0 && _src != "freeze" && !coop.isGuest()){
             _dmg *= 2;
@@ -938,6 +1039,8 @@ var mainScreen = {
                 b.grazed = true;
                 if(coop.isGuest()) coop.grazeCd = 6;   //ゲストの弾は届くたびに作り直すので、続けてかすらないように
                 this.graze++;
+                this.addCombo(b);
+                this.grazeFlash = GRAZE_FLASH_TIME;
                 this.fuel = Math.min(this.maxFuel, this.fuel + GRAZE_FUEL);
                 game.score += 2;
                 effects.push({ x:drone.X + (b.x - drone.X)*0.6, y:drone.Y + (b.y - drone.Y)*0.6,
@@ -1095,6 +1198,8 @@ var mainScreen = {
             ctx.beginPath(); ctx.arc(b.x,b.y,r*0.45,0,Math.PI*2); ctx.fill();
         }
 
+        //かすりコンボ：ドローン君のまわりに、途切れるまでの時間を表す輪
+        if(showMe && !this.down && this.combo >= 2) this.drawComboAura();
         //ドローン(被弾後の無敵中は点滅、撃墜されたら消える)
         //協力プレイの相方
         if(!this.cinematic()) coop.drawPartner();
@@ -1104,6 +1209,8 @@ var mainScreen = {
             drone.draw();
             ctx.globalAlpha = 1;
         }
+        //かすりの範囲(弾のふちがこの輪に入るとかすり。かすった瞬間は明るく光る。右下のボタンで隠せる)
+        if(showMe && !this.down && viewOpt.graze) this.drawGrazeRange();
         //敵の弾に対する当たり判定(中心の点。右下のボタンで隠せる)
         if(showMe && viewOpt.hitbox){
             ctx.fillStyle = "#fff";
@@ -1436,6 +1543,7 @@ var mainScreen = {
             ctx.fillStyle = "#1a8fb0";
             ctx.fillText("ジャスト " + this.just,CW - 14,80);
         }
+        this.drawComboHud();
 
         //操作のヒント(最初の2WAVEだけ)
         var touch = inputMode == "touch";
@@ -1663,6 +1771,98 @@ var mainScreen = {
             }
         }
         ctx.restore();
+    },
+    //かすりの範囲の輪：ふだんは細い点線。かすった瞬間は太く明るく光り、コンボの段階の色になる
+    drawGrazeRange:function(){
+        var c = COMBO_COLORS[this.comboTier()], k = this.grazeFlash/GRAZE_FLASH_TIME;
+        ctx.save();
+        if(k > 0){
+            ctx.fillStyle = "rgba(" + c + "," + (0.18*k) + ")";
+            ctx.beginPath(); ctx.arc(drone.X,drone.Y,GRAZE_RANGE,0,Math.PI*2); ctx.fill();
+        }
+        ctx.strokeStyle = "rgba(" + c + "," + (0.7 + 0.3*k) + ")";
+        ctx.lineWidth = 1.6 + 2*k;
+        if(k <= 0) ctx.setLineDash([4,3]);
+        ctx.beginPath(); ctx.arc(drone.X,drone.Y,GRAZE_RANGE,0,Math.PI*2); ctx.stroke();
+        ctx.restore();
+        ctx.lineWidth = 1;
+    },
+    //かすりコンボの輪：段階の色で回り、途切れるまでの残り時間だけ弧が残る(残りわずかで点滅)
+    drawComboAura:function(){
+        var tier = this.comboTier(), c = COMBO_COLORS[tier];
+        var R = 30 + tier*4, k = this.comboT/COMBO_TIME;     //かすりの範囲の輪(GRAZE_RANGE)より外に
+        if(k < 0.25 && Math.floor(this.clock/4) % 2 == 0) return;
+        ctx.save();
+        ctx.lineCap = "round";
+        //段階に届いていれば、うっすら光る
+        if(tier > 0){
+            ctx.fillStyle = "rgba(" + c + "," + (0.08 + tier*0.04) + ")";
+            ctx.beginPath(); ctx.arc(drone.X,drone.Y,R + 6,0,Math.PI*2); ctx.fill();
+        }
+        ctx.strokeStyle = "rgba(" + c + ",0.25)";
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(drone.X,drone.Y,R,0,Math.PI*2); ctx.stroke();
+        ctx.strokeStyle = "rgb(" + c + ")";
+        ctx.lineWidth = 3 + tier;
+        var a0 = -Math.PI/2 + this.clock*0.05*(1 + tier*0.5);
+        ctx.beginPath(); ctx.arc(drone.X,drone.Y,R,a0,a0 + Math.PI*2*k); ctx.stroke();
+        ctx.restore();
+        ctx.lineWidth = 1;
+    },
+    //かすりコンボの数字(右上)：数字・威力の上がり分・途切れるまでの残り時間の帯。途切れたらいくつ続いたかを出す
+    drawComboHud:function(){
+        var x = CW - 14, y = 118;
+        ctx.save();
+        ctx.textAlign = "right";
+        ctx.textBaseline = "alphabetic";
+        ctx.lineJoin = "round";
+        if(this.combo >= 2){
+            var tier = this.comboTier(), c = COMBO_COLORS[tier];
+            var sc = 1 + this.comboPop*0.04;
+            ctx.save();
+            ctx.translate(x - 70, y);
+            ctx.scale(sc, sc);
+            ctx.font = "italic 900 " + (28 + tier*3) + "px sans-serif";
+            ctx.lineWidth = 6;
+            ctx.strokeStyle = "rgba(255,255,255,0.95)";
+            ctx.strokeText(this.combo,0,0);
+            ctx.fillStyle = "rgb(" + c + ")";
+            ctx.fillText(this.combo,0,0);
+            ctx.restore();
+            ctx.font = "italic 900 15px sans-serif";
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = "rgba(255,255,255,0.95)";
+            ctx.strokeText("COMBO",x,y);
+            ctx.fillStyle = "rgb(" + c + ")";
+            ctx.fillText("COMBO",x,y);
+            ctx.font = "bold 12px sans-serif";
+            ctx.fillStyle = "#555";
+            ctx.fillText("威力+" + Math.round((this.comboMul() - 1)*100) + "%" + (this.combo >= COMBO_MAX ? "(MAX)" : ""),x,y + 18);
+            //次のかすりバーストまで(あと少しなら金色で目立たせる)
+            var left = SKILL_EVERY - this.combo % SKILL_EVERY;
+            ctx.fillStyle = left <= Math.ceil(SKILL_EVERY/3) ? "rgb(210,140,0)" : "#777";
+            ctx.fillText("バーストまで " + left,x,y + 46);
+            //途切れるまでの残り時間
+            var w = 120, k = this.comboT/COMBO_TIME;
+            ctx.fillStyle = "rgba(0,0,0,0.12)";
+            ctx.fillRect(x - w, y + 24, w, 4);
+            ctx.fillStyle = "rgb(" + c + ")";
+            ctx.fillRect(x - w*k, y + 24, w*k, 4);
+        }else if(this.comboEnd){
+            var e = this.comboEnd;
+            ctx.globalAlpha = Math.min(1, e.t/20);
+            ctx.font = "italic 900 15px sans-serif";
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = "rgba(255,255,255,0.95)";
+            var s = e.n + " COMBO" + (e.broke ? "　BREAK" : "");
+            ctx.strokeText(s,x,y);
+            ctx.fillStyle = e.broke ? "#c33" : "#777";
+            ctx.fillText(s,x,y);
+        }
+        ctx.restore();
+        ctx.lineWidth = 1;
+        ctx.lineJoin = "miter";
+        ctx.fillStyle = "#000";
     },
     //ジャスト衝撃波のゆっくりの間の演出：残像・外へ流れるぶれ・周りが暗く青く・時間の波紋・上下の黒い帯
     //(キャンバスの絵を写し取るので、位置には renderScale を掛ける)

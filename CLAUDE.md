@@ -14,7 +14,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 ```
 
 - ヘッドレスのEdgeで次の2つを開き、すべて `RESULT: OK` なら成功(終了コード0)。
-  - `tools/smoke-test.html`: ストーリーの流れ・各WAVEの戦闘・全シナジー・強化画面(ショップも)・デバッグのメニュー(ボス戦・武器試用・ストーリー確認)・ドローン君の絵と振り向き・タイトルの設定(見た目の切り替え)・雑魚敵の見た目
+  - `tools/smoke-test.html`: ストーリーの流れ・各WAVEの戦闘・衝撃波とジャスト衝撃波・かすりコンボとかすりバースト・全シナジー・強化画面(ショップも)・デバッグのメニュー(ボス戦・武器試用・ストーリー確認)・ドローン君の絵と振り向き・タイトルの設定(見た目の切り替え)・雑魚敵の見た目
   - `tools/coop-test.html`: 協力プレイ。ゲーム2つ(`tools/coop-frame.html`)を iframe で開き、偽のPeerJS(`tools/fake-peer.js`)の通信を親ページが中継する。部屋作り・コード違い・参加・出撃・WAVEクリアの同期・ゲストの攻撃の反映(追加の装備の燃やす・凍らせる・渦の吸い寄せ・バリアで防いだ弾も)・ゲストのジャスト衝撃波でホストがゆっくりになる・退出と、対戦(参加・開始・決着・勝敗の一致・もう一度・退出)を確かめる(インターネット不要)
 - 新しい機能を足したら、`tools/smoke-test.html`(協力プレイに関わるものは `tools/coop-test.html`)にも確認項目を足す。
 - 見た目の確認はヘッドレスEdgeのスクリーンショットで行う:
@@ -64,7 +64,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 - クリックは `Click == 1` が1コマだけ立つ。ボタンは `drawRect` の `clicked()` / `button()` を使う。
 - タッチ操作(`common.js`)：戦闘中・対戦の戦闘中・タイトル画面は、どこをドラッグしても指の動いた分だけドローン君の目標が動く(`isTouchDrag()`)。タイトル画面では、ボタンの上を触ったときだけタップとして押し(`startScreen.touchUI()`)、押し終わったら目標を元に戻す(`tapAt()`・`endTap()`。目標がボタンへ飛ばないように)。それ以外の画面はタップ。
 - セーブは `localStorage`(`dronekun_save`・ハイスコア `dronekun_best`・クリア済み `dronekun_cleared`)。強化画面に入ったときに自動セーブ。
-- 画面右下のボタン(`sound.js` の `sound.buttons`)：BGM・SEはいつでも、「当たり判定」「ポインタ」の表示/非表示は戦闘中だけ出す(`when`)。表示の設定は `common.js` の `viewOpt`(`localStorage` の `dronekun_view`)。ポインタを隠すのは戦闘中だけ(メニューでは操作に要るので出す)。
+- 画面右下のボタン(`sound.js` の `sound.buttons`)：BGM・SEはいつでも、「かすり範囲」「当たり判定」「ポインタ」の表示/非表示は戦闘中だけ出す(`when`。かすり範囲・当たり判定は対戦では出さない)。表示の設定は `common.js` の `viewOpt`(`localStorage` の `dronekun_view`)。ポインタを隠すのは戦闘中だけ(メニューでは操作に要るので出す)。
 - 全20WAVE(`FINAL_WAVE`)。5WAVEごとにボス。WAVE15(`REVEAL_WAVE`)のボス後に真実が明かされ、WAVE16からは人間の兵器が敵になる。
 
 ## 書き方の決まり
@@ -92,6 +92,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | 敵の種類・弾幕の増え方 | `mainScreen.js` の `ENEMY_TYPES`・`danmaku()`・`HIT_CORE`・`GRAZE_RANGE` |
 | 雑魚敵の見た目・色 | `enemyArt.js` の `enemyArt`・`ENEMY_COLOR` |
 | 衝撃波・ジャスト衝撃波 | `mainScreen.js` の `BLAST_*`・`JUST_*`、対戦でのダメージは `versus.js` の `VS_DAMAGE_MUL.blast` |
+| かすりコンボ・かすりバースト(強スキル) | `mainScreen.js` の `GRAZE_*`・`COMBO_*`・`SKILL_*` |
 | レア敵・ボス | `bosses.js` の `RARE_*`・`BOSS_EVERY`・`makeBoss()`・`KAI_PATTERNS` |
 | 同胞・人間の兵器 | `forces.js` の `kinRate()`・`pickHuman()` |
 | ストーリーの文章・背景・流れる時期 | `story.js` の `STORIES`・`STORY_SKY`・`STORY_AFTER` |

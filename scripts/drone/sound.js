@@ -137,6 +137,7 @@ var sound = {
     ducked:false,
     last:{},        //効果音ごとの最後に鳴らした時刻
     partCombo:0,    //パーツを続けて拾うと音程が上がる
+    grazeCombo:0,   //今のかすりコンボ(かすりの音程に使う)
     partTime:0,
 
     //BGMの再生状態
@@ -425,7 +426,24 @@ var sound = {
                 this.tone("triangle",this.freq(84 + this.partCombo),0,0.07,0.07,S);
                 break;
             case "fuel":      this.tone("triangle",660,1320,0.16,0.08,S); break;
-            case "graze":     this.tone("triangle",2400,2000,0.03,0.035,S); break;
+            //かすり：かすりコンボが続くほど音程が上がる(mainScreen.addCombo が grazeCombo に入れる)
+            case "graze":
+                var gk = Math.pow(2, Math.min(this.grazeCombo || 0, 24)/24);   //24コンボで1オクターブ上
+                this.tone("triangle",2400*gk,2000*gk,0.03,0.035,S);
+                break;
+            //かすりコンボの段階が上がった(きらっと上がる3音)
+            case "comboUp":   this.jingle([84,88,91,96],0.045,"square",0.05,0.12); break;
+            //かすりバースト：ぶわっと広がる音と、高く駆け上がる和音
+            case "skill":
+                this.noise(0.5,0.22,"bandpass",600,4000,S);
+                this.tone("sawtooth",160,640,0.35,0.12,S,0,0.01,2500);
+                this.tone("sine",80,40,0.6,0.3,S);
+                this.jingle([76,79,83,88,91,95,100],0.035,"square",0.045,0.14);
+                break;
+            //被弾でコンボが途切れた(ガラスが割れるような音)
+            case "comboBreak": this.noise(0.25,0.1,"highpass",4000,1500,S); this.tone("square",1200,300,0.25,0.05,S,0,0,3000); break;
+            //時間切れでコンボが終わった(やわらかく下がる2音)
+            case "comboEnd":  this.jingle([79,72],0.08,"triangle",0.05,0.15); break;
             //ジャスト衝撃波：鋭い「キンッ」(ヒットストップの間に鳴る)のあと、きらっと上がる和音
             case "just":
                 this.tone("square",3200,2600,0.06,0.09,S,0,0,6000);
@@ -662,6 +680,11 @@ var sound = {
           on:function(){ return true; },
           toggle:function(){ if(storyDebug.active) storyDebug.stop(); else bossDebug.finish("quit"); },
           when:function(){ return storyDebug.active || (bossDebug.active && page.number == 1); } },
+        { key:"graze", rect:new drawRect(CW - 407, CH - 30, 112, 22),
+          label:function(){ return "かすり範囲：" + (viewOpt.graze ? "表示" : "非表示"); },
+          on:function(){ return viewOpt.graze; },
+          toggle:function(){ viewOpt.toggle("graze"); },
+          when:function(){ return page.number == 1; } },    //対戦には敵の弾がない
         { key:"hitbox", rect:new drawRect(CW - 289, CH - 30, 112, 22),
           label:function(){ return "当たり判定：" + (viewOpt.hitbox ? "表示" : "非表示"); },
           on:function(){ return viewOpt.hitbox; },

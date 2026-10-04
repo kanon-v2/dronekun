@@ -981,16 +981,18 @@ var pointer = {
 var viewOpt = {
     KEY:"dronekun_view",
     hitbox:true,
+    graze:true,         //かすりの範囲の輪
     pointer:true,
     load:function(){
         try{
             var d = JSON.parse(localStorage.getItem(this.KEY) || "{}");
             if(d.hitbox === false) this.hitbox = false;
+            if(d.graze === false) this.graze = false;
             if(d.pointer === false) this.pointer = false;
         }catch(e){}
     },
     save:function(){
-        try{ localStorage.setItem(this.KEY, JSON.stringify({ hitbox:this.hitbox, pointer:this.pointer })); }catch(e){}
+        try{ localStorage.setItem(this.KEY, JSON.stringify({ hitbox:this.hitbox, graze:this.graze, pointer:this.pointer })); }catch(e){}
     },
     toggle:function(_key){
         this[_key] = !this[_key];
