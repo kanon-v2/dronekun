@@ -16,19 +16,21 @@ const MAGNET_RANGE    = 75;     //アイテムを吸い寄せる距離
 const PICKUP_LIFE     = 600;    //アイテムが消えるまでの時間
 const FUEL_DROP_RATE  = 0.12;   //燃料缶を落とす確率
 const HIT_CORE        = 6;      //敵の弾に対するドローンの当たり判定(中心の小さな点)
-const GRAZE_RANGE     = 22;     //弾がこの距離までかすめると「かすり」
+const GRAZE_RANGE     = 33;     //弾がこの距離までかすめると「かすり」
 const GRAZE_FUEL      = 1.5;    //かすり1回で回復する燃料
 const GRAZE_FLASH_TIME = 10;    //かすった瞬間、かすりの範囲の輪が光る時間
 //かすりコンボ：続けてかすると回数が積み上がり、装備・衝撃波の威力が上がる。被弾するか、しばらくかすらないと途切れる
-const COMBO_TIME      = 120;    //最後のかすりから、この時間(フレーム)かすらないと途切れる
+const COMBO_TIME      = 360;    //最後のかすりから、この時間(フレーム)かすらないと途切れる
 const COMBO_POWER     = 0.02;   //コンボ1つあたりの威力の上がり方(0.02で+2%)
 const COMBO_MAX       = 25;     //威力が上がるのはこのコンボまで(25で+50%)
 const COMBO_TIERS     = [5, 15, 25];    //段階が上がるコンボ数(届くと演出が出て、色が変わる)
 const COMBO_COLORS    = ["80,160,255", "60,210,230", "255,190,40", "255,70,120"];   //段階ごとの色(0:段階なし)
 //かすりバースト(強スキル)：かすりコンボがこの数に届くたびに、金色の星を周りに放ち、画面中の敵へ追いかけさせる
-const SKILL_EVERY     = 5;      //このコンボごとに発動(5・10・15…)
-const SKILL_SHOTS     = 20;     //放つ星の数(画面の敵に順に割りふる)
-const SKILL_DMG       = 5;      //星1つのダメージ(実弾は1。かすりコンボの倍率もかかる)
+const SKILL_EVERY     = 3;      //このコンボごとに発動(3・6・9…)
+const SKILL_SHOTS_BASE = 8;     //放つ星の数(賢さLv1。画面の敵に順に割りふる)
+const SKILL_SHOTS_PER = 3;      //賢さが1つ上がるごとに増える星の数(Lv1から8・11・14・17・20)
+const SKILL_SHOTS_MAX = 20;     //星の数の上限
+const SKILL_DMG       = 1;      //星1つのダメージ(決まった値。強化弾頭・かすりコンボの倍率はかけない)
 const SKILL_SPEED     = 9;      //星の速さ
 const SKILL_DELAY     = 10;     //放ってから、敵へ曲がり始めるまでの時間(はじめは外へ広がる)
 const SKILL_TURN      = 0.22;   //敵へ曲がる強さ(1フレームのラジアン)
@@ -665,7 +667,7 @@ var mainScreen = {
         fx.flare(_b.x, _b.y, 26, col, 12);
         fx.flare(_b.x, _b.y, 10, "255,255,255", 8);
         fx.sparks(_b.x, _b.y, 7, col, 6, 2.5);
-        popup(_e.x + (Math.random() - 0.5)*16, _e.y - _e.r - 6, "-" + Math.round(_b.dmg*this.comboMul()), _b.skill ? "rgb(210,140,0)" : "rgb(30,150,200)");
+        popup(_e.x + (Math.random() - 0.5)*16, _e.y - _e.r - 6, "-" + Math.round(_b.skill ? _b.dmg : _b.dmg*this.comboMul()), _b.skill ? "rgb(210,140,0)" : "rgb(30,150,200)");
         //同じフレームにいくつ当たっても音は1回
         if(this.justHitClock != this.clock){
             this.justHitClock = this.clock;
@@ -736,12 +738,17 @@ var mainScreen = {
         //かすりバースト：SKILL_EVERY コンボごとに発動
         if(this.combo % SKILL_EVERY == 0) this.comboSkill();
     },
+    //かすりバーストで放つ星の数(賢さで増える)
+    skillShots:function(){
+        return Math.min(SKILL_SHOTS_MAX, SKILL_SHOTS_BASE + (game.level.brain - 1)*SKILL_SHOTS_PER);
+    },
     //かすりバースト(強スキル)：金色の星を周りへ放ち、画面中の敵へ順に割りふって追いかけさせる
     comboSkill:function(){
         var list = enemies.filter(function(e){ return !e.dead && !e.harmless && e.x > 0 && e.x < CW && e.y > 0 && e.y < CH; });
         list.sort(function(a,b){ return Math.hypot(a.x - drone.X, a.y - drone.Y) - Math.hypot(b.x - drone.X, b.y - drone.Y); });
-        for(var i=0; i<SKILL_SHOTS; i++){
-            var a = i/SKILL_SHOTS*Math.PI*2 + this.clock*0.1;
+        var n = this.skillShots();
+        for(var i=0; i<n; i++){
+            var a = i/n*Math.PI*2 + this.clock*0.1;
             arms.bullets.push({ x:drone.X, y:drone.Y, vx:Math.cos(a)*SKILL_SPEED, vy:Math.sin(a)*SKILL_SPEED, life:150,
                                 pierce:0, hit:[], just:true, skill:true, dmg:SKILL_DMG,
                                 target:list.length ? list[i % list.length] : null, delay:SKILL_DELAY, turn:SKILL_TURN });
@@ -819,10 +826,8 @@ var mainScreen = {
 
     //_src：何で攻撃したか("gun","missile"など。シナジーの判定に使う)
     hitEnemy:function(_e,_dmg,_src){
-        //ショップのバフ(強化弾頭)。相方の攻撃は相方の画面でもうかけてある
-        if(_src != "partner") _dmg *= 1 + BUFF_POWER*game.buff("power");
-        //かすりコンボ。相方の攻撃は相方のコンボで、相方の画面でもうかけてある
-        if(_src != "partner") _dmg *= this.comboMul();
+        //ショップのバフ(強化弾頭)とかすりコンボ。相方の攻撃は相方の画面でもうかけてある。かすりバーストの星は決まったダメージ
+        if(_src != "partner" && _src != "skill") _dmg *= (1 + BUFF_POWER*game.buff("power")) * this.comboMul();
         //凍った敵：次の一撃が2倍で、氷が砕ける(冷凍。armsExtra.js。ゲストの攻撃はホストに届いてから数える)
         if(_e.frozen > 0 && _src != "freeze" && !coop.isGuest()){
             _dmg *= 2;
@@ -1790,7 +1795,7 @@ var mainScreen = {
     //かすりコンボの輪：段階の色で回り、途切れるまでの残り時間だけ弧が残る(残りわずかで点滅)
     drawComboAura:function(){
         var tier = this.comboTier(), c = COMBO_COLORS[tier];
-        var R = 30 + tier*4, k = this.comboT/COMBO_TIME;     //かすりの範囲の輪(GRAZE_RANGE)より外に
+        var R = GRAZE_RANGE + 8 + tier*4, k = this.comboT/COMBO_TIME;     //かすりの範囲の輪(GRAZE_RANGE)より外に
         if(k < 0.25 && Math.floor(this.clock/4) % 2 == 0) return;
         ctx.save();
         ctx.lineCap = "round";

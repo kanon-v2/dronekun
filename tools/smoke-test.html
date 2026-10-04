@@ -138,8 +138,13 @@ try{
     mainScreen.addCombo();
     var stars = arms.bullets.filter(function(b){ return b.skill; }).length;
     for(var i=0; i<90; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
-    check("かすりバースト：" + SKILL_EVERY + "コンボで星を放ち、敵に当たる", before == 0 && stars == SKILL_SHOTS && se.hp < 999 && errors.length == serr,
-          "星" + before + "→" + stars + " 敵" + Math.round(se.hp));
+    // 星の数は賢さで増える(Lv1で8・Lv5で上限の20)
+    var keepBrain = game.level.brain;
+    game.level.brain = 1; var starsByBrain = mainScreen.skillShots();
+    game.level.brain = 5; starsByBrain += "," + mainScreen.skillShots();
+    game.level.brain = keepBrain;
+    check("かすりバースト：" + SKILL_EVERY + "コンボで星を放ち(数は賢さで増える)、敵に当たる", before == 0 && stars == mainScreen.skillShots() && se.hp < 999 && starsByBrain == "8,20" && errors.length == serr,
+          "星" + before + "→" + stars + " 賢さLv1/5で" + starsByBrain + " 敵" + Math.round(se.hp));
 
     // ボスの登場：WARNINGから着地までは、ボスと演出以外は止まる。着地したら動き出す
     setup(5, { gun:2 }, ["gun",null,null], 2);
