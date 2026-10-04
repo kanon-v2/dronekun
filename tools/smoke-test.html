@@ -127,6 +127,24 @@ try{
           kJust && kStart && kHitT && kd.dead && kt.hp < 999 && mainScreen.hp == kHp && game.score > kScore && mainScreen.justHits > 0 && errors.length == kerr,
           "判定" + kJust + " 開始" + kStart + " 命中" + kHitT + " 砕けた" + kd.dead + " 敵" + kt.hp + " 体力" + kHp + "→" + mainScreen.hp + " 点" + kScore + "→" + game.score);
 
+    // ジャスト・カウンター：人間のドローンも、ぶつかる直前なら弾き返す
+    setup(16, { gun:1 }, ["gun",null,null], 1);
+    page.change(1); MouseIn = true;
+    while(mainScreen.state != "play") mainScreen.update();
+    enemies = []; enemyShots = []; MouseX = drone.X; MouseY = drone.Y;
+    var merr = errors.length;
+    var mt = makeEnemy("panzer"); mt.x = drone.X - 260; mt.y = drone.Y - 20; mt.vx = mt.vy = 0; mt.speed = 0; mt.timer = 9999; mt.hp = mt.maxHp = 999; enemies.push(mt);
+    var md = makeEnemy("mdrone"); md.x = drone.X + 40; md.y = drone.Y; md.vx = -2.2; md.vy = 0; enemies.push(md);    //ぶつかる直前の人間のドローン
+    mainScreen.maxFuel = 200; mainScreen.fuel = 100;
+    var mJust = mainScreen.isJust() && mainScreen.justRams[0] == md;
+    mainScreen.blast();
+    var mStart = mainScreen.justRamN == 1 && md.countered > 0 && md.vx < 0;
+    var mHp = mainScreen.hp;
+    for(var i=0; i<300 && !md.dead; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
+    check("ジャスト・カウンター：ぶつかる直前の人間のドローンも敵へ弾き返す(ドローン君は無傷)",
+          mJust && mStart && md.dead && mt.hp < 999 && mainScreen.hp == mHp && errors.length == merr,
+          "判定" + mJust + " 開始" + mStart + " 砕けた" + md.dead + " 敵" + mt.hp + " 体力" + mHp + "→" + mainScreen.hp);
+
     // かすりコンボ：かするとコンボが増えて威力が上がり、時間切れ・被弾で途切れる
     setup(2, { gun:1 }, ["gun",null,null], 1);
     page.change(1); MouseIn = true;

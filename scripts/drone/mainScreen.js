@@ -54,7 +54,8 @@ const JUST_GUARD      = 50;     //成功したあとの無敵の時間(ふつう
 const JUST_TEXT_TIME  = 90;     //「JUST!」の文字を出しておく時間(実際のフレーム)
 const JUST_COOP_SLOW  = 40;     //協力プレイで、敵と弾がゆっくりになる時間(ふたりの画面で同じ。ふつうの衝撃波は BLAST_SLOWMO)
 const JUST_COLOR      = "90,220,255";
-//ジャスト・カウンター：突進(dasher)がぶつかる直前に衝撃波を出すとジャストになり、突進を敵の群れへ弾き返す
+//ジャスト・カウンター：体当たりしてくる敵がぶつかる直前に衝撃波を出すとジャストになり、その敵を敵の群れへ弾き返す
+const COUNTER_TYPES   = ["dasher","mdrone"];    //弾き返せる敵(突進・人間のドローン)
 const COUNTER_SPEED   = 11;     //弾き返した突進の速さ(突進そのものは5)
 const COUNTER_TURN    = 0.08;   //狙った敵へ曲がる強さ(1フレームのラジアン)
 const COUNTER_RANGE   = 700;    //狙う敵を探す距離(いなければ来た向きへ返す)
@@ -600,8 +601,8 @@ var mainScreen = {
         if(!_partner) fx.shake(6);    //相方の衝撃波では自分の画面を揺らさない
         sound.play("blast");
     },
-    //今出せばジャストか：このまま進むと JUST_FRAMES のうちに当たる弾か突進(dasher)があるか
-    //(ドローン君は止まっているとみなし、弾と突進はまっすぐ進むとみなす)。ジャストになった突進は justRams に集める
+    //今出せばジャストか：このまま進むと JUST_FRAMES のうちに当たる弾か、体当たりしてくる敵(COUNTER_TYPES)があるか
+    //(ドローン君は止まっているとみなし、弾と敵はまっすぐ進むとみなす)。ジャストになった敵は justRams に集める
     isJust:function(){
         this.justRams = [];
         if(this.down) return false;
@@ -612,10 +613,15 @@ var mainScreen = {
         }
         for(var i=0; i<enemies.length; i++){
             var e = enemies[i];
-            if(e.dead || e.type != "dasher" || e.timer > 0 || e.countered || e.rival) continue;
+            if(!this.canCounter(e)) continue;
             if(this.willHit(e.x,e.y,e.vx,e.vy,e.r + drone.R)) this.justRams.push(e);
         }
         return just || this.justRams.length > 0;
+    },
+    //ジャスト・カウンターで弾き返せる敵か(狙いを定めている間の突進は止まっているので外す)
+    canCounter:function(_e){
+        if(_e.dead || _e.countered || _e.rival || COUNTER_TYPES.indexOf(_e.type) < 0) return false;
+        return !(_e.type == "dasher" && _e.timer > 0);
     },
     //(_x,_y)から速さ(_vx,_vy)でまっすぐ進むものが、JUST_FRAMES のうちにドローン君から _r 以内に入るか
     willHit:function(_x,_y,_vx,_vy,_r){

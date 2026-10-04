@@ -598,9 +598,9 @@ var coop = {
                 fx.ring(e[2], e[3], 90, JUST_COLOR, 22, 4);
                 popup(e[2], Math.max(40, e[3] - 50), "JUST!", "rgb(" + JUST_COLOR + ")", true);
             }else if(e[1] == 4 && this.role == "host" && page.number == 1){
-                //ゲストのジャスト・カウンター：その突進をホストの画面で弾き返す(e[2] は敵の番号)
+                //ゲストのジャスト・カウンター：その敵(突進・人間のドローン)をホストの画面で弾き返す(e[2] は敵の番号)
                 for(var j=0; j<enemies.length; j++){
-                    if(enemies[j].id == e[2] && enemies[j].type == "dasher") mainScreen.counter(enemies[j]);
+                    if(enemies[j].id == e[2] && COUNTER_TYPES.indexOf(enemies[j].type) >= 0) mainScreen.counter(enemies[j]);
                 }
             }
         }

@@ -75,6 +75,8 @@ var forces = {
                 return true;
 
             case "mdrone":
+                //ジャスト・カウンターで弾き返された(動きは mainScreen.updateCounter)
+                if(_e.countered) return true;
                 //ジグザグに揺れながら寄ってくる。WAVE17からはときどき撃つ
                 var jx = Math.cos(_e.t*0.3 + _e.seed)*1.2, jy = Math.sin(_e.t*0.27 + _e.seed)*1.2;
                 _e.vx += ((_dx/_d)*_e.speed + jx - _e.vx)*0.08;
