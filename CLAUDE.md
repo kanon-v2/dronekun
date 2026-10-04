@@ -46,6 +46,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | `gameoverScreen.js` | ゲームオーバー画面 |
 | `story.js` | ストーリー(`STORIES`)・ストーリー画面・エンディング・ストーリー確認モード |
 | `bossDebug.js` | デバッグのメニュー：ボス戦だけを遊ぶ・武器試用・ストーリー確認(`#debug` で開いたときだけ) |
+| `timeStop.js` | ショップのバフ「時止めワープ」(被弾の瞬間に自動で時が止まり、選んだ場所へ粒子になって移る。クールタイム `BUFF_WARP_CD` 秒・WAVEの始めは使える・協力プレイ／対戦では働かない)。デバッグのメニューで「オン」にすると、クールタイムなしで試せる |
 | `lib/peerjs.min.js` | PeerJS 1.5.5(外部ライブラリ。MITライセンス、`lib/PEERJS-LICENSE`)。協力プレイの通信に使う。手を加えない |
 | `coop.js` | ふたりで協力プレイ(下記「協力プレイ」参照)。対戦も同じ部屋・通信を使う |
 | `versus.js` | ふたりで対戦(下記「対戦」参照)。page 7 |
@@ -88,7 +89,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 
 | 内容 | 場所 |
 |---|---|
-| 能力の値・強化コスト・ショップのバフ | `common.js` の `STATS`・`UPGRADE_COST`・`BUFFS`・`BUFF_*` |
+| 能力の値・強化コスト・ショップのバフ | `common.js` の `STATS`・`UPGRADE_COST`・`BUFFS`・`BUFF_*`(時止めワープのクールタイムは `BUFF_WARP_CD`、演出の時間は `timeStop.js` の `WARP_*`) |
 | 装備の強さ・攻撃間隔・ショップの値段 | `equipment.js` の `WEAPONS`・`SLOT_COST`・`SHOP_*`、水鉄砲は `WATER_*`。追加の装備は `armsExtra.js` の `WEAPONS` と `FIRE_*`・`BURN_*`・`DISC_*`・`WELL_*`・`BARRIER_*`・`SNIPE_*`・`FREEZE_*`・`ICE_*` |
 | シナジーの組み合わせ・色 | `equipment.js` の `SYNERGIES`・`SYN_COLOR`(追加の装備のものは `armsExtra.js`) |
 | 敵の種類・弾幕の増え方 | `mainScreen.js` の `ENEMY_TYPES`・`danmaku()`・`HIT_CORE`・`GRAZE_RANGE` |
@@ -132,6 +133,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
   - ボス戦：WAVE5/10/15/20のボスをすぐ始める。「装備」で強さ(弱い/標準/最強)、「無敵」で被弾しない。
   - 武器試用：装備を3つまで選び(押した順に装備枠へ)、装備のレベル・能力のレベル・敵の強さ(`TRIAL_WAVES` のWAVEの雑魚敵)を決めて戦う。敵は尽きずに出続け(`TRIAL_MAX_ENEMIES` 体まで)、いつも無敵。画面上に直近 `TRIAL_DPS_SEC` 秒の毎秒ダメージと撃破数、戻ると始めからの平均を出す(`mainScreen.hitEnemy` から `bossDebug.dealt` で数える)。
   - ストーリー確認：戦闘なしで全ストーリーを順に流す。終わるとメニューへ戻る。
+  - 時止めワープ「オン」(ショップのバフと同じ能力。`timeStop.js`)：クールタイムなしで、ボス戦・武器試用で、被弾する瞬間に時が止まり(ダメージなし)、クリック・タップした場所へ、体が粒子にほどけて飛び、組み上がる。そのあと `WARP_GUARD` の間は無敵。協力プレイ・対戦では働かない。粒子はドローン君の今のコマを別のキャンバスに写して小さく切って描く(`getImageData` は使わない)。
   - 途中でメニューへ戻るのは、右下の「DEBUG：戻る」(`sound.buttons` の `debugBack`)。
 - `common.js` の `DEBUG = true` で、マウス座標などを左上に表示。
 - 画面上部の中央に、フレームレート(1秒あたりの描画回数)を常に表示している(`draw.js` の `fps`)。`FPS_WARN` 未満でオレンジ、`FPS_BAD` 未満で赤。

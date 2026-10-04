@@ -23,6 +23,7 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
 <script src="scripts/drone/gameoverScreen.js"></script>
 <script src="scripts/drone/story.js"></script>
 <script src="scripts/drone/bossDebug.js"></script>
+<script src="scripts/drone/timeStop.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="scripts/drone/coop.js"></script>
 <script src="scripts/drone/versus.js"></script>
@@ -236,6 +237,32 @@ try{
           statsUp && dmgUp && hpUp && keptBuff && game.buff("power") == 0 && spent == 30 + 30 + 40 + 70 + 15,
           "使ったパーツ" + spent + " " + [statsUp,dmgUp,hpUp,keptBuff].join(""));
 
+    // ショップの時止めワープ：被弾の瞬間に自動で時が止まってワープし、BUFF_WARP_CD 秒は使えない(その間はふつうに被弾)
+    setup(6, { gun:1 }, ["gun",null,null], 3); game.parts = 500;
+    page.change(2); upgradeScreen.tab = "shop";
+    var hasWarpBefore = timeStop.owned();
+    tapBuff("warp"); tapBuff("warp");    //1回だけ買える
+    var warpBought = game.buff("warp") == 1 && game.parts == 500 - BUFFS[4].cost[0];
+    draw1();
+    page.change(1); MouseIn = true;
+    for(var fw=0; fw<80; fw++){ MouseX = 600; MouseY = 300; mainScreen.update(); }
+    var hpS = mainScreen.hp; mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.damage();
+    var sStop = timeStop.active && mainScreen.hp == hpS;
+    for(fw=0; fw<WARP_STOP_TIME + 2; fw++) mainScreen.update();
+    MouseX = 300; MouseY = 150; Click = 1; mainScreen.update(); Click = 0;
+    for(fw=0; fw<WARP_MOVE_TIME + WARP_END_TIME + 5 && timeStop.active; fw++) mainScreen.update();
+    var sMoved = !timeStop.active && Math.abs(drone.X - 300) < 1 && Math.abs(drone.Y - 150) < 1 && timeStop.cd == BUFF_WARP_CD*60;
+    draw1();
+    mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.damage();
+    var sCool = !timeStop.active && mainScreen.hp == hpS - 1;
+    timeStop.cd = 1; mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.update();
+    mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.damage();
+    var sAgain = timeStop.active && mainScreen.hp == hpS - 1;
+    timeStop.reset();
+    check("ショップの時止めワープ：1回だけ買え、被弾の瞬間に自動でワープし、" + BUFF_WARP_CD + "秒は使えない",
+          !hasWarpBefore && warpBought && sStop && sMoved && sCool && sAgain && errors.length == 0,
+          [warpBought,sStop,sMoved,sCool,sAgain].join("") + " cd" + timeStop.cd);
+
     // 5・6. デバッグのメニュー(入口は #debug のリンクだけ。キーボードの操作はない)
     var tap = function(_r){ inputMode = "mouse"; MouseIn = true; MouseX = _r.X + _r.width/2; MouseY = _r.Y + _r.height/2; Click = 1; if(!sound.handleClick()) screens[page.number].update(); Click = 0; };
     //「DEBUG：戻る」の位置は、出ているボタンに合わせて shown() で決まる(画面では毎フレーム描くときに決まる)
@@ -291,6 +318,32 @@ try{
     check("武器試用でセーブ・ハイスコアは変わらない", localStorage.getItem("dronekun_save") == saveBefore && localStorage.getItem("dronekun_best") == bestBefore);
     tap(bossDebug.trialGo()[1]);
     bossDebug.trialArms = ["gun","missile","tesla"]; bossDebug.trialLv = MAX_WEAPON_LEVEL;
+    //時止めワープ(試作。timeStop.js)：被弾の瞬間に時が止まり、選んだ場所へ粒子になって移る。ダメージは受けない
+    tap(bossDebug.tools()[5]);    //時止めワープ「オン」
+    tap(bossDebug.rows()[0]);
+    var wErr = errors.length, fw = 0;
+    while(mainScreen.state != "play" && fw < 400){ mainScreen.update(); fw++; }
+    for(fw=0; fw<30; fw++){ MouseX = 700; MouseY = 400; mainScreen.update(); }
+    var hpW = mainScreen.hp; mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.damage();
+    var wStop = timeStop.active && timeStop.phase == "stop" && mainScreen.hp == hpW && !mainScreen.canBeHit();
+    var boss0 = enemies[0], bx0 = boss0.x, by0 = boss0.y, clock0 = mainScreen.clock;
+    for(fw=0; fw<WARP_STOP_TIME + 20; fw++){ mainScreen.update(); if(fw % 10 == 0) draw1(); }
+    var wFrozen = timeStop.phase == "pick" && boss0.x == bx0 && boss0.y == by0 && mainScreen.clock == clock0;
+    MouseX = 200; MouseY = 300; Click = 1; mainScreen.update(); Click = 0;
+    var wMove = timeStop.phase == "move" && timeStop.parts.length > 100;
+    for(fw=0; fw<WARP_MOVE_TIME + WARP_END_TIME + 5 && timeStop.active; fw++){ mainScreen.update(); if(fw % 8 == 0) draw1(); }
+    check("時止めワープ：被弾で時が止まり、選んだ場所へ移る(ダメージなし・周りは止まる・あとで無敵)",
+          wStop && wFrozen && wMove && !timeStop.active && Math.abs(drone.X - 200) < 1 && Math.abs(drone.Y - 300) < 1 &&
+          mainScreen.hp == hpW && mainScreen.guard > 0 && errors.length == wErr,
+          [wStop,wFrozen,wMove].join("") + " 位置" + Math.round(drone.X) + "," + Math.round(drone.Y) + " " + errors.slice(wErr).join(" "));
+    mainScreen.guard = 0; mainScreen.damage();
+    tap(backBtn());
+    check("時止めワープ：止まったまま「DEBUG：戻る」で戻っても元に戻る", !timeStop.active && page.number == 0 && bossDebug.menu);
+    tap(bossDebug.tools()[5]);    //時止めワープ「オフ」
+    tap(bossDebug.rows()[0]);
+    var hpN = mainScreen.hp; mainScreen.state = "play"; mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.damage();
+    check("時止めワープ：オフなら、いつもどおりダメージを受ける", !bossDebug.warp && !timeStop.active && mainScreen.hp == hpN - 1);
+    tap(backBtn());
     tap(bossDebug.tools()[4]);    //閉じる
     bossDebug.god = false; bossDebug.gear = 1;
     check("閉じるでメニューを閉じる", !bossDebug.menu);

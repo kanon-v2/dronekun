@@ -1,7 +1,8 @@
 //戦闘中とタイトル画面のタッチはドラッグ操作になる
 function isTouchDrag(){
     //戦闘中・対戦の戦闘中・タイトル画面(設定の窓やデバッグのメニューを開いていないとき)はドラッグで動かす
-    return inputMode == "touch" && (page.number == 1 || (page.number == 7 && versus.dragging())
+    //時止めワープの移動先を選んでいる間は、触った場所をそのまま選ぶ(timeStop.js)
+    return inputMode == "touch" && ((page.number == 1 && !timeStop.picking()) || (page.number == 7 && versus.dragging())
         || (page.number == 0 && !startScreen.settings && !bossDebug.menu));
 }
 //タイトル画面のタップ：ドローン君の目標を覚えておき、ボタンを押し終わったら戻す(目標がボタンへ飛ばないように)
@@ -115,7 +116,8 @@ function toCanvasPos(e){
 //戦闘中とタイトル画面のタッチはドラッグ操作になる
 function isTouchDrag(){
     //戦闘中・対戦の戦闘中・タイトル画面(設定の窓やデバッグのメニューを開いていないとき)はドラッグで動かす
-    return inputMode == "touch" && (page.number == 1 || (page.number == 7 && versus.dragging())
+    //時止めワープの移動先を選んでいる間は、触った場所をそのまま選ぶ(timeStop.js)
+    return inputMode == "touch" && ((page.number == 1 && !timeStop.picking()) || (page.number == 7 && versus.dragging())
         || (page.number == 0 && !startScreen.settings && !bossDebug.menu));
 }
 //タップ：その位置を押す。タイトル画面では、ドローン君の目標を覚えておき、押し終わったら戻す(目標がボタンへ飛ばないように)
@@ -291,11 +293,16 @@ const BUFF_POWER = 0.10;    //強化弾頭1つあたりのダメージの増え�
 const BUFF_RAPID = 0.08;    //冷却装置1つあたりの攻撃間隔の縮み方(割合)
 const BUFF_PLATE = 1;       //予備装甲1つあたりの最大耐久の増え方
 const BUFF_TANK  = 20;      //増設タンク1つあたりの燃料の増え方
+const BUFF_WARP_CD = 20;    //時止めワープ(timeStop.js)のクールタイム(秒)
+//info：説明欄に出す文(省略すると desc と「重ねて買うほど…」)
 const BUFFS = [
     { key:"power", name:"強化弾頭",   desc:"全装備のダメージ+" + BUFF_POWER*100 + "%", cost:[30,45,60] },
     { key:"rapid", name:"冷却装置",   desc:"全装備の攻撃間隔-" + BUFF_RAPID*100 + "%", cost:[30,45,60] },
     { key:"plate", name:"予備装甲",   desc:"耐えられる被弾数+" + BUFF_PLATE,                cost:[40,70] },
-    { key:"tank",  name:"増設タンク", desc:"燃料タンク+" + BUFF_TANK,                       cost:[15,25,35] }
+    { key:"tank",  name:"増設タンク", desc:"燃料タンク+" + BUFF_TANK,                       cost:[15,25,35] },
+    { key:"warp",  name:"時止めワープ", desc:"被弾を回避・" + BUFF_WARP_CD + "秒に1回",     cost:[90],
+      info:["被弾する瞬間に自動で時が止まり、ダメージなしで、クリック・タップした場所へワープ",
+            "使うと" + BUFF_WARP_CD + "秒は使えません（WAVEの始めは使える）。協力プレイ・対戦では働きません"] }
 ];
 
 //------------------------------------------------------------------------------

@@ -465,6 +465,29 @@ var sound = {
                 this.tone("sine",60,180,0.5,0.18,S,0,0.15);
                 this.noise(0.5,0.06,"highpass",300,3000,S);
                 break;
+            //時止めワープ(timeStop.js)：時計の「カチッ」のあと、すべてが沈んで止まる
+            case "timeStop":
+                this.tone("square",2600,2500,0.03,0.09,S,0,0,6000);
+                this.tone("square",1900,1850,0.03,0.07,S,now + 0.09,0,6000);
+                this.tone("sine",880,90,0.9,0.18,S,now + 0.05,0.01);
+                this.tone("sawtooth",440,50,0.9,0.07,S,now + 0.05,0.01,1200);
+                this.noise(0.7,0.07,"bandpass",4000,200,S,now + 0.05);
+                break;
+            //体が粒子にほどける「シャララ」：上がっていくきらめき
+            case "warpOut":
+                this.noise(0.7,0.08,"highpass",1500,9000,S);
+                this.jingle([84,88,91,96,100,103],0.05,"triangle",0.045,0.12);
+                break;
+            //移動先で組み上がる：下りてくるきらめきと「キン」
+            case "warpIn":
+                this.jingle([103,100,96,91,0,0,0,96],0.05,"sine",0.05,0.14);
+                this.noise(0.5,0.05,"highpass",8000,2000,S);
+                break;
+            //時が動き出す：低いところから上がっていく音
+            case "timeResume":
+                this.tone("sine",90,700,0.45,0.16,S,0,0.05);
+                this.tone("sawtooth",50,400,0.45,0.06,S,0,0.05,1500);
+                break;
             //はね返した弾が当たった(「カンッ」と金属に当たる高い音)
             case "justHit":   this.tone("square",2100,1500,0.05,0.06,S,0,0,5000); this.tone("sine",3150,3100,0.12,0.04,S); break;
             //ドローン君改の黒い龍：陣が浮かぶ音＋低くうなる咆哮

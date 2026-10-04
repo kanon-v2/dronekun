@@ -307,6 +307,7 @@ var mainScreen = {
             coop.dmg = {}; coop.applied = {};
         }
         arms.reset();
+        timeStop.reset();
         drone.applyStats();
         drone.slow = false;
         drone.X = CW/2; drone.Y = CH/2;
@@ -369,6 +370,8 @@ var mainScreen = {
         if(this.paused) return;
         //ボスの着地の瞬間は、画面ごと少し止める(ヒットストップ)
         if(this.hitStop > 0){ this.hitStop--; return; }
+        //時止めワープ(試作。timeStop.js)：時が止まっている間は、ワープの演出だけを進める
+        if(timeStop.step()) return;
         //ジャスト衝撃波のあとは、画面のすべてをゆっくりにする(何フレームかに1回だけ進め、だんだん元の速さへ)
         if(this.justSlow > 0){
             this.justSlow--;
@@ -474,6 +477,7 @@ var mainScreen = {
         this.updateEffects();
         if(this.invincible > 0) this.invincible--;
         if(this.guard > 0) this.guard--;
+        timeStop.tick();    //時止めワープのクールタイム
         if(this.noFuelMsg > 0) this.noFuelMsg--;
         bossDebug.tick();
         if(this.rareMsgTime > 0) this.rareMsgTime--;
@@ -856,10 +860,12 @@ var mainScreen = {
     },
 
     canBeHit:function(){
-        return (this.state == "play" || this.state == "start") && this.invincible == 0 && this.guard == 0 && !this.down;
+        return (this.state == "play" || this.state == "start") && this.invincible == 0 && this.guard == 0 && !this.down && !timeStop.active;
     },
 
     damage:function(){
+        //時止めワープ(試作。デバッグでオンにしたときだけ)：ダメージを受けずに時を止め、選んだ場所へ移る
+        if(timeStop.trigger()) return;
         this.breakCombo(true);     //被弾するとかすりコンボは途切れる
         //デバッグのボス戦で無敵にしているとき・武器試用は減らない(当たった音と点滅だけ)
         if(bossDebug.active && (bossDebug.god || bossDebug.trial)){
@@ -1292,16 +1298,17 @@ var mainScreen = {
         //ドローン(被弾後の無敵中は点滅、撃墜されたら消える)
         //協力プレイの相方
         if(!this.cinematic()) coop.drawPartner();
-        if(showMe && !this.down && Math.floor(this.invincible/4) % 2 == 0){
+        if(timeStop.active) timeStop.draw();     //時止めワープの間は、周りの色を抜いて、ドローン君か粒子を描く
+        else if(showMe && !this.down && Math.floor(this.invincible/4) % 2 == 0){
             //着地のあとは、ふわっと現れる
             ctx.globalAlpha = 1 - this.droneIn/DRONE_IN_TIME;
             drone.draw();
             ctx.globalAlpha = 1;
         }
         //かすりの範囲(弾のふちがこの輪に入るとかすり。かすった瞬間は明るく光る。右下のボタンで隠せる)
-        if(showMe && !this.down && viewOpt.graze) this.drawGrazeRange();
+        if(showMe && !this.down && viewOpt.graze && !timeStop.active) this.drawGrazeRange();
         //敵の弾に対する当たり判定(中心の点。右下のボタンで隠せる)
-        if(showMe && viewOpt.hitbox){
+        if(showMe && viewOpt.hitbox && !timeStop.active){
             ctx.fillStyle = "#fff";
             ctx.beginPath(); ctx.arc(drone.X,drone.Y,HIT_CORE*0.75 + 1.5,0,Math.PI*2); ctx.fill();
             ctx.fillStyle = "#e22";
@@ -1359,6 +1366,7 @@ var mainScreen = {
         this.drawBanner();
         this.drawBossIntro();
         bossDebug.drawTag();
+        timeStop.drawUi();
 
         if(this.paused){
             ctx.fillStyle = "rgba(255,255,255,0.75)";
@@ -1645,6 +1653,7 @@ var mainScreen = {
             ctx.fillText("ジャスト " + this.just,CW - 14,80);
         }
         this.drawComboHud();
+        timeStop.drawHud();
 
         //操作のヒント(最初の2WAVEだけ)
         var touch = inputMode == "touch";

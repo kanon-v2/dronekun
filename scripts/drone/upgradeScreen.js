@@ -105,7 +105,8 @@ for(var i=0; i<SHOP_ITEMS; i++){
 }
 var buffCards = [];     //カードそのものが買うボタン
 for(var i=0; i<BUFFS.length; i++){
-    buffCards.push(new drawRect(375 + i*160 , 256 , 150 , 62));
+    //説明欄と同じ幅(300～930)に等しく並べる
+    buffCards.push(new drawRect(300 + (i + 0.5)*630/BUFFS.length , 256 , 630/BUFFS.length - 6 , 62));
 }
 
 //報酬のカード
@@ -722,7 +723,7 @@ var upgradeScreen = {
             ctx.strokeRect(r.X + 0.5,r.Y + 0.5,r.width,r.height);
             ctx.textAlign = "left";
             ctx.fillStyle = "#000";
-            ctx.font = "bold 14px sans-serif";
+            ctx.font = "bold 13px sans-serif";
             ctx.fillText(b.name,r.X + 8,r.Y + 13);
             //買った数の目盛り
             for(var j=0; j<b.cost.length; j++){
@@ -731,7 +732,7 @@ var upgradeScreen = {
                 else { ctx.strokeStyle = "#999"; ctx.strokeRect(mx + 0.5,r.Y + 8.5,8,8); }
             }
             ctx.fillStyle = "#444";
-            ctx.font = "11px sans-serif";
+            ctx.font = "10px sans-serif";
             ctx.fillText(b.desc,r.X + 8,r.Y + 32);
             ctx.font = "bold 12px sans-serif";
             ctx.fillStyle = full ? "#999" : (ok ? "#c33" : "#999");
@@ -756,8 +757,9 @@ var upgradeScreen = {
             ctx.fillText(hoverBuff.name + "（" + n + "/" + hoverBuff.cost.length + "）",x,y);
             ctx.font = "13px sans-serif";
             ctx.fillStyle = "#444";
-            ctx.fillText(hoverBuff.desc + "。重ねて買うほど効果が大きくなります",x,y + 22);
-            ctx.fillText("このストーリーの間ずっと効きます（はじめからやり直すと消えます）",x,y + 42);
+            var lines = (hoverBuff.info || [hoverBuff.desc + "。重ねて買うほど効果が大きくなります"])
+                        .concat(["このストーリーの間ずっと効きます（はじめからやり直すと消えます）"]);
+            for(var i=0; i<lines.length; i++) ctx.fillText(lines[i],x,y + 22 + i*20);
         }else{
             ctx.fillText("ショップ",x,y);
             ctx.font = "13px sans-serif";

@@ -4,6 +4,7 @@
 //  ボス・装備の強さ・無敵を選んで、すぐボスのWAVEを始める。演出や強さの確認用
 //  武器試用：好きな装備を3つまで選び、尽きずに出てくる雑魚敵を相手に試す(無敵。与えたダメージを毎秒で出す)
 //  セーブ・ハイスコアは変えない(始める前の状態を覚えておき、終わったら戻す)。
+//  時止めワープ「オン」：試作の能力(timeStop.js)を、ボス戦・武器試用で試す
 //  途中でメニューへ戻るのは右下の「DEBUG：戻る」(sound.js の debugBack)
 //------------------------------------------------------------------------------
 const BOSS_DEBUG_WAVES = [5,10,15,20];
@@ -23,6 +24,7 @@ var bossDebug = {
     active:false,   //デバッグのボス戦・武器試用の戦闘中
     gear:1,         //装備の強さ(BOSS_DEBUG_GEAR の番号)
     god:false,      //無敵
+    warp:false,     //時止めワープ(試作の能力。timeStop.js)。ボス戦・武器試用の両方で働く
     wave:5,
     keep:null,      //始める前の進行状況(終わったら戻す)
     msg:"",
@@ -97,6 +99,7 @@ var bossDebug = {
     finish:function(_result){
         var sec = Math.round(this.startTime/60);
         this.active = false;
+        timeStop.reset();   //時が止まったまま戻ってきたとき
         save.restore(this.keep);
         if(this.trial){
             this.trial = false;
@@ -146,10 +149,11 @@ var bossDebug = {
         for(var i=0; i<BOSS_DEBUG_WAVES.length; i++) out.push(new drawRect(CW/2, GS*5.4 + i*GS*1.7, GS*16, GS*1.4));
         return out;
     },
-    //メニューの下のボタン：ストーリー確認・武器試用・装備・無敵・閉じる
+    //メニューの下のボタン：ストーリー確認・武器試用・装備・無敵・閉じる・(下の段に)時止めワープ
     tools:function(){
         var out = [];
         for(var i=0; i<5; i++) out.push(new drawRect(CW/2 + (i - 2)*116, GS*12.5, 110, 36));
+        out.push(new drawRect(CW/2, GS*13.8, 180, 32));
         return out;
     },
     //武器試用：装備の一覧(WEAPON_IDS の順)
@@ -172,6 +176,7 @@ var bossDebug = {
     },
     toggleGear:function(){ this.gear = (this.gear + 1) % BOSS_DEBUG_GEAR.length; sound.play("click"); },
     toggleGod:function(){ this.god = !this.god; sound.play("click"); },
+    toggleWarp:function(){ this.warp = !this.warp; sound.play("click"); },
     //メニューは開いたままにする(ストーリー確認が終わるとメニューに戻る)
     startStory:function(){ storyDebug.start(); },
     openTrial:function(){ this.picking = true; this.msg = ""; sound.play("click"); },
@@ -195,6 +200,7 @@ var bossDebug = {
         if(t[2].clicked()){ this.toggleGear(); return; }
         if(t[3].clicked()){ this.toggleGod(); return; }
         if(t[4].clicked()){ this.close(); return; }
+        if(t[5].clicked()){ this.toggleWarp(); return; }
     },
     updateTrial:function(){
         var a = this.armButtons();
@@ -236,7 +242,8 @@ var bossDebug = {
                 r[i].button("ボス戦 WAVE " + w + "　" + BOSS_TYPES[bossTypeFor(w)].name);
             }
             var t = this.tools();
-            var labels = ["ストーリー確認", "武器試用", "装備「" + BOSS_DEBUG_GEAR[this.gear] + "」", "無敵「" + (this.god ? "オン" : "オフ") + "」", "閉じる"];
+            var labels = ["ストーリー確認", "武器試用", "装備「" + BOSS_DEBUG_GEAR[this.gear] + "」", "無敵「" + (this.god ? "オン" : "オフ") + "」", "閉じる",
+                          "時止めワープ「" + (this.warp ? "オン" : "オフ") + "」"];
             ctx.font = "bold 14px sans-serif";
             for(var i=0; i<t.length; i++) t[i].button(labels[i]);
         }
@@ -244,7 +251,7 @@ var bossDebug = {
             ctx.textAlign = "center";
             ctx.font = "bold 15px sans-serif";
             ctx.fillStyle = "#c33";
-            ctx.fillText(this.msg, CW/2, GS*14.2);
+            ctx.fillText(this.msg, CW/2, GS*15.4);
         }
         ctx.fillStyle = "#000";
     },
@@ -290,11 +297,11 @@ var bossDebug = {
         ctx.font = "bold 12px sans-serif";
         ctx.fillStyle = "#c33";
         if(this.trial){
-            ctx.fillText("DEBUG 武器試用　" + this.armsText() + "　右下の「DEBUG：戻る」で戻る", CW/2, 24);
+            ctx.fillText("DEBUG 武器試用　" + this.armsText() + (this.warp ? "　時止めワープ" : "") + "　右下の「DEBUG：戻る」で戻る", CW/2, 24);
             ctx.font = "bold 14px sans-serif";
             ctx.fillText("毎秒ダメージ " + this.dps(true).toFixed(1) + "（直近" + TRIAL_DPS_SEC + "秒）　撃破 " + this.kills, CW/2, 42);
         }else{
-            ctx.fillText("DEBUG ボス戦　装備「" + BOSS_DEBUG_GEAR[this.gear] + "」" + (this.god ? "　無敵" : "") + "　右下の「DEBUG：戻る」で戻る", CW/2, 24);
+            ctx.fillText("DEBUG ボス戦　装備「" + BOSS_DEBUG_GEAR[this.gear] + "」" + (this.god ? "　無敵" : "") + (this.warp ? "　時止めワープ" : "") + "　右下の「DEBUG：戻る」で戻る", CW/2, 24);
         }
         ctx.fillStyle = "#000";
     }
