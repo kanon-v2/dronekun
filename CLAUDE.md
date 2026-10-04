@@ -172,7 +172,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 ### 公開版(main)の更新
 
 - **`main` の更新は必ず `tools/release.ps1` で行う**。`main` へ直接 push・merge しない。`--no-verify` でフックを飛ばさない。
-- スクリプトがすること：確認(変更が残っていない・`develop` と `main` が GitHub と同じ・`main` をそのまま進められる) → テスト → `main` を `develop` まで進める → 公開版のタグ(`v年.月.日`、同じ日の2回目からは `.2`…)を付ける → `main` とタグを一緒に push → GitHub の Releases を作る。タグのメモと Releases の本文は同じ。
+- スクリプトがすること：確認(変更が残っていない・`develop` と `main` が GitHub と同じ・`main` をそのまま進められる) → テスト → `main` を `develop` まで進める → 公開版のタグ(`v年.月.日`、同じ日の2回目からは `.2`…)を付ける → `main` とタグを一緒に push → GitHub の Releases を作る → GitHub Pages の作り直しを待ち、公開サイトの `index.html` が今のコミットと同じになるまで確かめる(push しても作り直しが始まらないことがあったので、始まらなければこちらから頼む)。タグのメモと Releases の本文は同じ。
 - 公開を頼まれたら、Claude が本文をまとめる：
   1. 前の公開版のタグから `develop` までのコミットと変更を読み、遊ぶ人から見た変化を、見出し(`### 見た目・演出` など)と短い箇条書きでまとめる。開発用の変更は最後に分ける。ストーリーのネタバレ(同胞・人間の兵器・真実)は書かない。
   2. 本文はユーザーに確認を取らずに、ファイルに書いて `powershell -ExecutionPolicy Bypass -File tools\release.ps1 -NotesFile <本文.md>` を実行する(`-DryRun` で、確認と本文の表示だけを試せる)。公開したあとで、本文と Releases の URL を伝える。

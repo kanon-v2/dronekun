@@ -8,6 +8,7 @@
 #     powershell -ExecutionPolicy Bypass -File tools\release.ps1
 #       本文を渡さないときは、前の公開版からのコミット一覧を下書きにしてメモ帳で開く。書き直して保存し、閉じると続く
 #     -DryRun を付けると、確認と本文の用意だけして、main・タグ・push・Releases には手を付けない
+#   最後に、GitHub Pages に反映されたか(公開サイトの index.html が今のコミットと同じか)まで確かめる
 #
 #   必要なもの：gh(GitHub CLI。gh auth login でログイン済み)
 param(
@@ -19,6 +20,8 @@ $ErrorActionPreference = "Continue"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 $utf8 = New-Object System.Text.UTF8Encoding($false)
+$pagesRequestSec = 30     #push のあと、GitHub Pages の作り直しがこの秒数たっても始まらなければ、こちらから頼む
+$pagesTimeoutSec = 300    #GitHub Pages の作り直し・公開サイトへの反映を待つ長さ(秒)
 
 function Fail($msg){ Write-Host "中止: $msg" -ForegroundColor Red; exit 1 }
 function GitOut(){
@@ -101,5 +104,42 @@ try{
 }
 & gh release create $tag --title $title --notes-file $notesPath --verify-tag
 if($LASTEXITCODE -ne 0){ Fail "Releases を作れなかった(main とタグは push 済み。gh release create $tag --title `"$title`" --notes-file $notesPath でやり直せる)" }
+
+# --- 6. GitHub Pages に反映されたか確かめる
+#   main を push しても GitHub Pages の作り直しが動かないことがあった(2026-10-04)ので、
+#   しばらく待っても始まらなければ作り直しを頼み、公開サイトの index.html が今のコミットと同じになるまで待つ
+$repo = (& gh repo view --json nameWithOwner -q ".nameWithOwner" | Out-String).Trim()
+$site = (& gh api "repos/$repo/pages" -q ".html_url" | Out-String).Trim()
+if(-not $repo -or -not $site){ Fail "GitHub Pages の設定を読めなかった(Releases までは済んでいる。公開サイトを自分で確かめる)" }
+function PagesBuild(){ return (& gh api "repos/$repo/pages/builds/latest" -q '.status + \" \" + .commit' 2>$null | Out-String).Trim() }
+Write-Host "GitHub Pages の作り直しを待つ…"
+$requested = $false
+$start = Get-Date
+while($true){
+    $b = PagesBuild
+    $sec = ((Get-Date) - $start).TotalSeconds
+    if($b -eq "built $dev"){ break }
+    if($b -like "errored $dev*"){ Fail "GitHub Pages の作り直しに失敗した(Releases までは済んでいる。GitHub の Settings → Pages を見る)" }
+    #今のコミットの作り直しが始まらないときは、こちらから頼む
+    if(-not $requested -and $sec -gt $pagesRequestSec -and $b -notlike "* $dev"){
+        Write-Host "作り直しが始まらないので頼む"
+        & gh api -X POST "repos/$repo/pages/builds" *> $null
+        $requested = $true
+    }
+    if($sec -gt $pagesTimeoutSec){ Fail "GitHub Pages の作り直しが終わらない(今: $b。Releases までは済んでいる。gh api -X POST repos/$repo/pages/builds で頼み直せる)" }
+    Start-Sleep -Seconds 5
+}
+#公開サイトの index.html が、このコミットの index.html と同じ中身になったか(配信の手前で古いものが残ることがあるので、少し待つ)
+$want = (GitOut rev-parse "${dev}:index.html" | Out-String).Trim()
+$got = Join-Path $env:TEMP "dronekun-pages-index.html"
+$start = Get-Date
+while($true){
+    try{
+        Invoke-WebRequest -UseBasicParsing -OutFile $got -Uri ($site.TrimEnd("/") + "/index.html?v=" + [DateTime]::Now.Ticks) -ErrorAction Stop
+        if((GitOut hash-object $got | Out-String).Trim() -eq $want){ break }
+    }catch{}
+    if(((Get-Date) - $start).TotalSeconds -gt $pagesTimeoutSec){ Fail "公開サイトの index.html がまだ古い($site。少し待って開き直す)" }
+    Start-Sleep -Seconds 5
+}
 Write-Host ""
-Write-Host "公開した: $tag"
+Write-Host "公開した: $tag(公開サイトにも反映済み: $site)"
