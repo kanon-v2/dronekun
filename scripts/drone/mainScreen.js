@@ -21,12 +21,14 @@ const GRAZE_FUEL      = 1.5;    //かすり1回で回復する燃料
 const GRAZE_FLASH_TIME = 10;    //かすった瞬間、かすりの範囲の輪が光る時間
 //かすりコンボ：続けてかすると回数が積み上がり、装備・衝撃波の威力が上がる。被弾するか、しばらくかすらないと途切れる
 const COMBO_TIME      = 360;    //最後のかすりから、この時間(フレーム)かすらないと途切れる
+const COMBO_CD        = 12;    //コンボが1つ増えてから、次に増えるまでの待ち時間(フレーム)。弾が濃い場所で一気に増えすぎないように
+                                //(待ちの間のかすりも、燃料・点数・途切れるまでの時間は戻る)。×SKILL_EVERY が SKILL_GUARD より長いこと
 const COMBO_POWER     = 0.02;   //コンボ1つあたりの威力の上がり方(0.02で+2%)
 const COMBO_MAX       = 25;     //威力が上がるのはこのコンボまで(25で+50%)
 const COMBO_TIERS     = [5, 15, 25];    //段階が上がるコンボ数(届くと演出が出て、色が変わる)
 const COMBO_COLORS    = ["80,160,255", "60,210,230", "255,190,40", "255,70,120"];   //段階ごとの色(0:段階なし)
 //かすりバースト(強スキル)：かすりコンボがこの数に届くたびに、金色の星を周りに放ち、画面中の敵へ追いかけさせる
-const SKILL_EVERY     = 3;      //このコンボごとに発動(3・6・9…)
+const SKILL_EVERY     = 5;      //このコンボごとに発動(5・10・15…)
 const SKILL_SHOTS_BASE = 8;     //放つ星の数(賢さLv1。画面の敵に順に割りふる)
 const SKILL_SHOTS_PER = 3;      //賢さが1つ上がるごとに増える星の数(Lv1から8・11・14・17・20)
 const SKILL_SHOTS_MAX = 20;     //星の数の上限
@@ -34,7 +36,7 @@ const SKILL_DMG       = 1;      //星1つのダメージ(決まった値。強�
 const SKILL_SPEED     = 9;      //星の速さ
 const SKILL_DELAY     = 10;     //放ってから、敵へ曲がり始めるまでの時間(はじめは外へ広がる)
 const SKILL_TURN      = 0.22;   //敵へ曲がる強さ(1フレームのラジアン)
-const SKILL_GUARD     = 40;     //発動したあとの無敵の時間
+const SKILL_GUARD     = 10;     //発動したあとの無敵の時間(演出のいちばん強い瞬間だけ守る。長いと無敵中のかすりで次のバーストへつながる)
 const SKILL_COLOR     = "255,200,60";
 //ジャスト衝撃波：弾が当たる直前に衝撃波を出すと、周りの弾を敵へはね返し、時間がゆっくりになる
 const JUST_FRAMES     = 12;     //この時間(フレーム)のうちに当たる弾があれば「ジャスト」
@@ -281,6 +283,7 @@ var mainScreen = {
     graze:0,            //このWAVEのかすり回数
     combo:0,            //今のかすりコンボ
     comboT:0,           //コンボが途切れるまでの残り時間
+    comboCd:0,          //次にコンボが増えられるまでの残り時間(COMBO_CD)
     comboBest:0,        //このWAVEのいちばん長いコンボ
     comboPop:0,         //コンボの数字がぽんと大きくなる残り時間
     comboEnd:null,      //途切れたときの表示 { n:コンボ数, t:残り時間, broke:被弾で途切れたか }
@@ -331,7 +334,7 @@ var mainScreen = {
         this.kinForced = false;
         this.clock = 0;
         this.graze = 0;
-        this.combo = 0; this.comboT = 0; this.comboBest = 0; this.comboPop = 0; this.comboEnd = null; this.grazeFlash = 0;
+        this.combo = 0; this.comboT = 0; this.comboCd = 0; this.comboBest = 0; this.comboPop = 0; this.comboEnd = null; this.grazeFlash = 0;
         this.just = 0;
         this.justT = 0;
         this.justSlow = 0;
@@ -861,6 +864,7 @@ var mainScreen = {
     comboStep:function(){
         if(this.comboPop > 0) this.comboPop--;
         if(this.grazeFlash > 0) this.grazeFlash--;
+        if(this.comboCd > 0) this.comboCd--;
         if(this.comboEnd && --this.comboEnd.t <= 0) this.comboEnd = null;
         if(this.combo > 0 && --this.comboT <= 0) this.breakCombo(false);
     },
@@ -1140,7 +1144,9 @@ var mainScreen = {
                 b.grazed = true;
                 if(coop.isGuest()) coop.grazeCd = 6;   //ゲストの弾は届くたびに作り直すので、続けてかすらないように
                 this.graze++;
-                this.addCombo(b);
+                //コンボは待ち時間(COMBO_CD)ごとに1つだけ増える。待ちの間は途切れないようにするだけ
+                if(this.comboCd > 0) this.comboT = COMBO_TIME;
+                else{ this.comboCd = COMBO_CD; this.addCombo(b); }
                 this.grazeFlash = GRAZE_FLASH_TIME;
                 this.fuel = Math.min(this.maxFuel, this.fuel + GRAZE_FUEL);
                 game.score += 2;

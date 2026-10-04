@@ -184,6 +184,20 @@ try{
     game.level.brain = keepBrain;
     check("かすりバースト：" + SKILL_EVERY + "コンボで星を放ち(数は賢さで増える)、敵に当たる", before == 0 && stars == mainScreen.skillShots() && se.hp < 999 && starsByBrain == "8,20" && errors.length == serr,
           "星" + before + "→" + stars + " 賢さLv1/5で" + starsByBrain + " 敵" + Math.round(se.hp));
+    // コンボの待ち時間：弾が濃くても、コンボは COMBO_CD ごとに1つしか増えない(かすりの数・燃料は毎回増える)
+    enemies = []; enemyShots = []; arms.bullets = []; mainScreen.combo = 0; mainScreen.comboCd = 0; mainScreen.hitStop = 0;
+    mainScreen.breakCombo(false); mainScreen.comboEnd = null;
+    var cdErr = errors.length, cdGraze = mainScreen.graze, cdFrames = COMBO_CD*6;
+    MouseX = drone.X; MouseY = drone.Y;
+    for(var i=0; i<cdFrames; i++){
+        enemyShots = [];
+        for(var k=0; k<3; k++) enemyShots.push({ x:drone.X + 18, y:drone.Y, vx:0, vy:0, r:5 });
+        mainScreen.update();
+    }
+    var cdGrazed = mainScreen.graze - cdGraze;
+    enemyShots = []; arms.bullets = [];
+    check("コンボの待ち時間：弾が濃くても、コンボは" + COMBO_CD + "フレームごとに1つだけ増える", mainScreen.combo == cdFrames/COMBO_CD && cdGrazed > cdFrames*2 && COMBO_CD*SKILL_EVERY > SKILL_GUARD && errors.length == cdErr,
+          "コンボ" + mainScreen.combo + "(期待" + cdFrames/COMBO_CD + ") かすり" + cdGrazed);
 
     // ボスの登場：WARNINGから着地までは、ボスと演出以外は止まる。着地したら動き出す
     setup(5, { gun:2 }, ["gun",null,null], 2);
