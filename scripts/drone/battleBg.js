@@ -24,29 +24,38 @@ const RIPPLE_MAX = 8;           //同時に起きる波の数の上限
 const RIPPLE_W = 40;            //波の幅(px)
 const RIPPLE_GLOW = 0.6;        //波の山で方眼の線が光る濃さ(0〜1)
 const RIPPLE_LINE = 2.5;        //波の山で光る線の太さ(px)
-const GRAZE_DIAMOND_R = 2;      //かすったときに光るひし形の大きさ(マス。コンボの段階なし)
-const GRAZE_DIAMOND_STEP = 3;   //コンボの段階が1つ上がるごとに広がるマス数
+const GRAZE_DIAMOND_R = 1;      //かすったときに光るひし形の大きさ(マス。コンボの段階なし)
+const GRAZE_DIAMOND_STEP = 2;   //コンボの段階が1つ上がるごとに広がるマス数
 const GLOW_TIME = 45;           //かすったマスが光っている時間(フレーム)
 const GLOW_ALPHA = 0.45;        //かすったマスの光の濃さ
-const CELL_BLOOM = 4;           //光るマスのにじみが、マスからはみ出す幅(px)
-const CELL_BLOOM_ALPHA = 0.3;   //にじみの濃さ(マスの濃さに掛ける)
-const CELL_BODY = 1;            //マスの色の濃さ(マスの濃さに掛ける)
-const CELL_CORE_INSET = 4;      //光の芯をマスのふちから内側へ寄せる幅(px)
-const CELL_CORE_ALPHA = 0.8;    //光の芯の濃さ(マスの濃さに掛ける)
-const GLOW_LITE = 0.7;          //光の芯の色を白へ近づける割合(0：元の色 1：白)
+//光るマスの描き方の候補(見比べは tools/bg-glow.html。ゲームでは URL に #bgstyle=C のように付けると試せる)
+//  bloom：マスからはみ出すうすい色のにじみの濃さ(bloomW：はみ出す幅px)
+//  body：マスの中の濃さ　bodyLite：マスの中の色を白へ近づける割合(0：元の色 1：白)
+//  core：まんなかの芯の濃さ(0でなし)　coreIn：芯をふちから内側へ寄せる幅px　coreLite：芯の白さ
+//  edge：色の枠の濃さ(0でなし)　edgeW：枠の太さpx
+//  (濃さはどれも、マスごとの光の強さに掛ける)
+const CELL_STYLES = {
+    A:{ name:"色の塗り＋白っぽい芯",   bloom:0.3,  bloomW:4, body:1,   bodyLite:0,    core:0.8, coreIn:4, coreLite:0.7,  edge:0,   edgeW:0 },
+    B:{ name:"中間(色寄り)",           bloom:0.28, bloomW:4, body:1.2, bodyLite:0.35, core:0.9, coreIn:3, coreLite:0.9,  edge:0.9, edgeW:1 },
+    C:{ name:"中間",                   bloom:0.27, bloomW:4, body:1.5, bodyLite:0.6,  core:1,   coreIn:3, coreLite:0.95, edge:1.2, edgeW:1.2 },
+    D:{ name:"中間(白寄り)",           bloom:0.26, bloomW:4, body:1.8, bodyLite:0.78, core:0,   coreIn:0, coreLite:0,    edge:1.4, edgeW:1.5 },
+    E:{ name:"白い中＋色の枠",         bloom:0.25, bloomW:4, body:2,   bodyLite:0.92, core:0,   coreIn:0, coreLite:0,    edge:0.9, edgeW:1 },
+    F:{ name:"色のふち＋大きな白い芯", bloom:0.3,  bloomW:4, body:0.9, bodyLite:0.15, core:1.4, coreIn:2, coreLite:1,    edge:0,   edgeW:0 }
+};
+const CELL_STYLE = "E";         //ふだん使う描き方
 const BG_COMBO_COLOR = "255,185,0";    //かすり・かすりコンボで光るマスの色(黄色)
 const AURA_GRAY = "135,150,180"; //コンボがないときに、ドローン君の下のマスが光る色(灰色。少し青みのある銀色で光って見えるように)
 const BG_JUST_COLOR = "20,175,255";    //ジャスト衝撃波で光る方眼の色(水色。JUST_COLOR より濃くして、白い芯との差で光って見えるように)
-const AURA_R = 2;               //ドローン君の下で光るひし形の大きさ(マス。コンボなし)
-const AURA_R_ADD = 5;           //コンボが COMBO_MAX に届くまでに、ひし形が広がるマス数
+const AURA_R = 1;               //ドローン君の下で光るひし形の大きさ(マス。コンボなし)
+const AURA_R_ADD = 3;           //コンボが COMBO_MAX に届くまでに、ひし形が広がるマス数
 const AURA_ALPHA = 0.28;        //ドローン君の下のマスの濃さ(コンボなし)
 const AURA_ALPHA_ADD = 0.35;    //コンボが COMBO_MAX に届くまでに、濃くなる分
 const AURA_TRAIL = 22;          //ドローン君が離れたあと、通ったマスが光り続ける時間(フレーム。コンボで長くなる)
 const GLOW_MAX = 3000;          //光っているマスの数の上限(ジャスト衝撃波の輪は画面のマスすべてを入れる)
-const JUST_DIAMOND_R = 6;       //ジャスト衝撃波で、ドローン君のまわりが光るひし形の大きさ(マス)
+const JUST_DIAMOND_R = 4;       //ジャスト衝撃波で、ドローン君のまわりが光るひし形の大きさ(マス)
 const JUST_SPREAD_WAIT = 6;     //ひし形が光ってから、外へ伝わり始めるまで(フレーム)
 const JUST_SPREAD_DELAY = 3.5;  //外へ1マス伝わるのにかかる時間(フレーム。大きいほどゆっくり)
-const JUST_SPREAD_RANGE = 34;   //ひし形の輪が伝わるところまで(ドローン君からのマス数。縦横に数えた距離)
+const JUST_SPREAD_RANGE = 22;   //ひし形の輪が伝わるところまで(ドローン君からのマス数。縦横に数えた距離)
 const JUST_SPREAD_JITTER = 14;  //マスごとの光り始めのずれ(フレーム。そろって進まず、少しずつ点いていくように)
 const JUST_SPREAD_LIFE = 24;    //伝わっていく輪の1マスが光っている時間(フレーム。マスごとに0.7〜1.3倍)
 const JUST_SPREAD_ALPHA = 0.4;  //伝わっていく輪の色の濃さ(遠いほど薄くなる)
@@ -59,6 +68,8 @@ var battleBg = {
     skyName:"",         //描いてある空の種類
     skyAge:0,           //描いてからのフレーム数
     ripples:[],         //方眼の波 { x, y, age, amp:押し広げる大きさ(px), spd:広がる速さ(px/フレーム), w:波の幅(px), life:消えるまで(フレーム), color:光る色"r,g,b" }
+    //光るマスの描き方(CELL_STYLES の名前)。URL に #bgstyle=C のように付けると、その描き方で試せる
+    style:(function(){ var m = /bgstyle=([A-Z])/i.exec(location.hash); return m ? m[1].toUpperCase() : CELL_STYLE; })(),
     cells:[],           //このコマで光らせるマス { x, y, color, a }(fillCell で集め、flushCells で描く)
     auraI:null, auraJ:null,     //ドローン君がいたマス(通ったマスに光を残すため)
     glows:[],           //光っているマス { i, j, life:残り(フレーム), max:光る長さ, a:濃さ, color:"r,g,b" }
@@ -134,10 +145,13 @@ var battleBg = {
         this.last = now;
         this.t += dt;
         this.step(dt);
-
+        this.render(dt);
+    },
+    //今の状態を描く(時間は進めない)。_noTrail：通ったマスの光を足さない(同じコマを何度も描く見比べページ用)
+    render:function(dt,_noTrail){
         this.drawSky(dt);
         this.cells = [];
-        this.drawAura(dt);
+        this.drawAura(dt,_noTrail);
         this.drawGlows();
         this.flushCells();
         this.drawGrid();
@@ -200,39 +214,55 @@ var battleBg = {
         if(this.ripples.length > 0){ this.warp(cx, cy, _p); cx = _p.x; cy = _p.y; }
         this.cells.push({ x:cx, y:cy, color:_color, a:_a });
     },
-    //光っているマスを描く。発光して見えるよう、にじみ(マスからはみ出すうすい光)→ 色 → 白に近い芯 の順に重ねる
-    //(にじみを先に全部描くので、となりのマスのにじみが芯にかぶらない)
+    //光っているマスを描く(描き方は CELL_STYLES)。にじみ → マスの中 → 芯 → 色の枠 の順に、それぞれ全部のマスをまとめて描く
+    //(となりのマスのにじみが中にかぶらないように)
     flushCells:function(){
+        var s = CELL_STYLES[this.style] || CELL_STYLES[CELL_STYLE];
         var h = BG_CELL/2, list = this.cells;
-        for(var k=0; k<list.length; k++){
-            var c = list[k], b = h + CELL_BLOOM;
-            ctx.fillStyle = "rgba(" + c.color + "," + (c.a*CELL_BLOOM_ALPHA) + ")";
-            ctx.fillRect(c.x - b, c.y - b, b*2, b*2);
+        if(s.bloom > 0){
+            for(var k=0; k<list.length; k++){
+                var c = list[k], b = h + s.bloomW;
+                ctx.fillStyle = "rgba(" + c.color + "," + (c.a*s.bloom) + ")";
+                ctx.fillRect(c.x - b, c.y - b, b*2, b*2);
+            }
         }
         for(var k=0; k<list.length; k++){
             var c = list[k];
-            ctx.fillStyle = "rgba(" + c.color + "," + Math.min(1, c.a*CELL_BODY) + ")";
+            ctx.fillStyle = "rgba(" + this.lite(c.color, s.bodyLite) + "," + Math.min(1, c.a*s.body) + ")";
             ctx.fillRect(c.x - h + 1, c.y - h + 1, BG_CELL - 1, BG_CELL - 1);
         }
-        for(var k=0; k<list.length; k++){
-            var c = list[k], s = h - CELL_CORE_INSET;
-            ctx.fillStyle = "rgba(" + this.lite(c.color) + "," + Math.min(1, c.a*CELL_CORE_ALPHA) + ")";
-            ctx.fillRect(c.x - s, c.y - s, s*2, s*2);
+        if(s.core > 0){
+            var r = h - s.coreIn;
+            for(var k=0; k<list.length; k++){
+                var c = list[k];
+                ctx.fillStyle = "rgba(" + this.lite(c.color, s.coreLite) + "," + Math.min(1, c.a*s.core) + ")";
+                ctx.fillRect(c.x - r, c.y - r, r*2, r*2);
+            }
+        }
+        if(s.edge > 0){
+            ctx.lineWidth = s.edgeW;
+            for(var k=0; k<list.length; k++){
+                var c = list[k];
+                ctx.strokeStyle = "rgba(" + c.color + "," + Math.min(1, c.a*s.edge) + ")";
+                ctx.strokeRect(c.x - h + 0.5, c.y - h + 0.5, BG_CELL, BG_CELL);
+            }
+            ctx.lineWidth = 1;
         }
     },
-    //色を白に近づけた色(光の芯の色。作った色は覚えておく)
+    //色を白へ _t の割合だけ近づけた色(作った色は覚えておく)
     liteCache:{},
-    lite:function(_color){
-        var v = this.liteCache[_color];
+    lite:function(_color,_t){
+        if(_t <= 0) return _color;
+        var key = _color + "/" + _t, v = this.liteCache[key];
         if(!v){
-            v = _color.split(",").map(function(n){ return Math.round(+n + (255 - n)*GLOW_LITE); }).join(",");
-            this.liteCache[_color] = v;
+            v = _color.split(",").map(function(n){ return Math.round(+n + (255 - n)*_t); }).join(",");
+            this.liteCache[key] = v;
         }
         return v;
     },
     //ドローン君の下のマス：いつも灰色にうっすら光り、通ったマスも少し光が残る(後ろに尾を引く)。
     //かすりコンボが続いている間は黄色になり、コンボが増えるほど広く・濃く・脈打ち・チカチカ瞬く
-    drawAura:function(dt){
+    drawAura:function(dt,_noTrail){
         var show = versus.active ? true : (mainScreen.state != "over" && !mainScreen.down && !mainScreen.cinematic());
         if(!show){ this.auraI = null; return; }
         var combo = versus.active ? 0 : mainScreen.combo, on = combo > 0;
@@ -243,7 +273,7 @@ var battleBg = {
         var pulse = on ? 1 + (0.15 + 0.35*k)*Math.sin(this.t*(0.12 + 0.15*k)) : 1;
         var ci = Math.floor(drone.X/BG_CELL), cj = Math.floor(drone.Y/BG_CELL);
         //通ったマス：ドローン君が別のマスへ移ったら、前のマスに光を残す(コンボが多いと太く長く)
-        if(this.auraI != null && (ci != this.auraI || cj != this.auraJ)){
+        if(!_noTrail && this.auraI != null && (ci != this.auraI || cj != this.auraJ)){
             var tr = on && k > 0.5 ? 1 : 0, life = AURA_TRAIL*(1 + 2*k);
             for(var i=this.auraI-tr; i<=this.auraI+tr; i++){
                 for(var j=this.auraJ-tr; j<=this.auraJ+tr; j++){
@@ -306,7 +336,8 @@ var battleBg = {
             ctx.strokeStyle = "rgba(" + r.color + "," + (RIPPLE_GLOW*fade) + ")";
             ctx.stroke(glow[i][1]);
             ctx.lineWidth = 1;
-            ctx.strokeStyle = "rgba(" + this.lite(r.color) + "," + (0.9*fade) + ")";
+            var s = CELL_STYLES[this.style] || CELL_STYLES[CELL_STYLE];
+            ctx.strokeStyle = "rgba(" + this.lite(r.color, Math.max(0.7, s.coreLite, s.bodyLite)) + "," + (0.9*fade) + ")";
             ctx.stroke(glow[i][1]);
         }
         ctx.lineWidth = 1;

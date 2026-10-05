@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<!--
+  戦闘画面の背景：光るマスの描き方(battleBg.js の CELL_STYLES)の見比べ
+  同じ場面(コンボなし → コンボが増える → ジャスト衝撃波 → 衝撃波)を、描き方ごとに並べてくり返し流す。
+  ・上のボタンで空(昼・夕方・夜・戦場)を切りかえる。
+  ・どれかをクリックすると大きく表示(もう一度クリックで戻る)。
+  ・気に入ったものは、ゲームでは index.html#bgstyle=C のように付けて試せる。決めたら battleBg.js の CELL_STYLE を書きかえる。
+  #still を付けると止まった1コマ(ジャスト衝撃波が広がっているところ)を出す(スクリーンショット用)。
+-->
+<html lang="ja"><head><meta charset="UTF-8"><base href="../"><title>ドローン君 背景の光り方の見比べ</title>
+<style>
+body{ margin:0; padding:12px; background:#222; color:#eee; font-family:sans-serif; }
+#Bigbox{ position:absolute; left:-10000px; top:0; }
+#Canvas{ width:960px; height:540px; }
+.bar{ margin-bottom:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.bar button{ padding:4px 12px; background:#444; color:#eee; border:1px solid #666; cursor:pointer; }
+.bar button.on{ background:#2a7; border-color:#4c9; }
+#phase{ margin-left:12px; color:#fc6; }
+#grid{ display:grid; grid-template-columns:repeat(3, 480px); gap:10px; }
+.cell{ cursor:pointer; }
+.cell canvas{ width:480px; height:270px; display:block; border:1px solid #555; }
+.cell div{ font-size:13px; margin:3px 0 0; }
+#big{ display:none; }
+#big canvas{ width:960px; height:540px; display:block; border:1px solid #888; cursor:pointer; }
+</style></head>
+<body>
+<div id="Bigbox"><canvas id="Canvas"></canvas></div>
+<div class="bar" id="skies"></div>
+<div class="bar"><span>今の場面：</span><span id="phase"></span></div>
+<div id="grid"></div>
+<div id="big"><div id="bigName" style="margin-bottom:4px"></div><canvas width="960" height="540"></canvas></div>
+<script src="scripts/drone/common.js"></script>
+<script src="scripts/drone/sound.js"></script>
+<script src="scripts/drone/equipment.js"></script>
+<script src="scripts/drone/armsExtra.js"></script>
+<script src="scripts/drone/bosses.js"></script>
+<script src="scripts/drone/startScreen.js"></script>
+<script src="scripts/drone/mainScreen.js"></script>
+<script src="scripts/drone/forces.js"></script>
+<script src="scripts/drone/enemyArt.js"></script>
+<script src="scripts/drone/upgradeScreen.js"></script>
+<script src="scripts/drone/gameoverScreen.js"></script>
+<script src="scripts/drone/story.js"></script>
+<script src="scripts/drone/battleBg.js"></script>
+<script src="scripts/drone/bossDebug.js"></script>
+<script src="scripts/drone/timeStop.js"></script>
+<script src="lib/peerjs.min.js"></script>
+<script src="scripts/drone/coop.js"></script>
+<script src="scripts/drone/versus.js"></script>
+<script src="scripts/drone/draw.js"></script>
+<script>
+var LOOP = 960;     //場面をくり返す長さ(フレーム)
+var keys = Object.keys(CELL_STYLES), panels = {}, bigKey = null, f = 0;
+var skies = [["昼",1],["夕方",7],["夜",12],["戦場",17]];
+
+//空のボタン
+skies.forEach(function(s, i){
+    var b = document.createElement("button");
+    b.textContent = s[0];
+    b.onclick = function(){ setWave(s[1]); };
+    document.getElementById("skies").appendChild(b);
+});
+function setWave(_w){
+    game.wave = _w;
+    battleBg.skyName = "";
+    var bs = document.querySelectorAll("#skies button");
+    skies.forEach(function(s, i){ bs[i].className = s[1] == _w ? "on" : ""; });
+}
+
+//描き方ごとの枠
+keys.forEach(function(k){
+    var d = document.createElement("div");
+    d.className = "cell";
+    d.innerHTML = '<canvas width="480" height="270"></canvas><div>' + k + "：" + CELL_STYLES[k].name + (k == CELL_STYLE ? "(今の設定)" : "") + "</div>";
+    d.onclick = function(){ bigKey = k; showBig(); };
+    document.getElementById("grid").appendChild(d);
+    panels[k] = d.querySelector("canvas").getContext("2d");
+});
+var bigBox = document.getElementById("big"), bigCtx = bigBox.querySelector("canvas").getContext("2d");
+bigBox.querySelector("canvas").onclick = function(){ bigKey = null; showBig(); };
+function showBig(){
+    document.getElementById("grid").style.display = bigKey ? "none" : "grid";
+    bigBox.style.display = bigKey ? "block" : "none";
+    if(bigKey) document.getElementById("bigName").textContent = bigKey + "：" + CELL_STYLES[bigKey].name + "(クリックで戻る)";
+}
+
+//戦闘画面の状態(敵は出さず、背景の演出だけを見る)
+save.clear(); game.reset();
+setWave(7);
+mainScreen.state = "play"; mainScreen.down = false; mainScreen.bossWave = false;
+page.number = 1;
+
+//場面：コンボを変えながら、ドローン君を動かし、かすり・ジャスト衝撃波・衝撃波を起こす
+var PHASES = [
+    { to:180, combo:0,  name:"コンボなし(ドローン君の下が灰色)" },
+    { to:360, combo:5,  name:"コンボ5" },
+    { to:540, combo:14, name:"コンボ14" },
+    { to:780, combo:25, name:"コンボ25 → ジャスト衝撃波" },
+    { to:LOOP, combo:0, name:"コンボなし → 衝撃波" }
+];
+function scene(_f){
+    var ph = PHASES[0];
+    for(var i=0; i<PHASES.length; i++){ if(_f < PHASES[i].to){ ph = PHASES[i]; break; } }
+    document.getElementById("phase").textContent = ph.name;
+    mainScreen.combo = ph.combo;
+    drone.X = 480 + 260*Math.cos(_f/70); drone.Y = 270 + 130*Math.sin(_f/45);
+    if(ph.combo > 0 && _f % 18 == 0){
+        var a = _f*1.7;
+        battleBg.graze(drone.X + Math.cos(a)*30, drone.Y + Math.sin(a)*30, mainScreen.comboTier());
+    }
+    if(_f == 600){ battleBg.ripple(drone.X, drone.Y, 36, 9, 75, BG_JUST_COLOR); battleBg.justSpread(drone.X, drone.Y, BG_JUST_COLOR); }
+    if(_f == 840){ battleBg.ripple(drone.X, drone.Y, 22, 7, 55, "255,150,60"); }
+}
+
+//敵の弾(背景の上での見やすさも比べられるように。ゲームと同じく白い芯の付いた色の丸)
+function drawShots(_f){
+    for(var i=0; i<24; i++){
+        var a = i*0.9 + _f*0.004*(i % 2 ? 1 : -1), r = 120 + (i % 6)*55;
+        var x = 480 + Math.cos(a)*r*1.4, y = 270 + Math.sin(a)*r*0.7;
+        var c = ["150,60,220", "255,120,30", "230,40,60"][i % 3];
+        ctx.fillStyle = "rgb(" + c + ")";
+        ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "#fff";
+        ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI*2); ctx.fill();
+    }
+}
+function drawDrone(){
+    ctx.fillStyle = "#333";
+    ctx.beginPath(); ctx.arc(drone.X, drone.Y, 14, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#e33";
+    ctx.beginPath(); ctx.arc(drone.X, drone.Y, 4, 0, Math.PI*2); ctx.fill();
+}
+
+//1コマ進めて、描き方ごとに同じコマを描いて写す
+function tick(_noDraw){
+    scene(f);
+    battleBg.t += 1;
+    battleBg.step(1);
+    var list = _noDraw ? [] : bigKey ? [bigKey] : keys;
+    for(var n=0; n<list.length; n++){
+        var k = list[n];
+        battleBg.style = k;
+        ctx.save();
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, CW, CH);
+        battleBg.render(n == 0 ? 1 : 0, n > 0);
+        drawShots(f);
+        drawDrone();
+        ctx.restore();
+        if(bigKey) bigCtx.drawImage(canvas, 0, 0, 960, 540);
+        else panels[k].drawImage(canvas, 0, 0, 480, 270);
+    }
+    f = (f + 1) % LOOP;
+    if(f == 0) battleBg.reset();
+}
+//ふだんの更新ループ(draw.js)が同じキャンバスにタイトル画面を描かないよう止める
+screens[0] = screens[1] = { enter:function(){}, update:function(){}, draw:function(){} };
+if(/still/.test(location.hash)){ for(var i=0; i<640; i++) tick(true); tick(); }
+else setInterval(tick, 1000/30);
+</script>
+</body></html>

@@ -401,7 +401,7 @@ try{
     battleBg.reset();
     mainScreen.blastFx(300,200);
     battleBg.graze(300,200,2);
-    var waved = battleBg.ripples.length == 1 && battleBg.glows.length == 145;   //コンボ2段：まわり8マスまでのひし形
+    var waved = battleBg.ripples.length == 1 && battleBg.glows.length == 61;    //コンボ2段：まわり5マスまでのひし形
     battleBg.ripples[0].age = 20;
     var pt = { x:0, y:0 }; battleBg.warp(300 + 140, 200, pt);    //波の山(7px×20フレーム=140px)の上の点は外へ押される
     var pushed = pt.x > 300 + 140 + 3;
@@ -414,6 +414,7 @@ try{
     var celled = battleBg.glows.length > 300 && lateN > 300;
     mainScreen.just = keepJust; sound.timeWarp(false);
     battleBg.step(30); battleBg.draw();
+    var keepStyle = battleBg.style; Object.keys(CELL_STYLES).forEach(function(k){ battleBg.style = k; battleBg.render(0, true); }); battleBg.style = keepStyle;   //光るマスの描き方の候補(CELL_STYLES)がどれも描ける
     var keepCombo = mainScreen.combo; mainScreen.combo = 20; drone.X += 40; battleBg.draw(); drone.X -= 40; battleBg.draw(); mainScreen.combo = keepCombo;   //コンボ中はドローン君の下が黄色く光る
     mainScreen.justSlow = 0; mainScreen.slowPow = 0; mainScreen.guard = 0;
     battleBg.step(200);

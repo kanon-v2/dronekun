@@ -101,7 +101,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 | 同胞・人間の兵器 | `forces.js` の `kinRate()`・`pickHuman()` |
 | ストーリーの文章・背景・流れる時期 | `story.js` の `STORIES`・`STORY_SKY`・`STORY_AFTER` |
 | BGM | `sound.js` の `TRACKS` |
-| 戦闘画面の背景(空の薄さ・奥行き・方眼の波) | `battleBg.js` の `BG_*`・`RIPPLE_*`・`GLOW_*`・`AURA_*`・`BG_COMBO_COLOR`・`JUST_DIAMOND_R`・`JUST_SPREAD_*`、空の色は `story.js` の `SKY_COLORS` |
+| 戦闘画面の背景(空の薄さ・奥行き・方眼の波) | `battleBg.js` の `BG_*`・`RIPPLE_*`・`GLOW_*`・`CELL_STYLES`・`CELL_STYLE`(光るマスの描き方の候補と、ふだん使うもの。見比べは `tools/bg-glow.html`、ゲームでは `#bgstyle=C` で試せる)・`AURA_*`・`BG_COMBO_COLOR`・`JUST_DIAMOND_R`・`JUST_SPREAD_*`、空の色は `story.js` の `SKY_COLORS` |
 | 対戦の耐久・装備ごとのダメージ倍率 | `versus.js` の `VS_HP`・`VS_DAMAGE_MUL` |
 | ドローン君の色・振り向き・傾き | `common.js` の `FLAT_COLOR`・`FLAT_YAWS`・`FLAT_ELEVS`・`TURN_*`・`TILT_*` |
 | 画面の細かさの上限・重いときに下げる条件 | `common.js` の `RENDER_MAX`・`RENDER_FPS_LOW`・`RENDER_DROP_SEC` |
