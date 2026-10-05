@@ -395,6 +395,10 @@ try{
     check("雑魚敵9種類を新しい絵で描ける(被弾・撃つ直前・自爆直前など)", artOk.length == artTypes.length && errors.length == artErr, artOk.length + "/" + artTypes.length + "種類");
 
     //戦闘画面の背景(battleBg.js)：WAVEで空が昼→夕方→夜→戦場と変わる。衝撃波で方眼が波打ち、かすったマスが光り、時間がたつと消える
+    //方眼は普通(15px)で確かめる(はじめの設定の大きいは、公開版と同じ背景と演出)
+    check("戦闘画面の方眼のはじめの設定は「表示：あり・大きさ：大きい」", viewOpt.grid === true && viewOpt.gridSize == "large" && battleBg.cell() == GS, viewOpt.grid + " " + viewOpt.gridSize);
+    var keepBgSize = viewOpt.gridSize, keepBgGrid = viewOpt.grid;
+    viewOpt.gridSize = "normal"; viewOpt.grid = true;
     var keepWave = game.wave, skies = [], bgErr = errors.length;
     [1,6,11,16].forEach(function(w){ game.wave = w; skies.push(battleBg.skyFor()); battleBg.draw(); });
     game.wave = keepWave;
@@ -421,6 +425,7 @@ try{
     check("戦闘の背景：WAVEで空が変わり、衝撃波で方眼が波打ち、かすったマスが光り、ジャストでひし形が外へ伝わる",
           skies.join() == "day,dusk,night,war" && waved && pushed && celled && battleBg.ripples.length == 0 && battleBg.glows.length == 0 && errors.length == bgErr,
           skies.join() + " 押した幅" + (pt.x - 440).toFixed(1) + "px");
+    viewOpt.gridSize = keepBgSize; viewOpt.grid = keepBgGrid;
 
     //画面の細かさ：表示が大きいと細かく描き(座標はそのまま)、フレームレートが低い秒が続くと1段下げる
     var keepCssW = canvas.style.width, keepCssH = canvas.style.height, keepFps = { count:fps.count, last:fps.last, value:fps.value, low:fps.low };
@@ -608,14 +613,15 @@ function finish2(){
         var fineN = battleBg.glows.length;      //細かい方眼では、普通の方眼の2倍のマス数のひし形(まわり6マス → 85マス)
         battleBg.ripple(300,200,22,7,55,"255,150,60"); battleBg.justSpread(300,200,BG_JUST_COLOR);
         battleBg.step(20); battleBg.render(0); battleBg.draw();   //なしの設定の draw は白地だけ(線もなし)
-        var classicFx = mainScreen.justFx() === JUST_FX.classic;   //なしのときのジャストの演出は公開版のまま
+        battleBg.skyName = null; battleBg.draw();
+        var classicFx = mainScreen.justFx() === JUST_FX.classic && battleBg.skyName != null;   //なし：ジャストの演出は公開版のまま。空と街の絵は出す
         clickAt(gridButtons[0].rect); clickAt(gridButtons[3].rect);
         var backGrid = viewOpt.grid === true && viewOpt.gridSize == "normal" && battleBg.cell() == GS/2 && mainScreen.justFx() === JUST_FX.bg;
-        clickAt(gridButtons[4].rect); startScreen.draw(); battleBg.draw();   //大きい：公開版と同じ背景(白地にごく薄い方眼)とジャストの演出
-        var largeOk = viewOpt.gridSize == "large" && battleBg.classic() && mainScreen.justFx() === JUST_FX.classic;
+        clickAt(gridButtons[4].rect); startScreen.draw(); battleBg.skyName = null; battleBg.draw();   //大きい：空と街の絵の上に公開版と同じごく薄い方眼、ジャストの演出も公開版
+        var largeOk = viewOpt.gridSize == "large" && battleBg.classic() && mainScreen.justFx() === JUST_FX.classic && battleBg.skyName != null;
         clickAt(gridButtons[3].rect);
         battleBg.reset();
-        check("設定で戦闘画面の方眼を「なし」「細かい」「大きい」(公開版と同じ背景・ジャストの演出)にでき、覚える。戻せる", gridOk && backGrid && largeOk && classicFx && fineN == 85 && errors.length == bgErr2, "細かいのひし形 " + fineN + "マス");
+        check("設定で戦闘画面の方眼を「なし」「細かい」「大きい」(公開版と同じ方眼・ジャストの演出。空と街の絵はどれも出す)にでき、覚える。戻せる", gridOk && backGrid && largeOk && classicFx && fineN == 85 && errors.length == bgErr2, "細かいのひし形 " + fineN + "マス");
         viewOpt.grid = keepGrid; viewOpt.gridSize = keepSize;
         try{ if(keepView) localStorage.setItem(viewOpt.KEY, keepView); else localStorage.removeItem(viewOpt.KEY); }catch(e){}
         clickAt(settingsClose);

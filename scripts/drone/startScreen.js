@@ -532,7 +532,7 @@ var startScreen = {
             ctx.fillText(g.label, r.X + r.width/2, r.Y + r.height/2 + 1);
             ctx.globalAlpha = 1;
         }
-        //見本：今の設定の方眼(大きいは公開版と同じ白地にごく薄い方眼、なしは白地だけ)
+        //見本：今の設定の方眼の線(大きいは公開版と同じごく薄い線、なしは線なし。戦闘画面ではどれも空と街の絵の上に引く)
         var sx = px + 26, sy = GRID_ROW_Y + 44, sw = SETTINGS_W - 52, sh = 22;
         var classic = battleBg.classic(), cell = BG_CELL_SIZES[viewOpt.gridSize] || BG_CELL_SIZES.normal;
         ctx.save();

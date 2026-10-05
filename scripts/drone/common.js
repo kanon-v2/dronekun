@@ -992,7 +992,7 @@ var viewOpt = {
     graze:true,         //かすりの範囲の輪
     pointer:true,
     grid:true,
-    gridSize:"normal",
+    gridSize:"large",   //はじめは大きい(公開版と同じ背景と演出)
     load:function(){
         try{
             var d = JSON.parse(localStorage.getItem(this.KEY) || "{}");
@@ -1000,7 +1000,7 @@ var viewOpt = {
             if(d.graze === false) this.graze = false;
             if(d.pointer === false) this.pointer = false;
             if(d.grid === false) this.grid = false;
-            if(d.gridSize == "fine" || d.gridSize == "large") this.gridSize = d.gridSize;
+            if(["fine","normal","large"].indexOf(d.gridSize) >= 0) this.gridSize = d.gridSize;
         }catch(e){}
     },
     save:function(){
