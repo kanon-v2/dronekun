@@ -19,7 +19,7 @@ const BG_REDRAW = 6;            //空を描き直す間隔(フレーム)。空�
 const BG_RES = 0.5;             //空を描く細かさ(ゲームの大きさの何倍。薄く敷くので粗くてよい)
 //方眼の目の大きさ(px)。タイトルの設定で選ぶ(viewOpt.gridSize)。光る範囲などの「マス数」は普通の方眼(normal)で数えた値で、
 //細かい方眼ではその2倍のマス数にして、画面の上で同じくらいの広さになるようにする
-const BG_CELL_SIZES = { fine:GS/4, normal:GS/2 };
+const BG_CELL_SIZES = { fine:GS/4, normal:GS/2, large:GS };    //large(大きい)は公開版と同じ背景・演出(classic)
 const BG_WARP_STEP = GS/4;      //方眼の線を波で曲げるときの区切り(px。小さいほどなめらかで重い。細かい方眼でもこれより細かくしない)
 const BG_CLASSIC_COLOR = "#f0f0f0";     //方眼なしの設定のときの、公開版と同じごく薄い方眼の色
 const BG_GRID_COLOR = "rgba(40,60,90,0.08)";   //方眼の線の色(目が細かいので少し薄く)
@@ -154,10 +154,12 @@ var battleBg = {
         this.last = now;
         this.t += dt;
         this.step(dt);
-        //方眼なしの設定(viewOpt.grid)では、公開版と同じ背景(白地にごく薄い方眼)だけを描く。空・光るマス・波は出さない
-        if(!viewOpt.grid){ this.drawClassic(); return; }
+        //方眼が大きい・なしの設定では、公開版と同じ背景だけを描く(大きい：白地にごく薄い方眼　なし：白地だけ)。空・光るマス・波は出さない
+        if(this.classic()){ if(viewOpt.grid) this.drawClassic(); return; }
         this.render(dt);
     },
+    //公開版と同じ背景・演出にするか(方眼が大きい・なし。ジャストの演出も公開版のまま：mainScreen.justFx)
+    classic:function(){ return !viewOpt.grid || viewOpt.gridSize == "large"; },
     //公開版と同じ背景：白地(draw.js が塗る)に、GS ごとのごく薄い方眼
     drawClassic:function(){
         ctx.strokeStyle = BG_CLASSIC_COLOR;

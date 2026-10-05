@@ -984,7 +984,7 @@ var pointer = {
 //  戦闘画面の表示の設定(右下のボタンで切り替える。localStorage に覚える)
 //  ・hitbox：ドローン君の中心の当たり判定の点
 //  ・pointer：ポインタ(戦闘中だけ隠す。メニューなどの画面では操作に要るので出す)
-//  ・grid・gridSize：戦闘画面の背景の方眼を出すか・目の大きさ("normal" 普通 15px／"fine" 細かい 7.5px)。タイトルの設定で選ぶ(battleBg.js)
+//  ・grid・gridSize：戦闘画面の背景の方眼を出すか・目の大きさ("fine" 細かい 7.5px／"normal" 普通 15px／"large" 大きい 30px。大きい・なしは公開版と同じ背景と演出)。タイトルの設定で選ぶ(battleBg.js)
 //------------------------------------------------------------------------------
 var viewOpt = {
     KEY:"dronekun_view",
@@ -1000,7 +1000,7 @@ var viewOpt = {
             if(d.graze === false) this.graze = false;
             if(d.pointer === false) this.pointer = false;
             if(d.grid === false) this.grid = false;
-            if(d.gridSize == "fine") this.gridSize = "fine";
+            if(d.gridSize == "fine" || d.gridSize == "large") this.gridSize = d.gridSize;
         }catch(e){}
     },
     save:function(){

@@ -33,10 +33,11 @@ var skinCards = [new drawRect(CW/2 - 118, SETTINGS_Y + 70, 210, 160), new drawRe
 //戦闘画面の方眼の設定(viewOpt.grid・gridSize。battleBg.js)：押すとすぐ切り替わり、覚える
 const GRID_ROW_Y = SETTINGS_Y + 284;    //ボタンの並ぶ高さ
 var gridButtons = [
-    { rect:new drawRect(CW/2 - 130, GRID_ROW_Y, 76, 34), key:"grid",     val:true,     label:"あり" },
-    { rect:new drawRect(CW/2 - 50,  GRID_ROW_Y, 76, 34), key:"grid",     val:false,    label:"なし" },
-    { rect:new drawRect(CW/2 + 130, GRID_ROW_Y, 76, 34), key:"gridSize", val:"normal", label:"普通" },
-    { rect:new drawRect(CW/2 + 210, GRID_ROW_Y, 76, 34), key:"gridSize", val:"fine",   label:"細かい" }
+    { rect:new drawRect(CW/2 - 160, GRID_ROW_Y, 64, 34), key:"grid",     val:true,     label:"あり" },
+    { rect:new drawRect(CW/2 - 92,  GRID_ROW_Y, 64, 34), key:"grid",     val:false,    label:"なし" },
+    { rect:new drawRect(CW/2 + 62,  GRID_ROW_Y, 64, 34), key:"gridSize", val:"fine",   label:"細かい" },
+    { rect:new drawRect(CW/2 + 130, GRID_ROW_Y, 64, 34), key:"gridSize", val:"normal", label:"普通" },
+    { rect:new drawRect(CW/2 + 198, GRID_ROW_Y, 64, 34), key:"gridSize", val:"large",  label:"大きい" }
 ];
 
 //遠くを横切るドローン君の影(背景の飾り)
@@ -56,7 +57,7 @@ var startScreen = {
     hover:-1,       //マウスが乗っているメニューの番号
     blips:[],       //レーダーに映る点
     settings:false, //設定の窓を開いているか
-    setHover:-1,    //設定の窓でマウスが乗っているもの(0,1:見た目 2〜5:方眼 6:閉じる)
+    setHover:-1,    //設定の窓でマウスが乗っているもの(0,1:見た目 2〜6:方眼 7:閉じる)
     enter:function(){
         this.hasSave = save.exists();
         this.best = save.getBest();
@@ -409,7 +410,7 @@ var startScreen = {
     //設定の窓：ドローン君の見た目・戦闘画面の方眼を選ぶ。選ぶとすぐ切り替わり、覚える。Esc か「閉じる」で閉じる
     updateSettings:function(){
         var h = -1;
-        //マウスが乗っているもの(0,1：見た目のカード 2〜5：方眼のボタン 6：閉じる)
+        //マウスが乗っているもの(0,1：見た目のカード 2〜6：方眼のボタン 7：閉じる)
         for(var i=0; i<skinCards.length; i++) if(skinCards[i].contains(MouseX,MouseY)) h = i;
         for(var i=0; i<gridButtons.length; i++) if(gridButtons[i].rect.contains(MouseX,MouseY)) h = skinCards.length + i;
         if(settingsClose.contains(MouseX,MouseY)) h = skinCards.length + gridButtons.length;
@@ -513,7 +514,7 @@ var startScreen = {
         ctx.font = "bold 13px " + TITLE_UI_FONT;
         ctx.fillStyle = TITLE_INK;
         ctx.fillText("表示", px + 26, GRID_ROW_Y + 17);
-        ctx.fillText("大きさ", px + 262, GRID_ROW_Y + 17);
+        ctx.fillText("大きさ", px + 236, GRID_ROW_Y + 17);
         for(var i=0; i<gridButtons.length; i++){
             var g = gridButtons[i], r = g.rect;
             var sel = viewOpt[g.key] === g.val, on = this.setHover == skinCards.length + i;
@@ -531,18 +532,18 @@ var startScreen = {
             ctx.fillText(g.label, r.X + r.width/2, r.Y + r.height/2 + 1);
             ctx.globalAlpha = 1;
         }
-        //見本：今の設定の方眼(なしのときは、公開版と同じ白地にごく薄い方眼)
+        //見本：今の設定の方眼(大きいは公開版と同じ白地にごく薄い方眼、なしは白地だけ)
         var sx = px + 26, sy = GRID_ROW_Y + 44, sw = SETTINGS_W - 52, sh = 22;
-        var cell = viewOpt.grid ? (BG_CELL_SIZES[viewOpt.gridSize] || BG_CELL_SIZES.normal) : GS;
+        var classic = battleBg.classic(), cell = BG_CELL_SIZES[viewOpt.gridSize] || BG_CELL_SIZES.normal;
         ctx.save();
         ctx.beginPath(); ctx.rect(sx, sy, sw, sh); ctx.clip();
-        ctx.fillStyle = viewOpt.grid ? "#fafaf8" : "#fff";
+        ctx.fillStyle = classic ? "#fff" : "#fafaf8";
         ctx.fillRect(sx, sy, sw, sh);
-        ctx.strokeStyle = viewOpt.grid ? "rgba(40,60,90,0.25)" : "#e2e2e2";   //なしの線は小さな見本でも見えるよう、公開版より少し濃く
+        ctx.strokeStyle = classic ? "#e2e2e2" : "rgba(40,60,90,0.25)";   //大きいの線は小さな見本でも見えるよう、公開版より少し濃く
         ctx.beginPath();
         for(var x=sx; x<=sx + sw; x+=cell){ ctx.moveTo(Math.round(x) + 0.5, sy); ctx.lineTo(Math.round(x) + 0.5, sy + sh); }
         for(var y=sy; y<=sy + sh; y+=cell){ ctx.moveTo(sx, Math.round(y) + 0.5); ctx.lineTo(sx + sw, Math.round(y) + 0.5); }
-        ctx.stroke();
+        if(viewOpt.grid) ctx.stroke();
         ctx.restore();
         ctx.strokeStyle = "#c9ccc7";
         ctx.setLineDash([3,3]);

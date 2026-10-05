@@ -619,8 +619,8 @@ var mainScreen = {
         battleBg.ripple(_x, _y, _partner ? 14 : 22, 7, 55, "255,150,60");
         sound.play("blast");
     },
-    //ジャストのゆっくりの間の演出の濃さ(方眼ありは弱め、方眼なしは公開版のまま。JUST_FX)
-    justFx:function(){ return viewOpt.grid ? JUST_FX.bg : JUST_FX.classic; },
+    //ジャストのゆっくりの間の演出の濃さ(新しい背景のときは弱め、方眼が大きい・なしは公開版のまま。JUST_FX)
+    justFx:function(){ return battleBg.classic() ? JUST_FX.classic : JUST_FX.bg; },
     //今出せばジャストか：このまま進むと JUST_FRAMES のうちに当たる弾か、体当たりしてくる敵(COUNTER_TYPES)があるか
     //(ドローン君は止まっているとみなし、弾と敵はまっすぐ進むとみなす)。ジャストになった敵は justRams に集める
     isJust:function(){

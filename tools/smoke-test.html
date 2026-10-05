@@ -594,10 +594,11 @@ function finish2(){
         var backE = droneSkin.current == "E" && droneSheets.id == "E";
         document.dispatchEvent(new KeyboardEvent("keydown",{ code:"Escape" }));
         check("標準に戻して、Escで設定を閉じる", backE && !startScreen.settings);
-        //戦闘画面の方眼：なし・細かいを選ぶと覚え、背景の目の大きさが変わる。なし・細かいでも背景の演出が描ける
+        //戦闘画面の方眼：なし・細かい・大きいを選ぶと覚え、背景の目の大きさが変わる。どの設定でも背景の演出が描ける
+        //(ボタン：0 あり 1 なし 2 細かい 3 普通 4 大きい)
         var keepView = localStorage.getItem(viewOpt.KEY), keepGrid = viewOpt.grid, keepSize = viewOpt.gridSize;
         clickAt(settingsButton);
-        clickAt(gridButtons[1].rect); clickAt(gridButtons[3].rect);
+        clickAt(gridButtons[1].rect); clickAt(gridButtons[2].rect);
         startScreen.draw();
         var savedView = JSON.parse(localStorage.getItem(viewOpt.KEY) || "{}");
         var gridOk = viewOpt.grid === false && viewOpt.gridSize == "fine" && savedView.grid === false && savedView.gridSize == "fine" && battleBg.cell() == GS/4;
@@ -606,12 +607,15 @@ function finish2(){
         battleBg.graze(300,200,1);
         var fineN = battleBg.glows.length;      //細かい方眼では、普通の方眼の2倍のマス数のひし形(まわり6マス → 85マス)
         battleBg.ripple(300,200,22,7,55,"255,150,60"); battleBg.justSpread(300,200,BG_JUST_COLOR);
-        battleBg.step(20); battleBg.render(0); battleBg.draw();   //なしの設定の draw は公開版と同じ背景だけを描く
+        battleBg.step(20); battleBg.render(0); battleBg.draw();   //なしの設定の draw は白地だけ(線もなし)
         var classicFx = mainScreen.justFx() === JUST_FX.classic;   //なしのときのジャストの演出は公開版のまま
-        clickAt(gridButtons[0].rect); clickAt(gridButtons[2].rect);
+        clickAt(gridButtons[0].rect); clickAt(gridButtons[3].rect);
         var backGrid = viewOpt.grid === true && viewOpt.gridSize == "normal" && battleBg.cell() == GS/2 && mainScreen.justFx() === JUST_FX.bg;
+        clickAt(gridButtons[4].rect); startScreen.draw(); battleBg.draw();   //大きい：公開版と同じ背景(白地にごく薄い方眼)とジャストの演出
+        var largeOk = viewOpt.gridSize == "large" && battleBg.classic() && mainScreen.justFx() === JUST_FX.classic;
+        clickAt(gridButtons[3].rect);
         battleBg.reset();
-        check("設定で戦闘画面の方眼を「なし」(公開版と同じ背景・ジャストの演出)「細かい」にでき、覚える。戻せる", gridOk && backGrid && classicFx && fineN == 85 && errors.length == bgErr2, "細かいのひし形 " + fineN + "マス");
+        check("設定で戦闘画面の方眼を「なし」「細かい」「大きい」(公開版と同じ背景・ジャストの演出)にでき、覚える。戻せる", gridOk && backGrid && largeOk && classicFx && fineN == 85 && errors.length == bgErr2, "細かいのひし形 " + fineN + "マス");
         viewOpt.grid = keepGrid; viewOpt.gridSize = keepSize;
         try{ if(keepView) localStorage.setItem(viewOpt.KEY, keepView); else localStorage.removeItem(viewOpt.KEY); }catch(e){}
         clickAt(settingsClose);
