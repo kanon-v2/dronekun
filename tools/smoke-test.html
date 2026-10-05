@@ -22,6 +22,7 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
 <script src="scripts/drone/upgradeScreen.js"></script>
 <script src="scripts/drone/gameoverScreen.js"></script>
 <script src="scripts/drone/story.js"></script>
+<script src="scripts/drone/battleBg.js"></script>
 <script src="scripts/drone/bossDebug.js"></script>
 <script src="scripts/drone/timeStop.js"></script>
 <script src="lib/peerjs.min.js"></script>
@@ -392,6 +393,33 @@ try{
         if(drawn) artOk.push(artTypes[i]);
     }
     check("雑魚敵9種類を新しい絵で描ける(被弾・撃つ直前・自爆直前など)", artOk.length == artTypes.length && errors.length == artErr, artOk.length + "/" + artTypes.length + "種類");
+
+    //戦闘画面の背景(battleBg.js)：WAVEで空が昼→夕方→夜→戦場と変わる。衝撃波で方眼が波打ち、かすったマスが光り、時間がたつと消える
+    var keepWave = game.wave, skies = [], bgErr = errors.length;
+    [1,6,11,16].forEach(function(w){ game.wave = w; skies.push(battleBg.skyFor()); battleBg.draw(); });
+    game.wave = keepWave;
+    battleBg.reset();
+    mainScreen.blastFx(300,200);
+    battleBg.graze(300,200,2);
+    var waved = battleBg.ripples.length == 1 && battleBg.glows.length == 145;   //コンボ2段：まわり8マスまでのひし形
+    battleBg.ripples[0].age = 20;
+    var pt = { x:0, y:0 }; battleBg.warp(300 + 140, 200, pt);    //波の山(7px×20フレーム=140px)の上の点は外へ押される
+    var pushed = pt.x > 300 + 140 + 3;
+    battleBg.draw();
+    //ジャスト衝撃波：ドローン君のまわりがひし形に光り、遅れて外のマスへ伝わっていく
+    var keepJust = mainScreen.just;
+    battleBg.glows = [];
+    mainScreen.justBlast([],[]);
+    var lateN = battleBg.glows.filter(function(g){ return g.life > g.max; }).length;
+    var celled = battleBg.glows.length > 300 && lateN > 300;
+    mainScreen.just = keepJust; sound.timeWarp(false);
+    battleBg.step(30); battleBg.draw();
+    var keepCombo = mainScreen.combo; mainScreen.combo = 20; drone.X += 40; battleBg.draw(); drone.X -= 40; battleBg.draw(); mainScreen.combo = keepCombo;   //コンボ中はドローン君の下が黄色く光る
+    mainScreen.justSlow = 0; mainScreen.slowPow = 0; mainScreen.guard = 0;
+    battleBg.step(200);
+    check("戦闘の背景：WAVEで空が変わり、衝撃波で方眼が波打ち、かすったマスが光り、ジャストでひし形が外へ伝わる",
+          skies.join() == "day,dusk,night,war" && waved && pushed && celled && battleBg.ripples.length == 0 && battleBg.glows.length == 0 && errors.length == bgErr,
+          skies.join() + " 押した幅" + (pt.x - 440).toFixed(1) + "px");
 
     //画面の細かさ：表示が大きいと細かく描き(座標はそのまま)、フレームレートが低い秒が続くと1段下げる
     var keepCssW = canvas.style.width, keepCssH = canvas.style.height, keepFps = { count:fps.count, last:fps.last, value:fps.value, low:fps.low };

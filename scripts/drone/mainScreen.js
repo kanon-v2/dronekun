@@ -51,7 +51,11 @@ const JUST_SLOW_TIME  = 130;    //成功したあと、画面のすべてがゆ�
 const JUST_SLOW_RATE  = 0.2;    //いちばんゆっくりのときの速さ(1で元どおり)
 const JUST_SLOW_HOLD  = 0.5;    //ゆっくりの時間のうち、いちばんゆっくりのまま保つ割合(残りでだんだん元の速さへ戻る)
 const JUST_SLOW_ZOOM  = 0.06;   //ゆっくりの間、ドローン君へ寄る大きさ(1割で0.1)
-const JUST_SLOW_ECHO  = 0.6;    //ゆっくりの間の残像の濃さ(前のコマを重ねる)
+const JUST_SLOW_ECHO  = 0.35;   //ゆっくりの間の残像の濃さ(前のコマを重ねる。濃いと画面が白っぽくかすんで、ほかの演出が見えなくなる)
+const JUST_SLOW_BLUR  = 0.07;   //ゆっくりの間、ドローン君から外へ流れるぶれの濃さ
+const JUST_SLOW_VEIL  = 0.3;    //ゆっくりの間、画面の周りを暗く青くする濃さ
+const JUST_SLOW_WASH  = 0.03;   //ゆっくりの間、画面全体に重ねる水色の濃さ
+const JUST_TINT_TIME  = 12;     //ジャストの瞬間に画面を水色にする時間(フレーム。ゆっくりの間は長く見えるので短めに)
 const JUST_GUARD      = 50;     //成功したあとの無敵の時間(ふつうは BLAST_GUARD)
 const JUST_TEXT_TIME  = 90;     //「JUST!」の文字を出しておく時間(実際のフレーム)
 const JUST_COOP_SLOW  = 40;     //協力プレイで、敵と弾がゆっくりになる時間(ふたりの画面で同じ。ふつうの衝撃波は BLAST_SLOWMO)
@@ -361,6 +365,7 @@ var mainScreen = {
         this.noFuelMsg = 0;
         this.state = "start";
         this.stateTime = 0;
+        battleBg.reset();
     },
 
     //----------------------------------------------------------------- 更新
@@ -380,6 +385,9 @@ var mainScreen = {
         if(this.justSlow > 0){
             this.justSlow--;
             if(this.justT > 0) this.justT--;    //文字は実際の時間で消す
+            //閃光・画面の色も実際の時間で消す(ゆっくりの時間で数えると長く残り、画面が白っぽくかすむ)
+            if(this.flashT > 0) this.flashT--;
+            if(this.tint && --this.tint.life <= 0) this.tint = null;
             //はじめはいちばんゆっくりのまま保ち、そのあと元の速さへ戻していく
             var k = 1 - this.justSlow/JUST_SLOW_TIME;
             var u = Math.max(0, (k - JUST_SLOW_HOLD)/(1 - JUST_SLOW_HOLD));
@@ -602,6 +610,7 @@ var mainScreen = {
         fx.ring(_x, _y, BLAST_RADIUS*0.7, "255,255,255", 12, 4);
         fx.sparks(_x, _y, 18, "255,190,110", 8, 3);
         if(!_partner) fx.shake(6);    //相方の衝撃波では自分の画面を揺らさない
+        battleBg.ripple(_x, _y, _partner ? 14 : 22, 7, 55, "255,150,60");
         sound.play("blast");
     },
     //今出せばジャストか：このまま進むと JUST_FRAMES のうちに当たる弾か、体当たりしてくる敵(COUNTER_TYPES)があるか
@@ -675,6 +684,7 @@ var mainScreen = {
             fx.shake(4);
             popup(o.x, o.y - o.r - 6, "-" + Math.round(COUNTER_DMG*this.comboMul()), "rgb(30,150,200)");
             sound.play("justHit");
+            battleBg.ripple(o.x, o.y, 12, 6, 35, BG_JUST_COLOR);
             //ぶつかった雑魚敵は進む向きへ押しのける
             if(!o.boss){ o.vx += _e.vx*0.5; o.vy += _e.vy*0.5; }
             this.hitEnemy(o,COUNTER_DMG,"counter");
@@ -691,6 +701,8 @@ var mainScreen = {
     justBlast:function(_near,_rams){
         _rams = _rams || [];
         this.justHits = 0;
+        battleBg.ripple(drone.X, drone.Y, 36, 9, 75, BG_JUST_COLOR);
+        battleBg.justSpread(drone.X, drone.Y, BG_JUST_COLOR);
         for(var i=0; i<_rams.length; i++) this.counter(_rams[i]);
         this.justRamN = _rams.length;
         _near.sort(function(a,b){ return a.d - b.d; });
@@ -736,7 +748,7 @@ var mainScreen = {
         this.justT = JUST_TEXT_TIME;
         this.zoomT = Math.round(ZOOM_TIME*0.7); this.zoomX = drone.X; this.zoomY = drone.Y;
         this.flashT = 4;
-        fx.tint(JUST_COLOR, 30);
+        fx.tint(JUST_COLOR, JUST_TINT_TIME);
         fx.flare(drone.X, drone.Y, 70, "255,255,255", 14);
         fx.ring(drone.X, drone.Y, BLAST_RADIUS*1.15, JUST_COLOR, 22, 6);
         fx.ring(drone.X, drone.Y, 60, "255,255,255", 12, 3);
@@ -1147,6 +1159,7 @@ var mainScreen = {
                 //コンボは待ち時間(COMBO_CD)ごとに1つだけ増える。待ちの間は途切れないようにするだけ
                 if(this.comboCd > 0) this.comboT = COMBO_TIME;
                 else{ this.comboCd = COMBO_CD; this.addCombo(b); }
+                battleBg.graze(b.x, b.y, this.comboTier());
                 this.grazeFlash = GRAZE_FLASH_TIME;
                 this.fuel = Math.min(this.maxFuel, this.fuel + GRAZE_FUEL);
                 game.score += 2;
@@ -1492,12 +1505,9 @@ var mainScreen = {
         ctx.globalAlpha = 1;
     },
 
+    //空と街・戦いに反応する方眼(battleBg.js)
     drawBackground:function(){
-        ctx.strokeStyle = "#f0f0f0";
-        ctx.beginPath();
-        for(var x=0; x<=CW; x+=GS){ ctx.moveTo(x+0.5,0); ctx.lineTo(x+0.5,CH); }
-        for(var y=0; y<=CH; y+=GS){ ctx.moveTo(0,y+0.5); ctx.lineTo(CW,y+0.5); }
-        ctx.stroke();
+        battleBg.draw();
     },
 
     drawEnemy:function(_e){
@@ -1808,6 +1818,7 @@ var mainScreen = {
         sound.music(null);
         sound.music("boss");
         if(_e.look) _e.look.tint = "190,20,30";
+        battleBg.ripple(_e.x, _e.y, 50, 10, 90, "255,70,60");
         fx.flare(_e.x, _e.y, 220, "255,80,70", 26);
         fx.ring(_e.x, _e.y, 300, "255,90,80", 30, 10);
         fx.ring(_e.x, _e.y, 200, "130,190,255", 24, 6);
@@ -2001,7 +2012,7 @@ var mainScreen = {
         }
         //ドローン君から外へ流れるぶれ：少し大きくした今のコマを薄く重ねる
         var cx = drone.X*rs, cy = drone.Y*rs;
-        ctx.globalAlpha = 0.16*p;
+        ctx.globalAlpha = JUST_SLOW_BLUR*p;
         for(var i=1; i<=2; i++){
             var s = 1 + 0.025*i*p;
             ctx.setTransform(s,0,0,s,cx*(1 - s),cy*(1 - s));
@@ -2016,10 +2027,10 @@ var mainScreen = {
         //周りを暗く青く(まんなかのドローン君だけがはっきり見える)
         var g = ctx.createRadialGradient(drone.X,drone.Y,90,drone.X,drone.Y,620);
         g.addColorStop(0,"rgba(20,60,110,0)");
-        g.addColorStop(1,"rgba(10,30,60," + (0.6*p) + ")");
+        g.addColorStop(1,"rgba(10,30,60," + (JUST_SLOW_VEIL*p) + ")");
         ctx.fillStyle = g;
         ctx.fillRect(0,0,CW,CH);
-        ctx.fillStyle = "rgba(" + JUST_COLOR + "," + (0.1*p) + ")";
+        ctx.fillStyle = "rgba(" + JUST_COLOR + "," + (JUST_SLOW_WASH*p) + ")";
         ctx.fillRect(0,0,CW,CH);
         //時間の波紋：ドローン君からゆっくり広がる輪(実際の時間で広がる)
         var t = JUST_SLOW_TIME - this.justSlow;

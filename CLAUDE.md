@@ -45,6 +45,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | `upgradeScreen.js` | 強化画面(報酬カード・能力強化・装備・ショップ・能力リセット) |
 | `gameoverScreen.js` | ゲームオーバー画面 |
 | `story.js` | ストーリー(`STORIES`)・ストーリー画面・エンディング・ストーリー確認モード |
+| `battleBg.js` | 戦闘画面(対戦も)の背景。奥にWAVEで移り変わる空と街(昼→夕方→夜→WAVE16からは戦場。`story.js` の `drawSky` を別のキャンバスに粗く描いて薄く敷き、ドローン君と逆へ少しずらす)、手前に戦いに反応する方眼(目は `BG_CELL` = GS の半分。衝撃波・ジャスト衝撃波・ボスの着地で波打つ `ripple`、かすったマスが光る `graze`(黄色)、ドローン君の下のマスがいつも灰色に光り、かすりコンボ中は黄色く派手になる `drawAura`、ジャスト衝撃波でドローン君のまわりが水色のひし形に光り、外へひし形の輪になって伝わる `justSpread`)。WAVEの番号と自分の画面の出来事だけで決まるので通信は要らない |
 | `bossDebug.js` | デバッグのメニュー：ボス戦だけを遊ぶ・武器試用・ストーリー確認(`#debug` で開いたときだけ) |
 | `timeStop.js` | ショップのバフ「時止めワープ」(被弾の瞬間に自動で時が止まり、選んだ場所へ粒子になって移る。クールタイム `BUFF_WARP_CD` 秒・WAVEの始めは使える・協力プレイ／対戦では働かない)。デバッグのメニューで「オン」にすると、クールタイムなしで試せる |
 | `lib/peerjs.min.js` | PeerJS 1.5.5(外部ライブラリ。MITライセンス、`lib/PEERJS-LICENSE`)。協力プレイの通信に使う。手を加えない |
@@ -100,6 +101,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 | 同胞・人間の兵器 | `forces.js` の `kinRate()`・`pickHuman()` |
 | ストーリーの文章・背景・流れる時期 | `story.js` の `STORIES`・`STORY_SKY`・`STORY_AFTER` |
 | BGM | `sound.js` の `TRACKS` |
+| 戦闘画面の背景(空の薄さ・奥行き・方眼の波) | `battleBg.js` の `BG_*`・`RIPPLE_*`・`GLOW_*`・`AURA_*`・`BG_COMBO_COLOR`・`JUST_DIAMOND_R`・`JUST_SPREAD_*`、空の色は `story.js` の `SKY_COLORS` |
 | 対戦の耐久・装備ごとのダメージ倍率 | `versus.js` の `VS_HP`・`VS_DAMAGE_MUL` |
 | ドローン君の色・振り向き・傾き | `common.js` の `FLAT_COLOR`・`FLAT_YAWS`・`FLAT_ELEVS`・`TURN_*`・`TILT_*` |
 | 画面の細かさの上限・重いときに下げる条件 | `common.js` の `RENDER_MAX`・`RENDER_FPS_LOW`・`RENDER_DROP_SEC` |

@@ -184,6 +184,7 @@ var special = {
         burst(x,y,24,"#555");
         fx.tint("255,255,255",14);
         fx.shake(30);
+        battleBg.ripple(x, y, 48, 10, 85, "230,150,70");
         sound.play("bossImpact");
         //「ドンッ!!」：画面ごと止めて、寄って、文字を出す。ここで登場の演出は終わり(みんな動き出す)
         var M = mainScreen;

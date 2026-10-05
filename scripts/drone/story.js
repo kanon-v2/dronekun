@@ -86,6 +86,13 @@ const STORY_SKY = {
     s8:"dusk", s10:"dusk", s12:"dusk",
     reveal:"war", s17:"war", s19:"war", ending:"night"
 };
+//空の色(上から下へ4色。戦闘画面の背景 battleBg.js でも使う)
+const SKY_COLORS = {
+    day:  ["#5aa9ef","#9fd2fa","#dff1ff","#eef8ff"],
+    dusk: ["#2f3f6e","#8a5a8c","#e0876a","#f3b27a"],
+    war:  ["#05060c","#0e1222","#24202e","#4a2420"],
+    night:["#04050b","#0b1024","#18203c","#222a48"]
+};
 const STORY_FADE = 30;      //話の始まり・終わりの暗転(フレーム)
 const STORY_PIC_FADE = 30;  //絵が変わるときの切り替えの時間(前半で前の絵が消え、後半で次の絵が現れる)
 const STORY_ZOOM = 0.05;    //同じ絵が出ている間に、ゆっくり寄る大きさ(1割で0.1)
@@ -372,15 +379,10 @@ var storyScreen = {
 
     //------------------------------------------------------------------ 背景の空
     //昼→夕暮れ→戦いの夜→静かな夜と、物語が進むにつれて暗くなる
-    drawSky:function(_sky){
-        var t = this.t;
-        var skies = {
-            day:  ["#5aa9ef","#9fd2fa","#dff1ff","#eef8ff"],
-            dusk: ["#2f3f6e","#8a5a8c","#e0876a","#f3b27a"],
-            war:  ["#05060c","#0e1222","#24202e","#4a2420"],
-            night:["#04050b","#0b1024","#18203c","#222a48"]
-        };
-        var c = skies[_sky] || skies.night;
+    //_t：時間(省くとストーリー画面の時間)　_noGround：地面より下を暗くしない(戦闘画面の背景 battleBg.js から使う)
+    drawSky:function(_sky,_t,_noGround){
+        var t = _t == null ? this.t : _t;
+        var c = SKY_COLORS[_sky] || SKY_COLORS.night;
         var g = ctx.createLinearGradient(0,0,0,380);
         g.addColorStop(0,c[0]); g.addColorStop(0.45,c[1]); g.addColorStop(0.8,c[2]); g.addColorStop(1,c[3]);
         ctx.fillStyle = g;
@@ -388,6 +390,7 @@ var storyScreen = {
         if(_sky == "day") this.drawDay(t);
         else if(_sky == "dusk") this.drawDusk(t);
         else this.drawNight(t, _sky == "war");
+        if(_noGround) return;
         //地面より下は暗く(セリフの枠が引き締まって見えるように)
         var bg = ctx.createLinearGradient(0,382,0,CH);
         bg.addColorStop(0,"rgba(10,11,15,0.88)");
