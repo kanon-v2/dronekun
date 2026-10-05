@@ -594,7 +594,26 @@ function finish2(){
         var backE = droneSkin.current == "E" && droneSheets.id == "E";
         document.dispatchEvent(new KeyboardEvent("keydown",{ code:"Escape" }));
         check("標準に戻して、Escで設定を閉じる", backE && !startScreen.settings);
+        //戦闘画面の方眼：なし・細かいを選ぶと覚え、背景の目の大きさが変わる。なし・細かいでも背景の演出が描ける
+        var keepView = localStorage.getItem(viewOpt.KEY), keepGrid = viewOpt.grid, keepSize = viewOpt.gridSize;
         clickAt(settingsButton);
+        clickAt(gridButtons[1].rect); clickAt(gridButtons[3].rect);
+        startScreen.draw();
+        var savedView = JSON.parse(localStorage.getItem(viewOpt.KEY) || "{}");
+        var gridOk = viewOpt.grid === false && viewOpt.gridSize == "fine" && savedView.grid === false && savedView.gridSize == "fine" && battleBg.cell() == GS/4;
+        var bgErr2 = errors.length;
+        battleBg.reset();
+        battleBg.graze(300,200,1);
+        var fineN = battleBg.glows.length;      //細かい方眼では、普通の方眼の2倍のマス数のひし形(まわり6マス → 85マス)
+        battleBg.ripple(300,200,22,7,55,"255,150,60"); battleBg.justSpread(300,200,BG_JUST_COLOR);
+        battleBg.step(20); battleBg.render(0); battleBg.draw();   //なしの設定の draw は公開版と同じ背景だけを描く
+        var classicFx = mainScreen.justFx() === JUST_FX.classic;   //なしのときのジャストの演出は公開版のまま
+        clickAt(gridButtons[0].rect); clickAt(gridButtons[2].rect);
+        var backGrid = viewOpt.grid === true && viewOpt.gridSize == "normal" && battleBg.cell() == GS/2 && mainScreen.justFx() === JUST_FX.bg;
+        battleBg.reset();
+        check("設定で戦闘画面の方眼を「なし」(公開版と同じ背景・ジャストの演出)「細かい」にでき、覚える。戻せる", gridOk && backGrid && classicFx && fineN == 85 && errors.length == bgErr2, "細かいのひし形 " + fineN + "マス");
+        viewOpt.grid = keepGrid; viewOpt.gridSize = keepSize;
+        try{ if(keepView) localStorage.setItem(viewOpt.KEY, keepView); else localStorage.removeItem(viewOpt.KEY); }catch(e){}
         clickAt(settingsClose);
         check("閉じるボタンで設定を閉じる", !startScreen.settings);
     }catch(e){ fails++; L("NG   例外 " + e.stack); }

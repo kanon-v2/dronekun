@@ -23,13 +23,21 @@ var continueButton = new drawRect(TITLE_MENU_X, 214, 300, 46);
 var coopButton     = new drawRect(TITLE_MENU_X, 300, 300, 46);
 var versusButton   = new drawRect(TITLE_MENU_X, 354, 300, 46);
 
-//右上の設定ボタンと、設定の窓(ドローン君の見た目を選ぶ)
+//右上の設定ボタンと、設定の窓(ドローン君の見た目・戦闘画面の方眼を選ぶ)
 var settingsButton = new drawRect(CW - 78, 18, 104, 34);
 const SETTINGS_W = 520;     //設定の窓の大きさ
-const SETTINGS_H = 310;
-const SETTINGS_Y = 115;
-var settingsClose = new drawRect(CW/2, SETTINGS_Y + SETTINGS_H - 62, 160, 40);
+const SETTINGS_H = 420;
+const SETTINGS_Y = 60;
+var settingsClose = new drawRect(CW/2, SETTINGS_Y + SETTINGS_H - 58, 160, 40);
 var skinCards = [new drawRect(CW/2 - 118, SETTINGS_Y + 70, 210, 160), new drawRect(CW/2 + 118, SETTINGS_Y + 70, 210, 160)];
+//戦闘画面の方眼の設定(viewOpt.grid・gridSize。battleBg.js)：押すとすぐ切り替わり、覚える
+const GRID_ROW_Y = SETTINGS_Y + 284;    //ボタンの並ぶ高さ
+var gridButtons = [
+    { rect:new drawRect(CW/2 - 130, GRID_ROW_Y, 76, 34), key:"grid",     val:true,     label:"あり" },
+    { rect:new drawRect(CW/2 - 50,  GRID_ROW_Y, 76, 34), key:"grid",     val:false,    label:"なし" },
+    { rect:new drawRect(CW/2 + 130, GRID_ROW_Y, 76, 34), key:"gridSize", val:"normal", label:"普通" },
+    { rect:new drawRect(CW/2 + 210, GRID_ROW_Y, 76, 34), key:"gridSize", val:"fine",   label:"細かい" }
+];
 
 //遠くを横切るドローン君の影(背景の飾り)
 var titleShadows = [];
@@ -48,7 +56,7 @@ var startScreen = {
     hover:-1,       //マウスが乗っているメニューの番号
     blips:[],       //レーダーに映る点
     settings:false, //設定の窓を開いているか
-    setHover:-1,    //設定の窓でマウスが乗っているもの(0,1:見た目 2:閉じる)
+    setHover:-1,    //設定の窓でマウスが乗っているもの(0,1:見た目 2〜5:方眼 6:閉じる)
     enter:function(){
         this.hasSave = save.exists();
         this.best = save.getBest();
@@ -398,17 +406,28 @@ var startScreen = {
         ctx.fillText("DEBUG", b.X + b.width/2, b.Y + b.height/2 + 1);
     },
 
-    //設定の窓：ドローン君の見た目を選ぶ。選ぶとすぐ切り替わり、覚える。Esc か「閉じる」で閉じる
+    //設定の窓：ドローン君の見た目・戦闘画面の方眼を選ぶ。選ぶとすぐ切り替わり、覚える。Esc か「閉じる」で閉じる
     updateSettings:function(){
         var h = -1;
+        //マウスが乗っているもの(0,1：見た目のカード 2〜5：方眼のボタン 6：閉じる)
         for(var i=0; i<skinCards.length; i++) if(skinCards[i].contains(MouseX,MouseY)) h = i;
-        if(settingsClose.contains(MouseX,MouseY)) h = skinCards.length;
+        for(var i=0; i<gridButtons.length; i++) if(gridButtons[i].rect.contains(MouseX,MouseY)) h = skinCards.length + i;
+        if(settingsClose.contains(MouseX,MouseY)) h = skinCards.length + gridButtons.length;
         if(h != this.setHover && h >= 0) sound.play("hover");
         this.setHover = h;
         for(var i=0; i<skinCards.length; i++){
             if(skinCards[i].clicked()){
                 sound.play("click");
                 droneSkin.set(droneSkin.list[i].id);
+                return;
+            }
+        }
+        for(var i=0; i<gridButtons.length; i++){
+            var g = gridButtons[i];
+            if(g.rect.clicked()){
+                sound.play("click");
+                viewOpt[g.key] = g.val;
+                viewOpt.save();
                 return;
             }
         }
@@ -485,8 +504,53 @@ var startScreen = {
             }
         }
 
+        //戦闘画面の方眼：出すか・目の大きさ(小さな見本の方眼を添える)
+        var gy = GRID_ROW_Y - 26;
+        ctx.textAlign = "left";
+        ctx.font = "bold 12px " + TITLE_UI_FONT;
+        ctx.fillStyle = "#6a6f6c";
+        ctx.fillText("戦闘画面の方眼", px + 26, gy);
+        ctx.font = "bold 13px " + TITLE_UI_FONT;
+        ctx.fillStyle = TITLE_INK;
+        ctx.fillText("表示", px + 26, GRID_ROW_Y + 17);
+        ctx.fillText("大きさ", px + 262, GRID_ROW_Y + 17);
+        for(var i=0; i<gridButtons.length; i++){
+            var g = gridButtons[i], r = g.rect;
+            var sel = viewOpt[g.key] === g.val, on = this.setHover == skinCards.length + i;
+            //方眼なしのときは大きさが効かないので、大きさのボタンを薄く出す(押すことはできる)
+            ctx.globalAlpha = g.key == "gridSize" && !viewOpt.grid ? 0.4 : 1;
+            ctx.fillStyle = sel ? TITLE_INK : on ? "#f0f0ec" : "#fff";
+            ctx.fillRect(r.X, r.Y, r.width, r.height);
+            ctx.strokeStyle = sel || on ? TITLE_INK : "#c9ccc7";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(r.X + 1, r.Y + 1, r.width - 2, r.height - 2);
+            ctx.lineWidth = 1;
+            ctx.textAlign = "center";
+            ctx.font = "bold 13px " + TITLE_UI_FONT;
+            ctx.fillStyle = sel ? "#fff" : TITLE_INK;
+            ctx.fillText(g.label, r.X + r.width/2, r.Y + r.height/2 + 1);
+            ctx.globalAlpha = 1;
+        }
+        //見本：今の設定の方眼(なしのときは、公開版と同じ白地にごく薄い方眼)
+        var sx = px + 26, sy = GRID_ROW_Y + 44, sw = SETTINGS_W - 52, sh = 22;
+        var cell = viewOpt.grid ? (BG_CELL_SIZES[viewOpt.gridSize] || BG_CELL_SIZES.normal) : GS;
+        ctx.save();
+        ctx.beginPath(); ctx.rect(sx, sy, sw, sh); ctx.clip();
+        ctx.fillStyle = viewOpt.grid ? "#fafaf8" : "#fff";
+        ctx.fillRect(sx, sy, sw, sh);
+        ctx.strokeStyle = viewOpt.grid ? "rgba(40,60,90,0.25)" : "#e2e2e2";   //なしの線は小さな見本でも見えるよう、公開版より少し濃く
+        ctx.beginPath();
+        for(var x=sx; x<=sx + sw; x+=cell){ ctx.moveTo(Math.round(x) + 0.5, sy); ctx.lineTo(Math.round(x) + 0.5, sy + sh); }
+        for(var y=sy; y<=sy + sh; y+=cell){ ctx.moveTo(sx, Math.round(y) + 0.5); ctx.lineTo(sx + sw, Math.round(y) + 0.5); }
+        ctx.stroke();
+        ctx.restore();
+        ctx.strokeStyle = "#c9ccc7";
+        ctx.setLineDash([3,3]);
+        ctx.strokeRect(sx + 0.5, sy + 0.5, sw - 1, sh - 1);
+        ctx.setLineDash([]);
+
         //閉じる
-        var b = settingsClose, on = this.setHover == skinCards.length;
+        var b = settingsClose, on = this.setHover == skinCards.length + gridButtons.length;
         ctx.fillStyle = on ? TITLE_INK : "#fff";
         ctx.fillRect(b.X, b.Y, b.width, b.height);
         ctx.strokeStyle = TITLE_INK;

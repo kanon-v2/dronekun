@@ -51,11 +51,15 @@ const JUST_SLOW_TIME  = 130;    //成功したあと、画面のすべてがゆ�
 const JUST_SLOW_RATE  = 0.2;    //いちばんゆっくりのときの速さ(1で元どおり)
 const JUST_SLOW_HOLD  = 0.5;    //ゆっくりの時間のうち、いちばんゆっくりのまま保つ割合(残りでだんだん元の速さへ戻る)
 const JUST_SLOW_ZOOM  = 0.06;   //ゆっくりの間、ドローン君へ寄る大きさ(1割で0.1)
-const JUST_SLOW_ECHO  = 0.35;   //ゆっくりの間の残像の濃さ(前のコマを重ねる。濃いと画面が白っぽくかすんで、ほかの演出が見えなくなる)
-const JUST_SLOW_BLUR  = 0.07;   //ゆっくりの間、ドローン君から外へ流れるぶれの濃さ
-const JUST_SLOW_VEIL  = 0.3;    //ゆっくりの間、画面の周りを暗く青くする濃さ
-const JUST_SLOW_WASH  = 0.03;   //ゆっくりの間、画面全体に重ねる水色の濃さ
-const JUST_TINT_TIME  = 12;     //ジャストの瞬間に画面を水色にする時間(フレーム。ゆっくりの間は長く見えるので短めに)
+//ゆっくりの間の演出の濃さ。戦闘画面の方眼ありは、新しい背景(battleBg.js)の演出が見えるよう弱め、
+//方眼なし(公開版と同じ背景)は元のまま。mainScreen.justFx() で選ぶ
+//  echo：残像の濃さ(前のコマを重ねる)　blur：ドローン君から外へ流れるぶれの濃さ　veil：画面の周りを暗く青くする濃さ
+//  wash：画面全体に重ねる水色の濃さ　tint：ジャストの瞬間に画面を水色にする時間(フレーム)
+//  realTime：閃光・画面の色を実際の時間で消すか(ゆっくりの時間で数えると長く残り、画面が白っぽくかすむ)
+const JUST_FX = {
+    bg:     { echo:0.35, blur:0.07, veil:0.3, wash:0.03, tint:12, realTime:true },
+    classic:{ echo:0.6,  blur:0.16, veil:0.6, wash:0.1,  tint:30, realTime:false }
+};
 const JUST_GUARD      = 50;     //成功したあとの無敵の時間(ふつうは BLAST_GUARD)
 const JUST_TEXT_TIME  = 90;     //「JUST!」の文字を出しておく時間(実際のフレーム)
 const JUST_COOP_SLOW  = 40;     //協力プレイで、敵と弾がゆっくりになる時間(ふたりの画面で同じ。ふつうの衝撃波は BLAST_SLOWMO)
@@ -385,9 +389,11 @@ var mainScreen = {
         if(this.justSlow > 0){
             this.justSlow--;
             if(this.justT > 0) this.justT--;    //文字は実際の時間で消す
-            //閃光・画面の色も実際の時間で消す(ゆっくりの時間で数えると長く残り、画面が白っぽくかすむ)
-            if(this.flashT > 0) this.flashT--;
-            if(this.tint && --this.tint.life <= 0) this.tint = null;
+            //閃光・画面の色も実際の時間で消す(方眼なしは公開版と同じく、ゆっくりの時間で数える。JUST_FX)
+            if(this.justFx().realTime){
+                if(this.flashT > 0) this.flashT--;
+                if(this.tint && --this.tint.life <= 0) this.tint = null;
+            }
             //はじめはいちばんゆっくりのまま保ち、そのあと元の速さへ戻していく
             var k = 1 - this.justSlow/JUST_SLOW_TIME;
             var u = Math.max(0, (k - JUST_SLOW_HOLD)/(1 - JUST_SLOW_HOLD));
@@ -613,6 +619,8 @@ var mainScreen = {
         battleBg.ripple(_x, _y, _partner ? 14 : 22, 7, 55, "255,150,60");
         sound.play("blast");
     },
+    //ジャストのゆっくりの間の演出の濃さ(方眼ありは弱め、方眼なしは公開版のまま。JUST_FX)
+    justFx:function(){ return viewOpt.grid ? JUST_FX.bg : JUST_FX.classic; },
     //今出せばジャストか：このまま進むと JUST_FRAMES のうちに当たる弾か、体当たりしてくる敵(COUNTER_TYPES)があるか
     //(ドローン君は止まっているとみなし、弾と敵はまっすぐ進むとみなす)。ジャストになった敵は justRams に集める
     isJust:function(){
@@ -748,7 +756,7 @@ var mainScreen = {
         this.justT = JUST_TEXT_TIME;
         this.zoomT = Math.round(ZOOM_TIME*0.7); this.zoomX = drone.X; this.zoomY = drone.Y;
         this.flashT = 4;
-        fx.tint(JUST_COLOR, JUST_TINT_TIME);
+        fx.tint(JUST_COLOR, this.justFx().tint);
         fx.flare(drone.X, drone.Y, 70, "255,255,255", 14);
         fx.ring(drone.X, drone.Y, BLAST_RADIUS*1.15, JUST_COLOR, 22, 6);
         fx.ring(drone.X, drone.Y, 60, "255,255,255", 12, 3);
@@ -2007,12 +2015,12 @@ var mainScreen = {
         ctx.setTransform(1,0,0,1,0,0);
         //残像：前のコマ(それ自体も残像を含む)を重ねて、動きが尾を引くように
         if(!this.echoFresh){
-            ctx.globalAlpha = JUST_SLOW_ECHO*p;
+            ctx.globalAlpha = this.justFx().echo*p;
             ctx.drawImage(this.echo,0,0);
         }
         //ドローン君から外へ流れるぶれ：少し大きくした今のコマを薄く重ねる
         var cx = drone.X*rs, cy = drone.Y*rs;
-        ctx.globalAlpha = JUST_SLOW_BLUR*p;
+        ctx.globalAlpha = this.justFx().blur*p;
         for(var i=1; i<=2; i++){
             var s = 1 + 0.025*i*p;
             ctx.setTransform(s,0,0,s,cx*(1 - s),cy*(1 - s));
@@ -2027,10 +2035,10 @@ var mainScreen = {
         //周りを暗く青く(まんなかのドローン君だけがはっきり見える)
         var g = ctx.createRadialGradient(drone.X,drone.Y,90,drone.X,drone.Y,620);
         g.addColorStop(0,"rgba(20,60,110,0)");
-        g.addColorStop(1,"rgba(10,30,60," + (JUST_SLOW_VEIL*p) + ")");
+        g.addColorStop(1,"rgba(10,30,60," + (this.justFx().veil*p) + ")");
         ctx.fillStyle = g;
         ctx.fillRect(0,0,CW,CH);
-        ctx.fillStyle = "rgba(" + JUST_COLOR + "," + (JUST_SLOW_WASH*p) + ")";
+        ctx.fillStyle = "rgba(" + JUST_COLOR + "," + (this.justFx().wash*p) + ")";
         ctx.fillRect(0,0,CW,CH);
         //時間の波紋：ドローン君からゆっくり広がる輪(実際の時間で広がる)
         var t = JUST_SLOW_TIME - this.justSlow;

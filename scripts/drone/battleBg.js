@@ -17,9 +17,12 @@ const BG_SCALE = 1.04;          //空を少し大きく描く(ドローン君の
 const BG_PARALLAX = 0.035;      //ドローン君が動いた分の何倍、空を逆へずらすか(奥行き)
 const BG_REDRAW = 6;            //空を描き直す間隔(フレーム)。空はゆっくり動くので、毎フレームは描かない
 const BG_RES = 0.5;             //空を描く細かさ(ゲームの大きさの何倍。薄く敷くので粗くてよい)
-const BG_CELL = GS/2;           //方眼の目の大きさ(px。ゲームの区切り GS の半分の細かさ)
+//方眼の目の大きさ(px)。タイトルの設定で選ぶ(viewOpt.gridSize)。光る範囲などの「マス数」は普通の方眼(normal)で数えた値で、
+//細かい方眼ではその2倍のマス数にして、画面の上で同じくらいの広さになるようにする
+const BG_CELL_SIZES = { fine:GS/4, normal:GS/2 };
+const BG_WARP_STEP = GS/4;      //方眼の線を波で曲げるときの区切り(px。小さいほどなめらかで重い。細かい方眼でもこれより細かくしない)
+const BG_CLASSIC_COLOR = "#f0f0f0";     //方眼なしの設定のときの、公開版と同じごく薄い方眼の色
 const BG_GRID_COLOR = "rgba(40,60,90,0.08)";   //方眼の線の色(目が細かいので少し薄く)
-const BG_STEP = BG_CELL/2;      //方眼の線を曲げるときの区切り(px。小さいほどなめらかで重い)
 const RIPPLE_MAX = 8;           //同時に起きる波の数の上限
 const RIPPLE_W = 40;            //波の幅(px)
 const RIPPLE_GLOW = 0.6;        //波の山で方眼の線が光る濃さ(0〜1)
@@ -51,7 +54,7 @@ const AURA_R_ADD = 3;           //コンボが COMBO_MAX に届くまでに、�
 const AURA_ALPHA = 0.28;        //ドローン君の下のマスの濃さ(コンボなし)
 const AURA_ALPHA_ADD = 0.35;    //コンボが COMBO_MAX に届くまでに、濃くなる分
 const AURA_TRAIL = 22;          //ドローン君が離れたあと、通ったマスが光り続ける時間(フレーム。コンボで長くなる)
-const GLOW_MAX = 3000;          //光っているマスの数の上限(ジャスト衝撃波の輪は画面のマスすべてを入れる)
+const GLOW_MAX = 8000;          //光っているマスの数の上限(細かい方眼では、ジャスト衝撃波の輪だけで数千マスになる)
 const JUST_DIAMOND_R = 4;       //ジャスト衝撃波で、ドローン君のまわりが光るひし形の大きさ(マス)
 const JUST_SPREAD_WAIT = 6;     //ひし形が光ってから、外へ伝わり始めるまで(フレーム)
 const JUST_SPREAD_DELAY = 3.5;  //外へ1マス伝わるのにかかる時間(フレーム。大きいほどゆっくり)
@@ -99,15 +102,16 @@ var battleBg = {
     //マスが少しずつ点いていくデジタルな感じにする
     justSpread:function(_x,_y,_color){
         this.diamond(_x, _y, JUST_DIAMOND_R, _color, GLOW_TIME, GLOW_ALPHA*1.3);
-        var ci = Math.floor(_x/BG_CELL), cj = Math.floor(_y/BG_CELL), r0 = JUST_DIAMOND_R, R = JUST_SPREAD_RANGE;
-        var nx = Math.ceil(CW/BG_CELL), ny = Math.ceil(CH/BG_CELL);
+        var C = this.cell(), k = BG_CELL_SIZES.normal/C;   //k：普通の方眼の1マスが、今の方眼の何マスか
+        var ci = Math.floor(_x/C), cj = Math.floor(_y/C), r0 = this.cellsOf(JUST_DIAMOND_R), R = this.cellsOf(JUST_SPREAD_RANGE);
+        var nx = Math.ceil(CW/C), ny = Math.ceil(CH/C);
         for(var i=Math.max(0, ci - R); i<=Math.min(nx - 1, ci + R); i++){
             for(var j=Math.max(0, cj - R); j<=Math.min(ny - 1, cj + R); j++){
                 var d = Math.abs(i - ci) + Math.abs(j - cj);
                 if(d <= r0 || d > R) continue;
                 //ひし形が光ってから JUST_SPREAD_WAIT 後に、1マスごとに JUST_SPREAD_DELAY ずつ遅れて光る(遠いほど薄く)
                 var s = storyScreen.hash(i - ci, j - cj);   //マスごとに決まった0〜1の値
-                var wait = JUST_SPREAD_WAIT + (d - r0)*JUST_SPREAD_DELAY + s*JUST_SPREAD_JITTER;
+                var wait = JUST_SPREAD_WAIT + (d - r0)*JUST_SPREAD_DELAY/k + s*JUST_SPREAD_JITTER;   //マスが大きいと1マス進むのに長くかかる(画面の上で同じ速さ)
                 var life = JUST_SPREAD_LIFE*(0.7 + 0.6*s);
                 var a = JUST_SPREAD_ALPHA*(1 - 0.75*(d - r0)/(R - r0));
                 this.glows.push({ i:i, j:j, life:life + wait, max:life, a:a, color:_color });
@@ -115,18 +119,23 @@ var battleBg = {
         }
         this.trimGlows();
     },
-    //(_x,_y)のマスを中心に、まわり _r マスまでのひし形を光らせる(まんなかほど長く光る)
+    //(_x,_y)のマスを中心に、まわり _r マス(普通の方眼で数えた数)までのひし形を光らせる(まんなかほど長く光る)
     diamond:function(_x,_y,_r,_color,_life,_alpha){
-        var ci = Math.floor(_x/BG_CELL), cj = Math.floor(_y/BG_CELL);
-        for(var i=ci-_r; i<=ci+_r; i++){
-            for(var j=cj-_r; j<=cj+_r; j++){
+        var C = this.cell(), k = BG_CELL_SIZES.normal/C, r = this.cellsOf(_r);
+        var ci = Math.floor(_x/C), cj = Math.floor(_y/C);
+        for(var i=ci-r; i<=ci+r; i++){
+            for(var j=cj-r; j<=cj+r; j++){
                 var d = Math.abs(i - ci) + Math.abs(j - cj);
-                if(d > _r) continue;
-                this.glows.push({ i:i, j:j, life:_life - d*2, max:_life, a:_alpha, color:_color });
+                if(d > r) continue;
+                this.glows.push({ i:i, j:j, life:_life - d*2/k, max:_life, a:_alpha, color:_color });
             }
         }
         this.trimGlows();
     },
+    //今の方眼の目の大きさ(px)
+    cell:function(){ return BG_CELL_SIZES[viewOpt.gridSize] || BG_CELL_SIZES.normal; },
+    //普通の方眼で数えたマス数 _n を、今の方眼のマス数にする
+    cellsOf:function(_n){ return Math.round(_n*BG_CELL_SIZES.normal/this.cell()); },
     trimGlows:function(){
         if(this.glows.length > GLOW_MAX) this.glows.splice(0, this.glows.length - GLOW_MAX);
     },
@@ -145,7 +154,18 @@ var battleBg = {
         this.last = now;
         this.t += dt;
         this.step(dt);
+        //方眼なしの設定(viewOpt.grid)では、公開版と同じ背景(白地にごく薄い方眼)だけを描く。空・光るマス・波は出さない
+        if(!viewOpt.grid){ this.drawClassic(); return; }
         this.render(dt);
+    },
+    //公開版と同じ背景：白地(draw.js が塗る)に、GS ごとのごく薄い方眼
+    drawClassic:function(){
+        ctx.strokeStyle = BG_CLASSIC_COLOR;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for(var x=0; x<=CW; x+=GS){ ctx.moveTo(x + 0.5,0); ctx.lineTo(x + 0.5,CH); }
+        for(var y=0; y<=CH; y+=GS){ ctx.moveTo(0,y + 0.5); ctx.lineTo(CW,y + 0.5); }
+        ctx.stroke();
     },
     //今の状態を描く(時間は進めない)。_noTrail：通ったマスの光を足さない(同じコマを何度も描く見比べページ用)
     render:function(dt,_noTrail){
@@ -209,16 +229,18 @@ var battleBg = {
     //マス(_i,_j)を色 _color・濃さ _a で光らせる(描くのは flushCells でまとめて)。
     //方眼が波で曲がっていても線からずれないよう、マスの中心を波で動かした位置に塗る
     fillCell:function(_i,_j,_p,_color,_a){
+        var C = this.cell();
         if(_a < 0.01) return;
-        var cx = (_i + 0.5)*BG_CELL, cy = (_j + 0.5)*BG_CELL;
+        var cx = (_i + 0.5)*C, cy = (_j + 0.5)*C;
         if(this.ripples.length > 0){ this.warp(cx, cy, _p); cx = _p.x; cy = _p.y; }
         this.cells.push({ x:cx, y:cy, color:_color, a:_a });
     },
     //光っているマスを描く(描き方は CELL_STYLES)。にじみ → マスの中 → 芯 → 色の枠 の順に、それぞれ全部のマスをまとめて描く
     //(となりのマスのにじみが中にかぶらないように)
     flushCells:function(){
+        var C = this.cell();
         var s = CELL_STYLES[this.style] || CELL_STYLES[CELL_STYLE];
-        var h = BG_CELL/2, list = this.cells;
+        var h = C/2, list = this.cells;
         if(s.bloom > 0){
             for(var k=0; k<list.length; k++){
                 var c = list[k], b = h + s.bloomW;
@@ -229,7 +251,7 @@ var battleBg = {
         for(var k=0; k<list.length; k++){
             var c = list[k];
             ctx.fillStyle = "rgba(" + this.lite(c.color, s.bodyLite) + "," + Math.min(1, c.a*s.body) + ")";
-            ctx.fillRect(c.x - h + 1, c.y - h + 1, BG_CELL - 1, BG_CELL - 1);
+            ctx.fillRect(c.x - h + 1, c.y - h + 1, C - 1, C - 1);
         }
         if(s.core > 0){
             var r = h - s.coreIn;
@@ -244,7 +266,7 @@ var battleBg = {
             for(var k=0; k<list.length; k++){
                 var c = list[k];
                 ctx.strokeStyle = "rgba(" + c.color + "," + Math.min(1, c.a*s.edge) + ")";
-                ctx.strokeRect(c.x - h + 0.5, c.y - h + 0.5, BG_CELL, BG_CELL);
+                ctx.strokeRect(c.x - h + 0.5, c.y - h + 0.5, C, C);
             }
             ctx.lineWidth = 1;
         }
@@ -263,15 +285,16 @@ var battleBg = {
     //ドローン君の下のマス：いつも灰色にうっすら光り、通ったマスも少し光が残る(後ろに尾を引く)。
     //かすりコンボが続いている間は黄色になり、コンボが増えるほど広く・濃く・脈打ち・チカチカ瞬く
     drawAura:function(dt,_noTrail){
+        var C = this.cell();
         var show = versus.active ? true : (mainScreen.state != "over" && !mainScreen.down && !mainScreen.cinematic());
         if(!show){ this.auraI = null; return; }
         var combo = versus.active ? 0 : mainScreen.combo, on = combo > 0;
         var k = Math.min(1, combo/COMBO_MAX);
         var color = on ? BG_COMBO_COLOR : AURA_GRAY;
-        var r = AURA_R + (on ? 1 + Math.round(k*AURA_R_ADD) : 0);
+        var r = this.cellsOf(AURA_R + (on ? 1 + Math.round(k*AURA_R_ADD) : 0));
         var base = AURA_ALPHA + (on ? 0.1 + AURA_ALPHA_ADD*k : 0);
         var pulse = on ? 1 + (0.15 + 0.35*k)*Math.sin(this.t*(0.12 + 0.15*k)) : 1;
-        var ci = Math.floor(drone.X/BG_CELL), cj = Math.floor(drone.Y/BG_CELL);
+        var ci = Math.floor(drone.X/C), cj = Math.floor(drone.Y/C);
         //通ったマス：ドローン君が別のマスへ移ったら、前のマスに光を残す(コンボが多いと太く長く)
         if(!_noTrail && this.auraI != null && (ci != this.auraI || cj != this.auraJ)){
             var tr = on && k > 0.5 ? 1 : 0, life = AURA_TRAIL*(1 + 2*k);
@@ -306,14 +329,15 @@ var battleBg = {
         }
     },
 
-    //手前の方眼：波があるときだけ、線を細かく区切って曲げる。波の山にかかる区切りは、色付きの太い線で重ねて光らせる
+    //手前の方眼(目の大きさはタイトルの設定。viewOpt)：波があるときだけ、線を細かく区切って曲げる。波の山にかかる区切りは、色付きの太い線で重ねて光らせる
     drawGrid:function(){
+        var C = this.cell();
         ctx.strokeStyle = BG_GRID_COLOR;
         ctx.lineWidth = 1;
         if(this.ripples.length == 0){
             ctx.beginPath();
-            for(var x=0; x<=CW; x+=BG_CELL){ ctx.moveTo(x + 0.5,0); ctx.lineTo(x + 0.5,CH); }
-            for(var y=0; y<=CH; y+=BG_CELL){ ctx.moveTo(0,y + 0.5); ctx.lineTo(CW,y + 0.5); }
+            for(var x=0; x<=CW; x+=C){ ctx.moveTo(x + 0.5,0); ctx.lineTo(x + 0.5,CH); }
+            for(var y=0; y<=CH; y+=C){ ctx.moveTo(0,y + 0.5); ctx.lineTo(CW,y + 0.5); }
             ctx.stroke();
             return;
         }
@@ -321,8 +345,8 @@ var battleBg = {
         var glow = [];
         for(var i=0; i<this.ripples.length; i++) glow.push([new Path2D(), new Path2D()]);
         var path = new Path2D();
-        for(var x=0; x<=CW; x+=BG_CELL) this.gridLine(path, glow, x + 0.5, 0, 0, BG_STEP, Math.round(CH/BG_STEP));
-        for(var y=0; y<=CH; y+=BG_CELL) this.gridLine(path, glow, 0, y + 0.5, BG_STEP, 0, Math.round(CW/BG_STEP));
+        for(var x=0; x<=CW; x+=C) this.gridLine(path, glow, x + 0.5, 0, 0, BG_WARP_STEP, Math.round(CH/BG_WARP_STEP));
+        for(var y=0; y<=CH; y+=C) this.gridLine(path, glow, 0, y + 0.5, BG_WARP_STEP, 0, Math.round(CW/BG_WARP_STEP));
         ctx.stroke(path);
         //発光して見えるよう、太くうすいにじみ → 色の線 → 白に近い細い芯 の順に重ねる
         for(var i=0; i<this.ripples.length; i++){
