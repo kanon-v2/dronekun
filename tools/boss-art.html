@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<!--
+    ボスの見た目を見る(女王蜂・移動要塞)
+    ・#fortress：移動要塞、#kai：ドローン君改を見る
+    ・上の段：前の絵(比べる用) / 新しい絵 / 怒ったとき / 被弾したとき。ゲームと同じ流れ(ゆらゆら → 突進の構え → 突進)をくり返す
+    ・下の段：新しい絵を等倍(移動要塞は0.9倍)で、少しずつ時間をずらして並べる(1枚の画像で動きがわかるように)
+    ・#still：ヘッドレスの撮影用(少し動かしてから止める)
+-->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<base href="../">
+<title>ボスの見た目</title>
+<style>body{ margin:0; background:#ddd; } #Canvas{ display:block; width:960px; height:540px; }</style>
+</head>
+<body>
+<div id="Bigbox"><canvas id="Canvas" width="960" height="540"></canvas></div>
+<script src="scripts/drone/common.js"></script>
+<script src="scripts/drone/sound.js"></script>
+<script src="scripts/drone/equipment.js"></script>
+<script src="scripts/drone/armsExtra.js"></script>
+<script src="scripts/drone/bosses.js"></script>
+<script src="scripts/drone/startScreen.js"></script>
+<script src="scripts/drone/mainScreen.js"></script>
+<script src="scripts/drone/forces.js"></script>
+<script src="scripts/drone/enemyArt.js"></script>
+<script src="scripts/drone/upgradeScreen.js"></script>
+<script src="scripts/drone/gameoverScreen.js"></script>
+<script src="scripts/drone/story.js"></script>
+<script src="scripts/drone/battleBg.js"></script>
+<script src="scripts/drone/bossDebug.js"></script>
+<script src="scripts/drone/timeStop.js"></script>
+<script src="lib/peerjs.min.js"></script>
+<script src="scripts/drone/coop.js"></script>
+<script src="scripts/drone/versus.js"></script>
+<script src="scripts/drone/draw.js"></script>
+<script>
+game.wave = 5;
+
+//前の女王蜂の絵(比べる用。2026-10-06 まで bosses.js にあったもの)
+function drawOldQueen(_e,_body){
+    var wing = 16 + Math.abs(Math.sin(_e.t*0.4))*18;
+    ctx.fillStyle = "rgba(170,170,170,0.6)";
+    ctx.beginPath(); ctx.ellipse(-28,-20,wing,12,-0.6,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(28,-20,wing,12,0.6,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = _body || (_e.enraged ? "#5a1d1d" : "#2b2b2b");
+    ctx.beginPath(); ctx.ellipse(0,0,_e.r*0.85,_e.r,0,0,Math.PI*2); ctx.fill();
+    if(!_body){
+        ctx.fillStyle = "#e6b422";
+        ctx.fillRect(-_e.r*0.8,4,_e.r*1.6,6);
+        ctx.fillRect(-_e.r*0.7,16,_e.r*1.4,5);
+    }
+    ctx.fillStyle = "#e6b422";
+    ctx.beginPath();
+    ctx.moveTo(-14,-_e.r + 2); ctx.lineTo(-10,-_e.r - 12); ctx.lineTo(-4,-_e.r - 2);
+    ctx.lineTo(0,-_e.r - 14); ctx.lineTo(4,-_e.r - 2); ctx.lineTo(10,-_e.r - 12); ctx.lineTo(14,-_e.r + 2);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#f33";
+    ctx.fillRect(-12,-14,7,6); ctx.fillRect(5,-14,7,6);
+}
+
+//前の移動要塞の絵(比べる用。2026-10-06 まで bosses.js にあったもの)
+function drawOldFortress(_e,_body){
+    ctx.save();
+    ctx.rotate(_e.t*0.01);
+    ctx.fillStyle = _body || (_e.enraged ? "#5a2a2a" : "#3a3d40");
+    ctx.beginPath();
+    for(var i=0; i<8; i++){
+        var a = i*Math.PI/4 + Math.PI/8;
+        ctx.lineTo(Math.cos(a)*_e.r, Math.sin(a)*_e.r);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "#111"; ctx.lineWidth = 3; ctx.stroke(); ctx.lineWidth = 1;
+    ctx.fillStyle = "#777";
+    for(var i=0; i<4; i++){
+        var a = i*Math.PI/2;
+        ctx.fillRect(Math.cos(a)*(_e.r - 9) - 4, Math.sin(a)*(_e.r - 9) - 4, 8, 8);
+    }
+    ctx.restore();
+    ctx.save();
+    ctx.rotate(_e.angle);
+    ctx.fillStyle = "#222";
+    ctx.fillRect(0,-6,_e.r + 14,12);
+    ctx.restore();
+    var glow = _e.mode == "laserAim" ? 0.5 + 0.5*Math.sin(_e.t*0.5) : 0.3;
+    ctx.fillStyle = "rgba(255,60,60," + (0.5 + glow*0.5) + ")";
+    ctx.beginPath(); ctx.arc(0,0,12 + glow*4,0,Math.PI*2); ctx.fill();
+}
+
+
+//前のドローン君改の絵(比べる用。2026-10-06 までの bosses.js。赤い光の上にドローン君を2倍で描くだけ)
+function drawOldKai(_e,_body){
+    var g = ctx.createRadialGradient(0,0,0,0,0,60);
+    g.addColorStop(0,"rgba(200,20,30," + (0.25 + 0.1*Math.sin(_e.t*0.1)) + ")");
+    g.addColorStop(1,"rgba(200,20,30,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0,60,0,Math.PI*2); ctx.fill();
+    if(_body) ctx.globalAlpha = 0.6;
+    _e.look.draw(0,0,2);
+    ctx.globalAlpha = 1;
+}
+
+//#fortress で移動要塞、#kai でドローン君改、ふだんは女王蜂
+var BOSS = location.hash.indexOf("fortress") >= 0 ? "fortress" : location.hash.indexOf("kai") >= 0 ? "kai" : "queen";
+function mk(_x,_y,_k,_opt){
+    var e = { type:BOSS, boss:true, r:BOSS_TYPES[BOSS].r, x:_x, y:_y, k:_k, vx:0, vy:0, t:0, mode:"idle", count:0,
+              aimX:1, aimY:0, angle:Math.PI/2, flash:0, hp:10, maxHp:10, slow:0, wet:0, enraged:false };
+    for(var key in _opt) e[key] = _opt[key];
+    return e;
+}
+//女王蜂：ゆらゆら153 → 構え55 → 突進32
+//移動要塞：待つ80 → 渦巻き弾90 → 待つ60 → 3方向弾70 → 待つ60 → レーザーの予告70 → レーザー40
+var FORT_STEPS = [["idle",80],["spiral",90],["idle",60],["triple",70],["idle",60],["laserAim",70],["laser",40]];
+//ドローン君改：待つ90 → レーザーの予告60 → レーザー40 → 待つ50 → 五龍の陣40 → 待つ40 → 落雷の予告50 → 待つ40
+var KAI_STEPS = [["idle",90],["laserAim",60],["laser",40],["idle",50],["dragon",40],["idle",40],["tesla",50],["idle",40]];
+var CYCLE = BOSS == "queen" ? 240 : BOSS == "kai" ? 410 : 470;
+var SCALE = BOSS == "queen" ? 1.9 : BOSS == "kai" ? 1.45 : 1.6;
+var big = [
+    mk(130,200,SCALE,{ old:true }), mk(370,200,SCALE,{}), mk(610,200,SCALE,{ enraged:true }), mk(840,200,SCALE,{ hurt:true })
+];
+var NAMES = BOSS == "kai" ? ["前の絵","新しい絵(出力Lv.1)","出力Lv.3","被弾したとき"] : ["前の絵","新しい絵","怒ったとき","被弾したとき"];
+var film = [], GAP = BOSS == "queen" ? 30 : BOSS == "kai" ? 51 : 59;
+for(var i=0; i<8; i++) film.push(mk(70 + i*117,455,BOSS == "queen" ? 1 : BOSS == "kai" ? 0.75 : 0.9,{ t0:i*GAP }));
+
+//ゲームの中の流れをまねる
+function act(_e,_t){
+    _e.t = _t;
+    var c = _t % CYCLE;
+    if(BOSS == "fortress"){
+        for(var i=0, s=0; i<FORT_STEPS.length; s+=FORT_STEPS[i][1], i++){
+            if(c < s + FORT_STEPS[i][1]){ _e.mode = FORT_STEPS[i][0]; _e.count = s + FORT_STEPS[i][1] - c; break; }
+        }
+        _e.vx = Math.sin(_t*0.012)*1.5;
+        _e.angle = Math.PI/2 + Math.sin(_t*(_e.mode == "laser" ? 0.03 : 0.015))*0.9;
+    }else if(BOSS == "kai"){
+        var step = "idle";
+        for(var i=0, s=0; i<KAI_STEPS.length; s+=KAI_STEPS[i][1], i++){
+            if(c < s + KAI_STEPS[i][1]){ step = KAI_STEPS[i][0]; _e.count = s + KAI_STEPS[i][1] - c; break; }
+        }
+        _e.mode = step == "laserAim" || step == "laser" ? step : "idle";
+        _e.circleT = step == "dragon" ? _e.count : 0;
+        _e.strikes = step == "tesla" ? [{ x:0, y:0, t:_e.count }] : [];
+        _e.phase = _e.enraged ? 3 : 1;
+        _e.vx = Math.sin(_t*0.03)*2.5; _e.vy = Math.cos(_t*0.021)*1.2;
+        _e.angle = Math.PI/2 + Math.sin(_t*0.02)*0.7;
+        if(!_e.look){ _e.look = new DroneLook(); _e.look.tint = "190,20,30"; }
+        _e.look.update(dirFromVel(_e.vx,_e.vy), _e.vx);
+    }else{
+        var side = Math.floor(_t/CYCLE) % 2 ? -1 : 1;
+        if(c < 153){
+            _e.mode = "idle";
+            _e.vx = Math.sin(c*0.04)*2.2;
+        }else if(c < 208){
+            _e.mode = "aim"; _e.count = 208 - c; _e.vx *= 0.8;
+        }else{
+            _e.mode = "dash"; _e.count = CYCLE - c;
+            _e.aimX = side*0.8; _e.vx = _e.aimX*8;
+        }
+    }
+    if(_e.hurt) _e.flash = _t % 40 < 6 ? 3 : 0;
+}
+function drawAt(_e){
+    var x = _e.x, y = _e.y;
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.scale(_e.k,_e.k);
+    if(_e.old){
+        (BOSS == "queen" ? drawOldQueen : BOSS == "kai" ? drawOldKai : drawOldFortress)(_e,_e.flash > 0 ? "#fff" : null);
+    }else{
+        _e.x = 0; _e.y = 0;
+        mainScreen.drawEnemy(_e);
+        _e.x = x; _e.y = y;
+    }
+    ctx.restore();
+}
+function label(_s,_x,_y){
+    ctx.fillStyle = "#555"; ctx.font = "12px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(_s,_x,_y);
+}
+var T = 0;
+var gallery = {
+    update:function(){
+        T++;
+        for(var i=0; i<big.length; i++) act(big[i],T);
+        for(var i=0; i<film.length; i++) act(film[i],T + film[i].t0);
+    },
+    draw:function(){
+        ctx.fillStyle = "#c9ccd0"; ctx.fillRect(0,0,CW,CH);
+        for(var i=0; i<big.length; i++){ drawAt(big[i]); label(NAMES[i], big[i].x, 345); }
+        ctx.fillStyle = "rgba(0,0,0,0.12)"; ctx.fillRect(20,375,920,1);
+        for(var i=0; i<film.length; i++){ drawAt(film[i]); label(film[i].mode, film[i].x, 525); }
+        label("等倍・" + GAP + "フレームずつずらしたもの", 480, 390);
+    }
+};
+screens.push(gallery);
+page.number = screens.length - 1;
+sound.draw = function(){};
+fps.draw = function(){};
+pointer.draw = function(){};
+//撮影用：少し進めてから止める
+if(location.hash.indexOf("still") >= 0){
+    for(var i=0; i<(BOSS == "queen" ? 81 : BOSS == "kai" ? 161 : 121); i++) gallery.update();   //被弾の白が出るコマ
+    gallery.update = function(){};
+}
+</script>
+</body>
+</html>

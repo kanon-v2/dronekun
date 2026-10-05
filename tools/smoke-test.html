@@ -394,6 +394,41 @@ try{
     }
     check("雑魚敵9種類を新しい絵で描ける(被弾・撃つ直前・自爆直前など)", artOk.length == artTypes.length && errors.length == artErr, artOk.length + "/" + artTypes.length + "種類");
 
+    //女王蜂(ボス)：部位ごとに動く絵。ゆらゆら・突進の構え・突進・怒り・被弾のどれでも描ける
+    var qErr = errors.length, qDrawn = 0;
+    ["idle","aim","dash"].forEach(function(m){
+        [false,true].forEach(function(rage){
+            var qe = { type:"queen", boss:true, r:BOSS_TYPES.queen.r, x:300, y:200, vx:m == "dash" ? 6 : 1, vy:0, t:0, mode:m, count:20,
+                       aimX:0.8, aimY:0.6, flash:0, hp:5, maxHp:10, slow:0, wet:0, enraged:rage };
+            for(var j=0; j<6; j++){ qe.t += 11; qe.flash = j % 2 ? 3 : 0; if(special.draw(qe, qe.flash ? "#fff" : null)) qDrawn++; mainScreen.drawEnemy(qe); }
+        });
+    });
+    check("女王蜂を部位ごとに動く絵で描ける(構え・突進・怒り・被弾)", qDrawn == 36 && errors.length == qErr && typeof enemyArt.queen == "function", qDrawn + "コマ");
+
+    //移動要塞(ボス)：渦巻き弾・3方向弾・レーザーの予告・レーザー・怒り・被弾のどれでも描ける
+    var fErr = errors.length, fDrawn = 0;
+    ["idle","spiral","triple","laserAim","laser"].forEach(function(m){
+        [false,true].forEach(function(rage){
+            var fe = { type:"fortress", boss:true, r:BOSS_TYPES.fortress.r, x:300, y:200, vx:1, vy:0, t:0, mode:m, count:30,
+                       angle:1.2, flash:0, hp:5, maxHp:10, slow:0, wet:0, enraged:rage };
+            for(var j=0; j<6; j++){ fe.t += 13; fe.count--; fe.flash = j % 2 ? 3 : 0; if(special.draw(fe, fe.flash ? "#fff" : null)) fDrawn++; mainScreen.drawEnemy(fe); }
+        });
+    });
+    check("移動要塞を部位ごとに動く絵で描ける(渦巻き・3方向・レーザー・怒り・被弾)", fDrawn == 60 && errors.length == fErr && typeof enemyArt.fortress == "function", fDrawn + "コマ");
+
+    //ドローン君改(ボス)：本体を切り分けて描き、改造部品が出力の段階・レーザー・五龍の陣・落雷の予告・被弾で動く
+    var kErr = errors.length, kDrawn = 0;
+    ["idle","laserAim","laser"].forEach(function(m){
+        [1,2,3].forEach(function(ph){
+            var ke = { type:"kai", boss:true, r:BOSS_TYPES.kai.r, x:300, y:200, vx:2, vy:1, t:0, mode:m, count:30, angle:1.2, phase:ph,
+                       circleT:ph == 2 ? 20 : 0, strikes:ph == 3 ? [{ x:100, y:100, t:20 }] : [], mines:[], bladeA:0,
+                       flash:0, hp:5, maxHp:10, slow:0, wet:0, look:new DroneLook() };
+            ke.look.tint = "190,20,30";
+            for(var j=0; j<6; j++){ ke.t += 13; ke.look.update(4, 2); ke.flash = j % 2 ? 3 : 0; if(special.draw(ke, ke.flash ? "#fff" : null)) kDrawn++; mainScreen.drawEnemy(ke); }
+        });
+    });
+    check("ドローン君改を改造部品つきで描ける(出力Lv.1～3・レーザー・陣・落雷・被弾)", kDrawn == 54 && errors.length == kErr && typeof enemyArt.kai == "function", kDrawn + "コマ");
+
     //戦闘画面の背景(battleBg.js)：WAVEで空が昼→夕方→夜→戦場と変わる。衝撃波で方眼が波打ち、かすったマスが光り、時間がたつと消える
     //方眼は普通(15px)で確かめる(はじめの設定の大きいは、公開版と同じ背景と演出)
     check("戦闘画面の方眼のはじめの設定は「表示：あり・大きさ：大きい」", viewOpt.grid === true && viewOpt.gridSize == "large" && battleBg.cell() == GS, viewOpt.grid + " " + viewOpt.gridSize);

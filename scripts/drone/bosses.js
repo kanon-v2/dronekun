@@ -579,25 +579,8 @@ var special = {
                 return true;
 
             case "queen":
-                //女王蜂：大きな羽・縞模様の胴体・冠
-                var wing = 16 + Math.abs(Math.sin(_e.t*0.4))*18;
-                ctx.fillStyle = "rgba(170,170,170,0.6)";
-                ctx.beginPath(); ctx.ellipse(-28,-20,wing,12,-0.6,0,Math.PI*2); ctx.fill();
-                ctx.beginPath(); ctx.ellipse(28,-20,wing,12,0.6,0,Math.PI*2); ctx.fill();
-                ctx.fillStyle = _body || (_e.enraged ? "#5a1d1d" : "#2b2b2b");
-                ctx.beginPath(); ctx.ellipse(0,0,_e.r*0.85,_e.r,0,0,Math.PI*2); ctx.fill();
-                if(!_body){
-                    ctx.fillStyle = "#e6b422";
-                    ctx.fillRect(-_e.r*0.8,4,_e.r*1.6,6);
-                    ctx.fillRect(-_e.r*0.7,16,_e.r*1.4,5);
-                }
-                ctx.fillStyle = "#e6b422";
-                ctx.beginPath();
-                ctx.moveTo(-14,-_e.r + 2); ctx.lineTo(-10,-_e.r - 12); ctx.lineTo(-4,-_e.r - 2);
-                ctx.lineTo(0,-_e.r - 14); ctx.lineTo(4,-_e.r - 2); ctx.lineTo(10,-_e.r - 12); ctx.lineTo(14,-_e.r + 2);
-                ctx.closePath(); ctx.fill();
-                ctx.fillStyle = "#f33";
-                ctx.fillRect(-12,-14,7,6); ctx.fillRect(5,-14,7,6);
+                //女王蜂：部位ごとに動く絵(enemyArt.js)
+                enemyArt.draw(_e,_body);
                 return true;
 
             case "kai":
@@ -607,38 +590,13 @@ var special = {
                 g.addColorStop(1,"rgba(200,20,30,0)");
                 ctx.fillStyle = g;
                 ctx.beginPath(); ctx.arc(0,0,60,0,Math.PI*2); ctx.fill();
-                if(_body) ctx.globalAlpha = 0.6;
-                _e.look.draw(0,0,2);
-                ctx.globalAlpha = 1;
+                //本体と改造部品(enemyArt.js)
+                enemyArt.draw(_e,_body);
                 return true;
 
             case "fortress":
-                //移動要塞：回る八角形の装甲と、ドローンを向く砲
-                ctx.save();
-                ctx.rotate(_e.t*0.01);
-                ctx.fillStyle = _body || (_e.enraged ? "#5a2a2a" : "#3a3d40");
-                ctx.beginPath();
-                for(var i=0; i<8; i++){
-                    var a = i*Math.PI/4 + Math.PI/8;
-                    ctx.lineTo(Math.cos(a)*_e.r, Math.sin(a)*_e.r);
-                }
-                ctx.closePath(); ctx.fill();
-                ctx.strokeStyle = "#111"; ctx.lineWidth = 3; ctx.stroke(); ctx.lineWidth = 1;
-                ctx.fillStyle = "#777";
-                for(var i=0; i<4; i++){
-                    var a = i*Math.PI/2;
-                    ctx.fillRect(Math.cos(a)*(_e.r - 9) - 4, Math.sin(a)*(_e.r - 9) - 4, 8, 8);
-                }
-                ctx.restore();
-                ctx.save();
-                ctx.rotate(_e.angle);
-                ctx.fillStyle = "#222";
-                ctx.fillRect(0,-6,_e.r + 14,12);
-                ctx.restore();
-                //中心のコア(レーザー準備中は強く光る)
-                var glow = _e.mode == "laserAim" ? 0.5 + 0.5*Math.sin(_e.t*0.5) : 0.3;
-                ctx.fillStyle = "rgba(255,60,60," + (0.5 + glow*0.5) + ")";
-                ctx.beginPath(); ctx.arc(0,0,12 + glow*4,0,Math.PI*2); ctx.fill();
+                //移動要塞：部位ごとに動く絵(enemyArt.js)
+                enemyArt.draw(_e,_body);
                 return true;
         }
         return false;
