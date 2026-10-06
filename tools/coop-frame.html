@@ -64,7 +64,7 @@ function autoPlay(){
             if(cd){ wantCounter = false; mainScreen.counter(cd); }
         }
         if(coop.role == "guest" && enemies.some(function(e){ return e.countered; })) extra.cSeen++;
-        if(wantJust && mainScreen.state == "play"){ wantJust = false; enemyShots.push({ x:drone.X - 30, y:drone.Y, vx:4, vy:0, r:5 }); mainScreen.fuel = mainScreen.maxFuel; mainScreen.blast(); }
+        if(wantJust && mainScreen.state == "play"){ wantJust = false; enemyShots.push({ x:drone.X - 30, y:drone.Y, vx:4, vy:0, r:5 }); mainScreen.fuel = mainScreen.maxFuel; mainScreen.moveNeed = 0; mainScreen.blast(); }
         if(shootPartner && coop.partner && frames % 15 == 0){
             var a = Math.random()*Math.PI*2, px = coop.partner.pos.X, py = coop.partner.pos.Y;
             fireShot(px + Math.cos(a)*60, py + Math.sin(a)*60, a + Math.PI, 3);

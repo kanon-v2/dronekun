@@ -411,6 +411,7 @@ var sound = {
             case "kill":      this.noise(0.14,0.13,"bandpass",2200,400,S); this.tone("square",520,120,0.1,0.05,S,0,0,2000); break;
             case "enemyShot": this.tone("square",520,300,0.07,0.035,S,0,0,1800); break;
             case "dash":      this.tone("sawtooth",260,900,0.22,0.05,S,0,0,1800); break;
+            case "tell":      this.tone("square",600,1500,0.14,0.045,S,0,0,2600); this.tone("sine",1500,1500,0.06,0.03,S,now + 0.08); break;   //突進が飛び出す合図
             //ドローン
             case "damage":    this.tone("sawtooth",170,55,0.3,0.22,S,0,0,1200); this.noise(0.25,0.15,"lowpass",900,120,S); break;
             case "destroyed":

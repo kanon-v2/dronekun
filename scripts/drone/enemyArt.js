@@ -628,20 +628,27 @@ var enemyArt = {
     //------------------------------------------------------------ 突進：狙いを定めて突っ込む矢じり
     dasher:function(_e,_body){
         var C = ENEMY_COLOR, r = _e.r;
-        var aiming = _e.timer > 0;
-        //突進の予告線(だんだん濃く)
-        if(aiming){
-            ctx.strokeStyle = "rgba(220,40,40," + (0.15 + 0.25*(1 - _e.timer/60)) + ")";
-            ctx.setLineDash([6,6]);
+        var tell = _e.tell || 0;
+        var aiming = tell != TELL.dash;
+        var lock = tell == TELL.lock;
+        //飛び出す合図：構えの最後に炎が伸びる(フェイントでは伸びない)
+        var flame = lock && !_e.fake && _e.timer <= TELL_FLAME ? 1 - _e.timer/TELL_FLAME : 0;
+        //突進の予告線：狙っている間は薄い点線、構えると濃い線(向きが固まった)
+        if(aiming && tell != TELL.brake){
+            ctx.strokeStyle = lock ? "rgba(235,40,40," + (0.4 + 0.4*flame) + ")" : "rgba(220,40,40,0.18)";
+            ctx.lineWidth = lock ? 1.5 + flame*1.5 : 1;
+            ctx.setLineDash(lock ? [] : [6,6]);
             ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(_e.aimX*1200,_e.aimY*1200); ctx.stroke();
             ctx.setLineDash([]);
         }
         var a = Math.atan2(aiming ? _e.aimY : _e.vy, aiming ? _e.aimX : _e.vx);
         ctx.rotate(a);
-        //噴射：突進中は長い炎、予告中は力をためて小さく明滅
+        //構えているときは身を縮めて小刻みに震える(フェイントで身を引くときは震えない)
+        if(lock) ctx.translate(-2 - flame*2 + (Math.floor(_e.t/2) % 2 ? 0.8 : -0.8), 0);
+        //噴射：突進中は長い炎、予告中は力をためて小さく明滅、飛び出す直前は長く伸びる
         var moving = !aiming && (_e.vx || _e.vy);
         if(moving || aiming){
-            var fl = moving ? 9 + Math.random()*6 : (Math.floor(_e.t/3) % 2 ? 4 : 2);
+            var fl = moving ? 9 + Math.random()*6 : flame > 0 ? 6 + flame*14 : (Math.floor(_e.t/3) % 2 ? 4 : 2);
             ctx.fillStyle = "#ffb02e";
             ctx.beginPath(); ctx.moveTo(-r + 1,-3); ctx.lineTo(-r - fl,0); ctx.lineTo(-r + 1,3); ctx.closePath(); ctx.fill();
             ctx.fillStyle = "#fff3c4";
@@ -661,6 +668,7 @@ var enemyArt = {
         ctx.beginPath(); ctx.moveTo(-r*0.75,-r*0.72); ctx.lineTo(-r*0.15,-r*0.32); ctx.moveTo(-r*0.75,r*0.72); ctx.lineTo(-r*0.15,r*0.32); ctx.stroke();
         //目
         if(blink) this.halo(r*0.35,0,5,"255,60,50",1);
+        if(flame > 0) this.halo(r*0.35,0,6 + flame*6,"255,240,200",1);
         this.eye(r*0.35,0,2.1);
     },
 

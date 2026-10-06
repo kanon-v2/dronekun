@@ -92,14 +92,14 @@ try{
     while(mainScreen.state != "play") mainScreen.update();
     enemies = []; enemyShots = [];
     var je = makeEnemy(pickEnemyType()); je.x = drone.X + 220; je.y = drone.Y; je.vx = je.vy = 0; je.hp = je.maxHp = 999; enemies.push(je);
-    var je2 = makeEnemy(pickEnemyType()); je2.x = drone.X + 80; je2.y = drone.Y; je2.hp = je2.maxHp = 999; enemies.push(je2);     //衝撃波の範囲内の敵
+    var je2 = makeEnemy("bug"); je2.x = drone.X + 80; je2.y = drone.Y; je2.hp = je2.maxHp = 999; enemies.push(je2);     //衝撃波の範囲内の敵
     enemyShots.push({ x:drone.X - 200, y:drone.Y, vx:-3, vy:0, r:5 });     //遠ざかる弾
-    mainScreen.maxFuel = 200; mainScreen.fuel = 100; mainScreen.blast();
+    mainScreen.maxFuel = 200; mainScreen.fuel = 100; mainScreen.moveNeed = 0; mainScreen.blast();
     var normalOk = mainScreen.just == 0 && mainScreen.fuel == 100 - BLAST_COST && enemyShots.length == 1 && je2.hp == 999 - BLAST_DMG;
     enemies.splice(enemies.indexOf(je2),1);
     enemyShots = [{ x:drone.X - 30, y:drone.Y + 2, vx:4, vy:0, r:5 }, { x:drone.X + 50, y:drone.Y - 60, vx:0, vy:0, r:5 }];
-    mainScreen.maxFuel = 200; mainScreen.fuel = 100; mainScreen.blast();
-    var justBullets = arms.bullets.filter(function(b){ return b.just; }).length, jf = mainScreen.fuel, jn = mainScreen.just, jh = mainScreen.justSlow + "/" + mainScreen.justT;
+    mainScreen.maxFuel = 200; mainScreen.fuel = 100; mainScreen.moveNeed = 0; mainScreen.blast();
+    var justBullets =arms.bullets.filter(function(b){ return b.just; }).length, jf = mainScreen.fuel, jn = mainScreen.just, jh = mainScreen.justSlow + "/" + mainScreen.justT;
     var justOk = mainScreen.just == 1 && mainScreen.fuel == Math.min(mainScreen.maxFuel, 100 - BLAST_COST + JUST_REFUND) && justBullets == 2 && mainScreen.justSlow > 0 && mainScreen.justT > 0;
     var st0 = mainScreen.stateTime, jerr = errors.length;
     for(var i=0; i<20; i++){ mainScreen.update(); if(i % 5 == 0) draw1(); }
@@ -115,11 +115,11 @@ try{
     enemies = []; enemyShots = []; MouseX = drone.X; MouseY = drone.Y;
     var kerr = errors.length;
     var kt = makeEnemy("bug"); kt.x = drone.X - 260; kt.y = drone.Y - 20; kt.vx = kt.vy = 0; kt.speed = 0; kt.hp = kt.maxHp = 999; enemies.push(kt);
-    var kd = makeEnemy("dasher"); kd.x = drone.X + 40; kd.y = drone.Y; kd.timer = 0; kd.vx = -5; kd.vy = 0; enemies.push(kd);    //ぶつかる直前の突進
-    var kf = makeEnemy("dasher"); kf.x = drone.X + 400; kf.y = drone.Y + 120; kf.timer = 0; kf.vx = 5; kf.vy = 0; enemies.push(kf);  //遠ざかる突進
+    var kd = makeEnemy("dasher"); kd.x = drone.X + 40; kd.y = drone.Y; kd.tell = TELL.dash; kd.vx = -5; kd.vy = 0; enemies.push(kd);    //ぶつかる直前の突進
+    var kf = makeEnemy("dasher"); kf.x = drone.X + 400; kf.y = drone.Y + 120; kf.tell = TELL.dash; kf.vx = 5; kf.vy = 0; enemies.push(kf);  //遠ざかる突進
     mainScreen.maxFuel = 200; mainScreen.fuel = 100; var kj = mainScreen.just;
     var kJust = mainScreen.isJust();
-    mainScreen.blast();
+    mainScreen.moveNeed = 0; mainScreen.blast();
     var kStart = mainScreen.just == kj + 1 && mainScreen.justRamN == 1 && kd.countered > 0 && kd.vx < 0 && !kf.countered;
     var kHp = mainScreen.hp, kScore = game.score;
     for(var i=0; i<300 && !kd.dead; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
@@ -138,13 +138,100 @@ try{
     var md = makeEnemy("mdrone"); md.x = drone.X + 40; md.y = drone.Y; md.vx = -2.2; md.vy = 0; enemies.push(md);    //ぶつかる直前の人間のドローン
     mainScreen.maxFuel = 200; mainScreen.fuel = 100;
     var mJust = mainScreen.isJust() && mainScreen.justRams[0] == md;
-    mainScreen.blast();
+    mainScreen.moveNeed = 0; mainScreen.blast();
     var mStart = mainScreen.justRamN == 1 && md.countered > 0 && md.vx < 0;
     var mHp = mainScreen.hp;
     for(var i=0; i<300 && !md.dead; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
     check("ジャスト・カウンター：ぶつかる直前の人間のドローンも敵へ弾き返す(ドローン君は無傷)",
           mJust && mStart && md.dead && mt.hp < 999 && mainScreen.hp == mHp && errors.length == merr,
           "判定" + mJust + " 開始" + mStart + " 砕けた" + md.dead + " 敵" + mt.hp + " 体力" + mHp + "→" + mainScreen.hp);
+
+    // ジャストの段階：ぎりぎりは PERFECT、少し早いと JUST(見返りが小さい)。衝撃波のあとは動くまで次が出せない
+    setup(3, {}, [null,null,null], 1);
+    page.change(1); MouseIn = true;
+    while(mainScreen.state != "play") mainScreen.update();
+    enemies = []; MouseX = drone.X; MouseY = drone.Y;
+    var perr = errors.length;
+    mainScreen.maxFuel = 200; mainScreen.fuel = 100; mainScreen.moveNeed = 0;
+    enemyShots = [{ x:drone.X - 20, y:drone.Y, vx:4, vy:0, r:5 }];      //すぐ当たる弾
+    mainScreen.blast();
+    var pPerfect = mainScreen.justTier == 2 && mainScreen.justPerfect === true && mainScreen.fuel == 100 - BLAST_COST + JUST_REFUND;
+    var pf = mainScreen.fuel;
+    enemyShots = [{ x:drone.X - 20, y:drone.Y, vx:4, vy:0, r:5 }];
+    mainScreen.blast();     //動いていないので出せない
+    var pBlocked = mainScreen.fuel == pf && mainScreen.moveMsg > 0 && mainScreen.moveNeed == BLAST_MOVE;
+    for(var i=0; i<12; i++){ drone.X += (i < 6 ? 25 : -25); mainScreen.tickTimers(); }   //行って戻る(合わせて300px)
+    var pCharged = mainScreen.moveNeed == 0;
+    mainScreen.justSlow = 0;
+    enemyShots = [{ x:drone.X - 55, y:drone.Y, vx:4, vy:0, r:5 }];      //少し早い(10フレームほど先に当たる)
+    mainScreen.blast();
+    var pGood = mainScreen.justTier == 1 && mainScreen.justPerfect === false && mainScreen.fuel == pf - BLAST_COST + JUST_GOOD.refund && mainScreen.justSlow < JUST_SLOW_TIME;
+    for(var i=0; i<20; i++){ mainScreen.update(); if(i % 5 == 0) draw1(); }
+    check("ジャストの段階(ぎりぎりはPERFECT、少し早いとJUSTで見返りが小さい)と、動くまで次の衝撃波が出せないチャージ", pPerfect && pBlocked && pCharged && pGood && errors.length == perr,
+          "PERFECT" + pPerfect + " 止める" + pBlocked + " チャージ" + pCharged + " JUST" + pGood + " 燃料" + mainScreen.fuel);
+
+    // 突進の予備動作(パリィの試作)：にじり寄って構え、炎が伸びて飛び出す。構えている間はジャストにならず、飛び出しに合わせるとジャスト
+    setup(6, {}, [null,null,null], 1);
+    page.change(1); MouseIn = true;
+    while(mainScreen.state != "play") mainScreen.update();
+    enemies = []; enemyShots = []; MouseX = drone.X; MouseY = drone.Y;
+    var terr = errors.length, tlog = [TELL.aim];
+    mainScreen.maxFuel = 200;
+    var td = makeEnemy("dasher"); td.style = "creep"; td.fake = false; td.chain = 0; td.near = 150; td.timer = 1;
+    td.x = drone.X + 320; td.y = drone.Y; td.hp = td.maxHp = 999; enemies.push(td);
+    for(var i=0; i<400 && td.tell != TELL.lock; i++){ mainScreen.update(); if(tlog[tlog.length-1] != td.tell) tlog.push(td.tell); }
+    var lockD = Math.hypot(td.x - drone.X, td.y - drone.Y);
+    var lockNoJust = !mainScreen.isJust();
+    //構えている突進が衝撃波に耐える設定なら、早押しは効かない
+    var braced = true;
+    if(TELL_BRACE){ mainScreen.fuel = 100; mainScreen.moveNeed = 0; mainScreen.blast(); braced = td.hp == 999 && !td.countered && mainScreen.just == 0; }
+    for(var i=0; i<80 && td.tell != TELL.dash; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
+    var burstOk = td.tell == TELL.dash && Math.abs(Math.hypot(td.vx,td.vy) - td.speed*TELL_BURST) < 0.5;
+    var tJust = false;
+    for(var i=0; i<60 && !td.countered; i++){
+        if(mainScreen.isJust()){ tJust = true; mainScreen.fuel = 100; mainScreen.moveNeed = 0; mainScreen.blast(); break; }
+        mainScreen.update();
+    }
+    var tCounter = td.countered > 0 && mainScreen.just == 1;
+    check("突進の予備動作：狙う→にじり寄る→構える→飛び出す。構えている間はジャストにならず、飛び出しに合わせるとジャスト",
+          tlog.join(",") == [TELL.aim,TELL.creep,TELL.lock].join(",") && lockD < 160 && lockNoJust && braced && burstOk && tJust && tCounter && errors.length == terr,
+          "流れ" + tlog.join(",") + " 構えの距離" + Math.round(lockD) + " 構え中" + lockNoJust + " 耐える" + braced + " 飛び出し" + burstOk + " ジャスト" + tJust + "/" + tCounter);
+
+    // フェイント：構えたあと炎が伸びずに身を引き、また構えてから本物の突進
+    setup(6, {}, [null,null,null], 1);     //前のジャストのゆっくりを残さない
+    page.change(1);
+    while(mainScreen.state != "play") mainScreen.update();
+    enemies = []; enemyShots = []; MouseX = drone.X; MouseY = drone.Y;
+    var fd = makeEnemy("dasher"); fd.style = "feint"; fd.fake = true; fd.chain = 0; fd.tell = TELL.lock; fd.timer = 3;
+    fd.x = drone.X + 150; fd.y = drone.Y; fd.aimX = -1; fd.aimY = 0; fd.hp = fd.maxHp = 999; enemies.push(fd);
+    for(var i=0; i<5; i++) mainScreen.update();
+    var feintOk = fd.tell == TELL.feint && fd.vx > 0;
+    for(var i=0; i<60 && fd.tell != TELL.lock; i++) mainScreen.update();
+    var relock = fd.tell == TELL.lock && !fd.fake;
+    for(var i=0; i<60 && fd.tell != TELL.dash; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
+    check("突進のフェイント：構えたあと身を引き、また構えて本物の突進をする", feintOk && relock && fd.tell == TELL.dash && errors.length == terr,
+          "引く" + feintOk + " 構え直す" + relock + " 突進" + (fd.tell == TELL.dash));
+
+    // 連続突進：途中で弾くとよろけて次が来る。全部弾くと最後に強く弾き返す(PERFECT)
+    enemies = []; enemyShots = [];
+    var ct = makeEnemy("bug"); ct.x = drone.X - 260; ct.y = drone.Y - 20; ct.vx = ct.vy = 0; ct.speed = 0; ct.hp = ct.maxHp = 999; enemies.push(ct);
+    var cd = makeEnemy("dasher"); cd.style = "chain"; cd.fake = false; cd.chain = TELL_CHAIN - 1; cd.parried = 0; cd.hp = cd.maxHp = 999; enemies.push(cd);
+    var cLog = [];
+    for(var n=0; n<TELL_CHAIN; n++){
+        cd.x = drone.X + 40; cd.y = drone.Y; cd.tell = TELL.dash; cd.vx = -cd.speed*TELL_BURST; cd.vy = 0;
+        mainScreen.fuel = 100; mainScreen.moveNeed = 0; mainScreen.blast();
+        cLog.push(cd.countered ? "返" : cd.tell == TELL.brake ? "弾" + cd.parried : "?");
+        if(cd.tell == TELL.brake) cd.chain--;   //よろけたあと次の突進へ(残りの回数を減らすのは brake の終わり)
+    }
+    var perfect = cd.countered > 0 && cd.cMul == TELL_CHAIN_DMG;
+    var ctHp = ct.hp;
+    for(var i=0; i<300 && !cd.dead; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
+    check("連続突進：途中で弾くとよろけ、全部弾くと最後に強く弾き返す", cLog.join(",") == "弾1,弾2,返" && perfect && cd.dead && errors.length == terr,
+          "流れ" + cLog.join(",") + " PERFECT" + perfect + " 敵" + ctHp + "→" + ct.hp);
+    //描画：構え・炎・フェイントで落ちない
+    var ad = makeEnemy("dasher"); ad.tell = TELL.lock; ad.timer = 3; ad.fake = false; enemies = [ad]; draw1();
+    ad.fake = true; draw1(); ad.tell = TELL.creep; draw1(); ad.tell = TELL.brake; draw1();
+    check("突進の予備動作の絵を描ける", errors.length == terr, "");
 
     // かすりコンボ：かするとコンボが増えて威力が上がり、時間切れ・被弾で途切れる
     setup(2, { gun:1 }, ["gun",null,null], 1);

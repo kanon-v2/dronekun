@@ -62,6 +62,13 @@ const JUST_FX = {
 };
 const JUST_GUARD      = 50;     //成功したあとの無敵の時間(ふつうは BLAST_GUARD)
 const JUST_TEXT_TIME  = 90;     //「JUST!」の文字を出しておく時間(実際のフレーム)
+//ジャストの段階：ぎりぎりで合わせると PERFECT(見返りは上のとおり)、少し早いと JUST(見返りが小さい)
+const JUST_PERFECT    = 6;      //弾がこの時間(フレーム)のうちに当たるなら PERFECT
+const JUST_RAM_PERFECT = 9;     //突進・人間のドローンの PERFECT
+const JUST_GOOD = { slow:0.45, max:8, refund:10, guard:36 };   //JUST の見返り(ゆっくりの長さの割合・はね返す数・戻る燃料・無敵の時間)
+//衝撃波のチャージ：出したあと、この距離(px)を動くまで次を出せない(その場で待って連発しないように)
+const BLAST_MOVE      = 240;
+const BLAST_MOVE_STEP = 30;     //1フレームに数える移動の上限(ワープなどで一気に溜まらないように)
 const JUST_COOP_SLOW  = 40;     //協力プレイで、敵と弾がゆっくりになる時間(ふたりの画面で同じ。ふつうの衝撃波は BLAST_SLOWMO)
 const JUST_COLOR      = "90,220,255";
 //ジャスト・カウンター：体当たりしてくる敵がぶつかる直前に衝撃波を出すとジャストになり、その敵を敵の群れへ弾き返す
@@ -71,6 +78,37 @@ const COUNTER_TURN    = 0.08;   //狙った敵へ曲がる強さ(1フレーム�
 const COUNTER_RANGE   = 700;    //狙う敵を探す距離(いなければ来た向きへ返す)
 const COUNTER_DMG     = 8;      //通り道の敵1体に与えるダメージ(実弾1発は1。強化弾頭・かすりコンボの倍率もかかる)
 const COUNTER_LIFE    = 80;     //弾き返してから、突進が砕けるまでの時間(画面の端に着いても砕ける)
+//突進の予備動作(パリィの試作)：構え方とテンポを突進ごとに変え、ジャストを「見て合わせる」ものにする
+//弾の速さと距離だけでタイミングが決まらないよう、近くまでにじり寄ってから、ばらばらの間で飛び出す
+var   JUST_SHOTS      = true;   //ふつうの弾でもジャストになるか(false で突進・人間のドローンだけ)
+const JUST_RAM_FRAMES = 20;     //突進・人間のドローンは、この時間(フレーム)のうちにぶつかるならジャスト(弾は JUST_FRAMES)
+const TELL_BRACE      = false;  //構えている突進は衝撃波に耐えるか(早押しの罰。試作では重すぎたので切る)
+const TELL = { dash:0, aim:1, creep:2, lock:3, feint:4, brake:5 };     //突進の状態(e.tell)
+const TELL_AIM        = [40,80];    //画面の端で狙う時間(フレーム。この間でばらつく)
+const TELL_CREEP      = 0.35;       //にじり寄る速さ(突進の速さの何倍か)
+const TELL_NEAR       = [110,190];  //ドローン君にこの距離まで近づいたら構える(px)
+const TELL_LOCK       = [12,30];    //構えて(向きを固めて)から炎が伸び始めるまでの時間。ここがテンポのばらつき
+const TELL_FLAME      = 20;         //飛び出す直前、噴射の炎が伸びて音が鳴る時間(本物の合図。フェイントでは伸びない)
+const TELL_BURST      = 1.8;        //飛び出す速さ(突進の速さの何倍か)
+const TELL_BURST_T    = 34;         //連続突進で、飛び出してから止まるまでの時間
+const TELL_BRAKE_T    = 14;         //連続突進で、止まって振り向く時間
+const TELL_FEINT_T    = [18,40];    //フェイントで身を引いてから、また構えるまでの時間
+const TELL_CHAIN      = 3;          //連続突進の回数
+const TELL_CHAIN_LOCK = [10,24];    //連続突進の2回目からの構えの時間(だんだん読みにくく)
+const TELL_STAGGER    = 26;         //連続突進を途中で弾いたとき、はじかれてよろける時間
+const TELL_CHAIN_DMG  = 2.5;        //連続突進を全部弾き返したときのダメージの倍率(COUNTER_DMG に掛ける)
+//構え方の出やすさ(WAVEごと)。basic：今までの突進 creep：にじり寄ってため feint：フェイントあり chain：連続突進
+function pickDashStyle(_w){
+    var list = [["basic",3],["creep",4]];
+    if(_w >= 4) list.push(["feint",2]);
+    if(_w >= 7) list.push(["chain",1.5 + _w*0.05]);
+    var sum = 0;
+    for(var i=0; i<list.length; i++) sum += list[i][1];
+    var r = Math.random()*sum;
+    for(var i=0; i<list.length; i++){ r -= list[i][1]; if(r < 0) return list[i][0]; }
+    return "basic";
+}
+function randIn(_range){ return _range[0] + Math.floor(Math.random()*(_range[1] - _range[0] + 1)); }
 //敵を倒したときの爆発(killBlast)
 const KILL_FX_MIN     = 0.8;    //爆発の大きさの倍率の下限(敵の半径/12 をこの範囲に収める)
 const KILL_FX_MAX     = 2.2;
@@ -185,7 +223,13 @@ function makeEnemy(_type){
         //突進前に画面の端で狙いを定める(予告)
         e.x = Math.max(e.r+4, Math.min(e.x, CW-e.r-4));
         e.y = Math.max(e.r+4, Math.min(e.y, CH-e.r-4));
-        e.timer = 60;
+        e.style = pickDashStyle(game.wave);
+        e.tell = TELL.aim;
+        e.timer = randIn(TELL_AIM);
+        e.near = randIn(TELL_NEAR);
+        e.fake = e.style == "feint";            //次の構えがフェイントか
+        e.chain = e.style == "chain" ? TELL_CHAIN - 1 : 0;   //連続突進の残りの回数
+        e.parried = 0;                          //連続突進を弾いた回数
         e.aimX = 0; e.aimY = 1;
     }else if(_type == "shooter" || _type == "spinner"){
         setShooterTarget(e);
@@ -367,6 +411,9 @@ var mainScreen = {
         this.shake = 0;
         this.fuelOut = false;
         this.noFuelMsg = 0;
+        this.moveNeed = 0;          //次の衝撃波までに動く残りの距離(BLAST_MOVE)
+        this.moveMsg = 0;
+        this.lastDX = drone.X; this.lastDY = drone.Y;
         this.state = "start";
         this.stateTime = 0;
         battleBg.reset();
@@ -504,6 +551,14 @@ var mainScreen = {
     //演出の時間を進める(登場の演出中も止めない分)
     tickTimers:function(){
         if(this.shake > 0) this.shake--;
+        if(this.moveMsg > 0) this.moveMsg--;
+        //衝撃波のチャージ：動いた距離だけ進む(協力プレイのゲストもここで進む)
+        var mv = Math.min(BLAST_MOVE_STEP, Math.hypot(drone.X - this.lastDX, drone.Y - this.lastDY));
+        this.lastDX = drone.X; this.lastDY = drone.Y;
+        if(this.moveNeed > 0){
+            this.moveNeed = Math.max(0, this.moveNeed - mv);
+            if(this.moveNeed == 0) fx.ring(drone.X, drone.Y, 30, "255,170,80", 12, 2);    //チャージ完了の合図
+        }
         this.comboStep();
         if(this.justT > 0 && !this.justSlow) this.justT--;
         if(this.bossIntro > 0) this.bossIntro--;
@@ -570,12 +625,18 @@ var mainScreen = {
 
     //クリック：燃料を使って周りの敵をまとめて攻撃し、敵の弾を消す
     blast:function(){
+        if(this.moveNeed > 0){
+            this.moveMsg = 60;
+            sound.play("error");
+            return;
+        }
         if(this.fuel < BLAST_COST){
             this.noFuelMsg = 60;
             sound.play("error");
             return;
         }
         this.fuel -= BLAST_COST;
+        this.moveNeed = BLAST_MOVE;
         var just = this.isJust();
         //ピンチを切り抜けられるよう、周りの弾はすぐ消して少しのあいだ無敵に
         //ジャストのときは、消す代わりに近い順に敵へはね返す
@@ -591,7 +652,7 @@ var mainScreen = {
         this.slowmo = BLAST_SLOWMO;
         if(just){
             //ジャスト：はね返した弾で攻撃する(どの弾が当たったか見えるように)
-            this.justBlast(near,this.justRams);
+            this.justBlast(near,this.justRams,this.justTier);
             coop.onBlast(drone.X,drone.Y,false);
             return;
         }
@@ -601,6 +662,13 @@ var mainScreen = {
             if(e.dead || e.harmless) continue;
             var dx = e.x - drone.X, dy = e.y - drone.Y, d = Math.hypot(dx,dy) || 1;
             if(d > BLAST_RADIUS + e.r) continue;
+            //構えている突進は身を固めて耐える(早押しは燃料を使うだけ。飛び出したところを合わせる)
+            if(this.bracing(e)){
+                if(!coop.isGuest()){ e.vx = dx/d*BLAST_PUSH*0.3; e.vy = dy/d*BLAST_PUSH*0.3; }
+                fx.sparks(e.x, e.y, 6, "200,200,210", 4, 2);
+                popup(e.x, e.y - e.r - 6, "ガード", "rgb(120,120,130)");
+                continue;
+            }
             //敵を動かしているのはホストなので、ゲストの画面でははじき飛ばさない
             if(!e.boss && !coop.isGuest()){ e.vx = dx/d*BLAST_PUSH; e.vy = dy/d*BLAST_PUSH; }
             fx.sparks(e.x, e.y, 5, "255,200,120", 5, 2.5);
@@ -623,39 +691,76 @@ var mainScreen = {
     justFx:function(){ return battleBg.classic() ? JUST_FX.classic : JUST_FX.bg; },
     //今出せばジャストか：このまま進むと JUST_FRAMES のうちに当たる弾か、体当たりしてくる敵(COUNTER_TYPES)があるか
     //(ドローン君は止まっているとみなし、弾と敵はまっすぐ進むとみなす)。ジャストになった敵は justRams に集める
+    //段階は justTier に入れる(0：なし 1：JUST 2：PERFECT。いちばん早く当たるものがぎりぎりなら PERFECT)
     isJust:function(){
         this.justRams = [];
+        this.justTier = 0;
         if(this.down) return false;
-        var just = false;
-        for(var i=0; i<enemyShots.length && !just; i++){
+        var tier = 0;
+        for(var i=0; i<enemyShots.length && JUST_SHOTS; i++){
             var b = enemyShots[i];
-            if(this.willHit(b.x,b.y,b.vx,b.vy,(b.r || 5) + HIT_CORE)) just = true;
+            var t = this.hitTime(b.x,b.y,b.vx,b.vy,(b.r || 5) + HIT_CORE);
+            if(t >= 0) tier = Math.max(tier, t <= JUST_PERFECT ? 2 : 1);
         }
         for(var i=0; i<enemies.length; i++){
             var e = enemies[i];
             if(!this.canCounter(e)) continue;
-            if(this.willHit(e.x,e.y,e.vx,e.vy,e.r + drone.R)) this.justRams.push(e);
+            var t = this.hitTime(e.x,e.y,e.vx,e.vy,e.r + drone.R,JUST_RAM_FRAMES);
+            if(t < 0) continue;
+            this.justRams.push(e);
+            tier = Math.max(tier, t <= JUST_RAM_PERFECT ? 2 : 1);
         }
-        return just || this.justRams.length > 0;
+        this.justTier = tier;
+        return tier > 0;
     },
-    //ジャスト・カウンターで弾き返せる敵か(狙いを定めている間の突進は止まっているので外す)
+    //ジャスト・カウンターで弾き返せる敵か(突進は飛び出している間だけ)
     canCounter:function(_e){
         if(_e.dead || _e.countered || _e.rival || COUNTER_TYPES.indexOf(_e.type) < 0) return false;
-        return !(_e.type == "dasher" && _e.timer > 0);
+        return !(_e.type == "dasher" && _e.tell != TELL.dash);
     },
-    //(_x,_y)から速さ(_vx,_vy)でまっすぐ進むものが、JUST_FRAMES のうちにドローン君から _r 以内に入るか
-    willHit:function(_x,_y,_vx,_vy,_r){
+    //構えている(衝撃波に耐える)突進か
+    bracing:function(_e){
+        return TELL_BRACE && _e.type == "dasher" && !_e.countered && _e.tell != TELL.dash && _e.tell != TELL.brake;
+    },
+    //(_x,_y)から速さ(_vx,_vy)でまっすぐ進むものが、_frames(省くと JUST_FRAMES)のうちにドローン君から _r 以内に入るか
+    willHit:function(_x,_y,_vx,_vy,_r,_frames){
+        return this.hitTime(_x,_y,_vx,_vy,_r,_frames) >= 0;
+    },
+    //同じく、当たるならあと何フレームで入るか(当たらなければ -1)
+    hitTime:function(_x,_y,_vx,_vy,_r,_frames){
+        var f = _frames || JUST_FRAMES, R = _r + JUST_MARGIN;
         var px = _x - drone.X, py = _y - drone.Y;
+        for(var t=0; t<=f; t++){
+            if(Math.hypot(px + _vx*t, py + _vy*t) < R) return t;
+        }
+        //1フレームの間にすり抜ける速いもの：いちばん近づく時刻で確かめる
         var vv = _vx*_vx + _vy*_vy;
-        //いちばん近づく時刻(0〜JUST_FRAMES に収める)
-        var t = vv > 0 ? Math.max(0, Math.min(JUST_FRAMES, -(px*_vx + py*_vy)/vv)) : 0;
-        return Math.hypot(px + _vx*t, py + _vy*t) < _r + JUST_MARGIN;
+        var tc = vv > 0 ? Math.max(0, Math.min(f, -(px*_vx + py*_vy)/vv)) : 0;
+        return Math.hypot(px + _vx*tc, py + _vy*tc) < R ? Math.ceil(tc) : -1;
     },
     //ジャスト・カウンター：突進を弾き返す。いちばん近いほかの敵へ向かって飛び、通り道の敵にぶつかってダメージを与える
     //(敵を動かしているのはホストなので、ゲストは相方に知らせてホストの画面で弾き返す。coop.readEvents)
     counter:function(_e){
         if(coop.isGuest()){ coop.onCounter(_e); return; }
         if(_e.dead || _e.countered) return;
+        //連続突進の途中なら、はじいてよろけさせるだけ(次の突進が来る)。全部弾くと最後に強く弾き返す
+        if(_e.type == "dasher" && _e.chain > 0){
+            _e.parried++;
+            _e.tell = TELL.brake; _e.timer = TELL_STAGGER;
+            _e.vx = -_e.vx*0.5; _e.vy = -_e.vy*0.5;
+            _e.flash = 8;
+            fx.flare(_e.x, _e.y, 24, JUST_COLOR, 10);
+            fx.sparks(_e.x, _e.y, 10, JUST_COLOR, 6, 3);
+            popup(_e.x, _e.y - _e.r - 6, _e.parried + "/" + TELL_CHAIN, "rgb(30,150,200)");
+            return;
+        }
+        _e.cMul = (_e.type == "dasher" && _e.style == "chain" && _e.parried >= TELL_CHAIN - 1) ? TELL_CHAIN_DMG : 1;
+        if(_e.cMul > 1){
+            fx.flare(_e.x, _e.y, 70, JUST_COLOR, 20);
+            fx.ring(_e.x, _e.y, 90, JUST_COLOR, 24, 6);
+            fx.shake(8);
+            popup(_e.x, _e.y - _e.r - 14, "連続カウンター！", "rgb(30,150,200)");
+        }
         var t = arms.nearest(_e.x,_e.y,COUNTER_RANGE,[_e]);
         var a = t ? Math.atan2(t.y - _e.y, t.x - _e.x) : Math.atan2(-_e.vy,-_e.vx);
         _e.countered = COUNTER_LIFE;
@@ -670,6 +775,59 @@ var mainScreen = {
             fx.line(_e.x, _e.y, t.x, t.y, JUST_COLOR, 2.5, 16);
             fx.ring(t.x, t.y, t.r + 18, JUST_COLOR, 26, 3);
         }
+    },
+    //突進の1フレーム(予備動作。動かすのはホストとひとり用だけ)
+    //狙う → (にじり寄る) → 構えて止まる → 炎が伸びて飛び出す。フェイントは構えたあと身を引き、また構える
+    updateDasher:function(_e,_dx,_dy,_d){
+        var T = TELL;
+        switch(_e.tell){
+            case T.aim:     //画面の端で止まってドローン君の方を向く
+                _e.aimX = _dx/_d; _e.aimY = _dy/_d;
+                _e.vx *= 0.8; _e.vy *= 0.8;
+                if(--_e.timer > 0) break;
+                if(_e.style == "basic") this.dashGo(_e,1);
+                else _e.tell = T.creep;
+                break;
+            case T.creep:   //向きを合わせながら、にじり寄る
+                _e.aimX = _dx/_d; _e.aimY = _dy/_d;
+                _e.vx += (_e.aimX*_e.speed*TELL_CREEP - _e.vx)*0.1;
+                _e.vy += (_e.aimY*_e.speed*TELL_CREEP - _e.vy)*0.1;
+                if(_d < _e.near) this.dashLock(_e,TELL_LOCK);
+                break;
+            case T.lock:    //向きを固めて止まる。最後の TELL_FLAME の間は炎が伸びる(フェイントは伸びずに身を引く)
+                _e.vx *= 0.75; _e.vy *= 0.75;
+                if(_e.timer == TELL_FLAME && !_e.fake) sound.play("tell");
+                if(--_e.timer > 0) break;
+                if(_e.fake){
+                    _e.fake = false;
+                    _e.tell = T.feint; _e.timer = randIn(TELL_FEINT_T);
+                    _e.vx = -_e.aimX*_e.speed*0.7; _e.vy = -_e.aimY*_e.speed*0.7;
+                }else this.dashGo(_e,TELL_BURST);
+                break;
+            case T.feint:   //身を引いて間をおき、また構える
+                _e.aimX = _dx/_d; _e.aimY = _dy/_d;
+                _e.vx *= 0.9; _e.vy *= 0.9;
+                if(--_e.timer <= 0) this.dashLock(_e,TELL_LOCK);
+                break;
+            case T.dash:    //連続突進は少し進んだら止まる(最後の1回はそのまま画面の外へ)
+                if(_e.chain > 0 && --_e.timer <= 0){ _e.tell = T.brake; _e.timer = TELL_BRAKE_T; }
+                break;
+            case T.brake:   //止まって振り向き、次の突進を構える(弾かれてよろけているときもここ)
+                _e.aimX = _dx/_d; _e.aimY = _dy/_d;
+                _e.vx *= 0.85; _e.vy *= 0.85;
+                if(--_e.timer <= 0){ _e.chain--; this.dashLock(_e,TELL_CHAIN_LOCK); }
+                break;
+        }
+    },
+    dashLock:function(_e,_range){
+        _e.tell = TELL.lock;
+        _e.timer = randIn(_range) + TELL_FLAME;
+    },
+    dashGo:function(_e,_mul){
+        _e.tell = TELL.dash;
+        _e.timer = TELL_BURST_T;
+        _e.vx = _e.aimX*_e.speed*_mul; _e.vy = _e.aimY*_e.speed*_mul;
+        sound.play("dash");
     },
     //弾き返した突進の1フレーム(updateEnemies から。動かすのはホストとひとり用だけ)
     updateCounter:function(_e){
@@ -690,12 +848,13 @@ var mainScreen = {
             fx.flare(o.x, o.y, 12, "255,255,255", 8);
             fx.sparks(o.x, o.y, 10, JUST_COLOR, 7, 3);
             fx.shake(4);
-            popup(o.x, o.y - o.r - 6, "-" + Math.round(COUNTER_DMG*this.comboMul()), "rgb(30,150,200)");
+            var cd = COUNTER_DMG*(_e.cMul || 1);
+            popup(o.x, o.y - o.r - 6, "-" + Math.round(cd*this.comboMul()), "rgb(30,150,200)");
             sound.play("justHit");
             battleBg.ripple(o.x, o.y, 12, 6, 35, BG_JUST_COLOR);
             //ぶつかった雑魚敵は進む向きへ押しのける
             if(!o.boss){ o.vx += _e.vx*0.5; o.vy += _e.vy*0.5; }
-            this.hitEnemy(o,COUNTER_DMG,"counter");
+            this.hitEnemy(o,cd,"counter");
         }
         //時間切れか画面の端で砕ける(倒した扱い。スコアとパーツを落とす)
         if(--_e.countered <= 0 || _e.x < _e.r || _e.x > CW - _e.r || _e.y < _e.r || _e.y > CH - _e.r){
@@ -706,7 +865,11 @@ var mainScreen = {
         }
     },
     //ジャスト成功：弾をはね返し、突進を弾き返し、燃料を戻し、スローモーション・閃光・音で手ごたえを出す
-    justBlast:function(_near,_rams){
+    //_tier：1 は JUST(見返りが小さい)、2 か省くと PERFECT
+    justBlast:function(_near,_rams,_tier){
+        var good = _tier == 1;
+        this.justPerfect = !good;
+        this.justRefund = good ? JUST_GOOD.refund : JUST_REFUND;
         _rams = _rams || [];
         this.justHits = 0;
         battleBg.ripple(drone.X, drone.Y, 36, 9, 75, BG_JUST_COLOR);
@@ -714,7 +877,7 @@ var mainScreen = {
         for(var i=0; i<_rams.length; i++) this.counter(_rams[i]);
         this.justRamN = _rams.length;
         _near.sort(function(a,b){ return a.d - b.d; });
-        var n = Math.min(JUST_MAX, _near.length);
+        var n = Math.min(good ? JUST_GOOD.max : JUST_MAX, _near.length);
         var marked = [];
         for(var i=0; i<n; i++){
             var s = _near[i].s;
@@ -735,8 +898,8 @@ var mainScreen = {
             }
         }
         this.just++;
-        this.fuel = Math.min(this.maxFuel, this.fuel + JUST_REFUND);
-        this.guard = JUST_GUARD;
+        this.fuel = Math.min(this.maxFuel, this.fuel + this.justRefund);
+        this.guard = good ? JUST_GOOD.guard : JUST_GUARD;
         //ひとり用は画面のすべてをゆっくりにする。協力プレイは画面のずれを防ぐため、敵と弾だけをゆっくりにする
         //(敵と弾を動かしているのはホスト。ゲストのジャストは相方に知らせ、ホストがゆっくりにする。coop.readEvents)
         if(coop.active){
@@ -744,7 +907,7 @@ var mainScreen = {
             coop.onJust(drone.X,drone.Y);
         }else{
             this.slowmo = 0;
-            this.justSlow = JUST_SLOW_TIME;
+            this.justSlow = good ? Math.round(JUST_SLOW_TIME*JUST_GOOD.slow) : JUST_SLOW_TIME;
             this.slowPow = 1;
             this.slowBack = false;
             this.echoFresh = true;
@@ -791,16 +954,16 @@ var mainScreen = {
     },
     drawTouchBlast:function(){
         var b = this.touchBlast;
-        var ok = this.fuel >= BLAST_COST;
+        var ok = this.fuel >= BLAST_COST && !(this.moveNeed > 0);
         ctx.fillStyle = ok ? "rgba(220,40,40,0.85)" : "rgba(160,160,160,0.6)";
         ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
         ctx.strokeStyle = "#fff";
         ctx.lineWidth = 3;
         ctx.beginPath(); ctx.arc(b.x,b.y,b.r - 6,0,Math.PI*2); ctx.stroke();
-        //燃料がたまっていく様子
+        //燃料と、動いてたまるチャージの少ないほう
         ctx.strokeStyle = ok ? "#fff" : "#555";
         ctx.lineWidth = 4;
-        ctx.beginPath(); ctx.arc(b.x,b.y,b.r + 3,-Math.PI/2,-Math.PI/2 + Math.PI*2*Math.min(1,this.fuel/BLAST_COST)); ctx.stroke();
+        ctx.beginPath(); ctx.arc(b.x,b.y,b.r + 3,-Math.PI/2,-Math.PI/2 + Math.PI*2*Math.min(1,this.fuel/BLAST_COST,1 - (this.moveNeed || 0)/BLAST_MOVE)); ctx.stroke();
         ctx.lineWidth = 1;
         ctx.fillStyle = "#fff";
         ctx.textAlign = "center";
@@ -1067,13 +1230,7 @@ var mainScreen = {
                 case "dasher":
                     if(e.countered){
                         //ジャスト・カウンターで弾き返された(動きは移動のあとで updateCounter)
-                    }else if(e.timer > 0){
-                        //狙っている間は止まってドローンの方を向く
-                        e.timer--;
-                        e.aimX = dx/d; e.aimY = dy/d;
-                        e.vx *= 0.8; e.vy *= 0.8;
-                        if(e.timer == 0){ e.vx = e.aimX*e.speed; e.vy = e.aimY*e.speed; sound.play("dash"); }
-                    }
+                    }else this.updateDasher(e,dx,dy,d);
                     break;
                 case "shooter":
                     var mx = e.tx - e.x, my = e.ty - e.y, md = Math.hypot(mx,my);
@@ -1107,11 +1264,11 @@ var mainScreen = {
                 continue;
             }
 
-            //突進した敵は画面の外に出たら消える(倒した扱いにはしない)
-            if(e.type == "dasher" && e.timer <= 0 &&
+            //突進した敵は画面の外に出たら消える(倒した扱いにはしない。連続突進の途中なら止まって戻ってくる)
+            if(e.type == "dasher" && e.tell == TELL.dash &&
                (e.x < -60 || e.x > CW+60 || e.y < -60 || e.y > CH+60)){
-                e.dead = true;
-                continue;
+                if(e.chain > 0){ e.tell = TELL.brake; e.timer = TELL_BRAKE_T; }
+                else{ e.dead = true; continue; }
             }
 
             //体当たり：ドローンは被弾、敵もダメージを受けて弾き返される
@@ -1121,7 +1278,7 @@ var mainScreen = {
                 this.damage();
                 this.hitEnemy(e,1);
                 if(!e.boss){ e.vx = -dx/d*5; e.vy = -dy/d*5; }
-                if(e.type == "dasher") e.timer = 0;
+                if(e.type == "dasher"){ e.tell = TELL.dash; e.chain = 0; }     //ぶつかったら画面の外へ去る
             }
         }
         enemies = enemies.filter(function(e){ return !e.dead; });
@@ -1348,11 +1505,23 @@ var mainScreen = {
             ctx.beginPath(); ctx.arc(drone.X,drone.Y,HIT_CORE*0.75,0,Math.PI*2); ctx.fill();
         }
 
+        //衝撃波のチャージ(動くとたまる)：ドローン君のまわりのオレンジの弧
+        if(this.moveNeed > 0 && !this.down && this.state == "play"){
+            ctx.strokeStyle = "rgba(255,150,50,0.75)";
+            ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.arc(drone.X,drone.Y,26,-Math.PI/2,-Math.PI/2 + Math.PI*2*(1 - this.moveNeed/BLAST_MOVE)); ctx.stroke();
+            ctx.strokeStyle = "rgba(255,150,50,0.2)";
+            ctx.beginPath(); ctx.arc(drone.X,drone.Y,26,0,Math.PI*2); ctx.stroke();
+            ctx.lineWidth = 1;
+        }
         this.drawEffects();
         this.drawKaiIntro();
         ctx.font = "bold 14px sans-serif";
         if(this.fuelOut && this.state != "over" && !this.down){
             this.drawSlowMark("燃料切れ！止まると回復", "210,40,40", 38);
+        }else if(this.moveMsg > 0){
+            ctx.fillStyle = "#c60";
+            ctx.fillText("動いてチャージ！",drone.X,drone.Y - 34);
         }else if(this.noFuelMsg > 0){
             ctx.fillStyle = "#c33";
             ctx.fillText("燃料が足りない！",drone.X,drone.Y - 34);
@@ -1702,7 +1871,7 @@ var mainScreen = {
             ctx.textAlign = "left";
             ctx.font = "13px sans-serif";
             ctx.fillStyle = "#777";
-            ctx.fillText("弾や突進が当たる直前に衝撃波を出すと「ジャスト」：弾と突進を敵へはね返し、燃料が" + JUST_REFUND + "戻る",14,CH - 16);
+            ctx.fillText("弾や突進が当たる直前に衝撃波を出すと「ジャスト」(ぎりぎりほど強い)。衝撃波のあとは動くと次がたまる",14,CH - 16);
         }
         if(touch && this.state != "over") this.drawTouchBlast();
         ctx.fillStyle = "#000";
@@ -2076,12 +2245,14 @@ var mainScreen = {
         ctx.lineJoin = "round";
         ctx.lineWidth = 8;
         ctx.strokeStyle = "rgba(10,30,50,0.9)";
-        ctx.strokeText("JUST!",0,0);
+        var word = this.justPerfect === false ? "JUST" : "PERFECT!";      //少し早いと小さく「JUST」
+        if(this.justPerfect === false) ctx.scale(0.8,0.8);
+        ctx.strokeText(word,0,0);
         ctx.fillStyle = age < 3 ? "#fff" : "rgb(" + JUST_COLOR + ")";
-        ctx.fillText("JUST!",0,0);
+        ctx.fillText(word,0,0);
         //下に小さく、得たもの(燃料・はね返した数・そのうち当たった数。当たるたびに数が増える)
         if(age >= 4){
-            var sub = "燃料+" + JUST_REFUND + (this.justRamN > 0 ? "　カウンター" + (this.justRamN > 1 ? "×" + this.justRamN : "") : "")
+            var sub = "燃料+" + this.justRefund + (this.justRamN > 0 ? "　カウンター" + (this.justRamN > 1 ? "×" + this.justRamN : "") : "")
                     + (this.justN > 0 ? "　反射×" + this.justN : "")
                     + (this.justN + this.justRamN > 0 ? "　命中 " + this.justHits : "");
             ctx.font = "bold 14px sans-serif";

@@ -418,7 +418,7 @@ var coop = {
         var r = Math.round;
         var p1 = 0, p2 = 0;
         switch(_e.type){
-            case "dasher":  p1 = r(Math.atan2(_e.aimY || 0,_e.aimX || 1)*100); p2 = _e.timer; break;
+            case "dasher":  p1 = r(Math.atan2(_e.aimY || 0,_e.aimX || 1)*100); p2 = (_e.tell || 0) + (_e.fake ? 8 : 0) + _e.timer*16; break;   //状態・フェイント・残り時間
             case "shooter": p1 = r((_e.face || 0)*100); p2 = r(_e.timer); break;
             case "spinner": p1 = r((_e.spin || 0)*100); p2 = _e.firing; break;
             case "bomber":  p2 = _e.fuse; break;
@@ -755,7 +755,7 @@ var coop = {
             e.enraged = !!(fl & 8);
             e.countered = (fl & 64) ? 3 : 0;   //弾き返した突進(ジャスト・カウンター。動かすのはホスト)
             switch(type){
-                case "dasher":  e.aimX = Math.cos(p1); e.aimY = Math.sin(p1); e.timer = p2; break;
+                case "dasher":  e.aimX = Math.cos(p1); e.aimY = Math.sin(p1); e.tell = p2 & 7; e.fake = !!(p2 & 8); e.timer = p2 >> 4; break;
                 case "shooter": e.face = p1; e.timer = p2; break;
                 case "spinner": e.spin = p1; e.firing = p2; break;
                 case "bomber":  e.fuse = p2; break;

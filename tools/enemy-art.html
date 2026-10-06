@@ -63,12 +63,13 @@ function act(_e){
     var t = _e.t;
     switch(_e.type){
         case "dasher":
-            //予告(60フレーム)→突進(40フレーム)をくり返す
-            var c = t % 100;
-            _e.timer = c < 60 ? 60 - c : 0;
-            var a = t*0.01;
-            _e.aimX = Math.cos(a); _e.aimY = Math.sin(a);
-            _e.vx = _e.timer > 0 ? 0 : _e.aimX*5; _e.vy = _e.timer > 0 ? 0 : _e.aimY*5;
+            //にじり寄る(40フレーム)→構える(40フレーム。最後に炎が伸びる)→突進(40フレーム)をくり返す
+            var c = t % 120;
+            _e.tell = c < 40 ? TELL.creep : c < 80 ? TELL.lock : TELL.dash;
+            _e.timer = c < 80 ? 80 - c : 0;
+            _e.fake = false;
+            if(_e.tell != TELL.lock){ var a = t*0.01; _e.aimX = Math.cos(a); _e.aimY = Math.sin(a); }
+            _e.vx = _e.tell == TELL.dash ? _e.aimX*5 : 0; _e.vy = _e.tell == TELL.dash ? _e.aimY*5 : 0;
             break;
         case "shooter":
             _e.face = Math.sin(t*0.02)*1.2;

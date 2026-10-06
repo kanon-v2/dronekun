@@ -95,7 +95,8 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 | シナジーの組み合わせ・色 | `equipment.js` の `SYNERGIES`・`SYN_COLOR`(追加の装備のものは `armsExtra.js`) |
 | 敵の種類・弾幕の増え方 | `mainScreen.js` の `ENEMY_TYPES`・`danmaku()`・`HIT_CORE`・`GRAZE_RANGE` |
 | 雑魚敵の見た目・色 | `enemyArt.js` の `enemyArt`・`ENEMY_COLOR`、ボスの動きは `QUEEN_*`・`FORT_*`・`KAI_*` |
-| 衝撃波・ジャスト衝撃波・ジャスト・カウンター | `mainScreen.js` の `BLAST_*`・`JUST_*`・`COUNTER_*`、対戦でのダメージは `versus.js` の `VS_DAMAGE_MUL.blast` |
+| 衝撃波・ジャスト衝撃波・ジャスト・カウンター | `mainScreen.js` の `BLAST_*`・`JUST_*`・`COUNTER_*`(ジャストの段階 PERFECT／JUST は `JUST_PERFECT`・`JUST_RAM_PERFECT`・`JUST_GOOD`、動いてたまるチャージは `BLAST_MOVE`)、対戦でのダメージは `versus.js` の `VS_DAMAGE_MUL.blast` |
+| 突進の予備動作(パリィの試作) | `mainScreen.js` の `TELL_*`・`pickDashStyle()`(構え方の出やすさ)・`JUST_SHOTS`(弾でもジャストにするか)。動きは `updateDasher`、絵は `enemyArt.dasher` |
 | かすりコンボ・かすりバースト(強スキル) | `mainScreen.js` の `GRAZE_*`・`COMBO_*`・`SKILL_*` |
 | レア敵・ボス | `bosses.js` の `RARE_*`・`BOSS_EVERY`・`makeBoss()`・`KAI_PATTERNS` |
 | 同胞・人間の兵器 | `forces.js` の `kinRate()`・`pickHuman()` |
