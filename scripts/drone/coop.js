@@ -12,7 +12,7 @@
 //------------------------------------------------------------------------------
 const COOP_TYPES  = ["bug","dasher","shooter","tank","spinner","bomber","kin","mdrone","heli","panzer","goldbug","carrier","queen","fortress","kai"];
 const COOP_SHOTS  = ["normal","small","big","water","missile","dragon"];
-const COOP_PICKS  = ["part","fuel","capsule"];
+const COOP_PICKS  = ["part","yaruki","capsule"];
 const COOP_MODES  = ["enter","idle","aim","dash","spiral","triple","laserAim","laser"];
 const COOP_STATES = ["start","play","clear","over"];
 const COOP_LIMIT  = 12000;  //1回に送る状態の大きさの上限(バイト)。超えるときはゲストから遠いものから削る
@@ -695,7 +695,7 @@ var coop = {
         }
         if(!M.down && M.state != "over"){
             drone.update();
-            M.updateFuel();
+            M.updateYaruki();
             if(Click == 1 && M.state == "play") M.blast();
         }
         this.guestSync();
@@ -706,7 +706,7 @@ var coop = {
         M.updateEffects();
         if(M.invincible > 0) M.invincible--;
         if(M.guard > 0) M.guard--;
-        if(M.noFuelMsg > 0) M.noFuelMsg--;
+        if(M.yarukiMsg > 0) M.yarukiMsg--;
         if(M.rareMsgTime > 0) M.rareMsgTime--;
         M.tickTimers();
     },

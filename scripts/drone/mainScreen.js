@@ -3,10 +3,16 @@
 //------------------------------------------------------------------------------
 const INVINCIBLE_TIME = 75;     //被弾後の無敵時間
 const SHOT_SPEED      = 10;     //ドローンの弾の速さ
-const FUEL_PER_PX     = 0.025;  //移動1pxあたりの燃料消費
-const FUEL_REGEN      = 0.065;  //毎フレームの燃料回復
-const FUEL_RESUME     = 20;     //燃料切れから復帰する燃料
-const BLAST_COST      = 40;     //衝撃波の燃料消費
+//やる気ゲージ：衝撃波に使う。YARUKI_COST 以上あれば出せる(満タンでなくてよい)
+//動く・かする・ジャストを決める・敵が落とす「やる気」を拾うとたまる。止まっているとたまらない
+const YARUKI_MAX      = 100;    //やる気の上限
+const YARUKI_COST     = 40;     //衝撃波1回で使うやる気
+const YARUKI_PER_PX   = 0.02;   //移動1pxあたりにたまる量
+const YARUKI_STEP     = 30;     //1フレームに数える移動の上限(px。ワープなどで一気にたまらないように)
+const YARUKI_GRAZE    = 1.5;    //かすり1回でたまる量
+const YARUKI_PICKUP   = 40;     //敵が落とす「やる気」1つでたまる量
+const YARUKI_DROP_RATE = 0.12;  //敵が「やる気」を落とす確率
+const MOVE_MIN        = 1.0;    //1フレームにこれより小さい動きは「止まっている」とみなす(狙いのぶれで漂う分を、やる気に数えない)
 const BLAST_RADIUS    = 150;    //衝撃波の届く範囲(弾を消し、敵にダメージを与える範囲)
 const BLAST_GUARD     = 30;     //衝撃波を出してから無敵の時間
 const BLAST_SLOWMO    = 14;     //衝撃波を出した直後、周りがゆっくりになる時間
@@ -14,15 +20,13 @@ const BLAST_DMG       = 4;      //衝撃波が範囲内の敵に与えるダメ�
 const BLAST_PUSH      = 9;      //衝撃波で敵をはじき飛ばす速さ
 const MAGNET_RANGE    = 75;     //アイテムを吸い寄せる距離
 const PICKUP_LIFE     = 600;    //アイテムが消えるまでの時間
-const FUEL_DROP_RATE  = 0.12;   //燃料缶を落とす確率
 const HIT_CORE        = 6;      //敵の弾に対するドローンの当たり判定(中心の小さな点)
 const GRAZE_RANGE     = 33;     //弾がこの距離までかすめると「かすり」
-const GRAZE_FUEL      = 1.5;    //かすり1回で回復する燃料
 const GRAZE_FLASH_TIME = 10;    //かすった瞬間、かすりの範囲の輪が光る時間
 //かすりコンボ：続けてかすると回数が積み上がり、装備・衝撃波の威力が上がる。被弾するか、しばらくかすらないと途切れる
 const COMBO_TIME      = 360;    //最後のかすりから、この時間(フレーム)かすらないと途切れる
 const COMBO_CD        = 12;    //コンボが1つ増えてから、次に増えるまでの待ち時間(フレーム)。弾が濃い場所で一気に増えすぎないように
-                                //(待ちの間のかすりも、燃料・点数・途切れるまでの時間は戻る)。×SKILL_EVERY が SKILL_GUARD より長いこと
+                                //(待ちの間のかすりも、やる気・点数・途切れるまでの時間は戻る)。×SKILL_EVERY が SKILL_GUARD より長いこと
 const COMBO_POWER     = 0.02;   //コンボ1つあたりの威力の上がり方(0.02で+2%)
 const COMBO_MAX       = 25;     //威力が上がるのはこのコンボまで(25で+50%)
 const COMBO_TIERS     = [5, 15, 25];    //段階が上がるコンボ数(届くと演出が出て、色が変わる)
@@ -41,7 +45,7 @@ const SKILL_COLOR     = "255,200,60";
 //ジャスト衝撃波：弾が当たる直前に衝撃波を出すと、周りの弾を敵へはね返し、時間がゆっくりになる
 const JUST_FRAMES     = 12;     //この時間(フレーム)のうちに当たる弾があれば「ジャスト」
 const JUST_MARGIN     = 4;      //当たるかどうかの見込みに足す余裕(px)
-const JUST_REFUND     = 30;     //成功したとき戻る燃料(衝撃波は BLAST_COST 使う)
+const JUST_YARUKI     = 30;     //成功したときたまるやる気(衝撃波は YARUKI_COST 使う)
 const JUST_DMG        = 3;      //はね返した弾1発のダメージ(実弾は1)
 const JUST_PIERCE     = 1;      //はね返した弾が貫く敵の数
 const JUST_MAX        = 24;     //はね返す弾の数の上限(残りは今までどおり消す)
@@ -65,10 +69,7 @@ const JUST_TEXT_TIME  = 90;     //「JUST!」の文字を出しておく時間(�
 //ジャストの段階：ぎりぎりで合わせると PERFECT(見返りは上のとおり)、少し早いと JUST(見返りが小さい)
 const JUST_PERFECT    = 6;      //弾がこの時間(フレーム)のうちに当たるなら PERFECT
 const JUST_RAM_PERFECT = 9;     //突進・人間のドローンの PERFECT
-const JUST_GOOD = { slow:0.45, max:8, refund:10, guard:36 };   //JUST の見返り(ゆっくりの長さの割合・はね返す数・戻る燃料・無敵の時間)
-//衝撃波のチャージ：出したあと、この距離(px)を動くまで次を出せない(その場で待って連発しないように)
-const BLAST_MOVE      = 240;
-const BLAST_MOVE_STEP = 30;     //1フレームに数える移動の上限(ワープなどで一気に溜まらないように)
+const JUST_GOOD = { slow:0.45, max:8, yaruki:10, guard:36 };   //JUST の見返り(ゆっくりの長さの割合・はね返す数・たまるやる気・無敵の時間)
 const JUST_COOP_SLOW  = 40;     //協力プレイで、敵と弾がゆっくりになる時間(ふたりの画面で同じ。ふつうの衝撃波は BLAST_SLOWMO)
 const JUST_COLOR      = "90,220,255";
 //ジャスト・カウンター：体当たりしてくる敵がぶつかる直前に衝撃波を出すとジャストになり、その敵を敵の群れへ弾き返す
@@ -175,7 +176,7 @@ function fireFan(_x,_y,_angle,_n,_spread,_speed,_kind){
 
 var enemies = [];
 var enemyShots = [];    //敵の弾(ドローンの攻撃はequipment.jsのarms)
-var pickups = [];       //パーツ・燃料缶
+var pickups = [];       //パーツ・やる気・報酬カプセル
 var effects = [];       //破片・衝撃波の輪
 var popups = [];        //「+10」などの文字
 
@@ -319,13 +320,11 @@ var mainScreen = {
     spawnTimer:0,
     hp:0,
     maxHp:0,
-    fuel:0,
-    maxFuel:0,
+    yaruki:0,           //やる気(衝撃波に使う)
     invincible:0,
     reload:0,
     shake:0,
-    noFuelMsg:0,
-    fuelOut:false,      //燃料切れで追従が遅くなっているか(燃料が FUEL_RESUME まで戻ると解除)
+    yarukiMsg:0,        //「やる気が足りない！」を出している残り時間
     bonus:0,
     bossWave:false,     //このWAVEにボスが出るか
     rares:0,            //このWAVEに出たレア敵の数
@@ -371,8 +370,7 @@ var mainScreen = {
         if(inputMode == "touch"){ MouseX = drone.X; MouseY = drone.Y; }
         this.maxHp = game.stat("armor");
         this.hp = this.maxHp;
-        this.maxFuel = game.stat("fuel");
-        this.fuel = this.maxFuel;
+        this.yaruki = YARUKI_MAX;
         this.toSpawn = 6 + game.wave*3;
         this.bossWave = isBossWave(game.wave);
         if(this.bossWave){
@@ -409,11 +407,7 @@ var mainScreen = {
         this.invincible = 0;
         this.reload = 30;
         this.shake = 0;
-        this.fuelOut = false;
-        this.noFuelMsg = 0;
-        this.moveNeed = 0;          //次の衝撃波までに動く残りの距離(BLAST_MOVE)
-        this.moveMsg = 0;
-        this.lastDX = drone.X; this.lastDY = drone.Y;
+        this.yarukiMsg = 0;
         this.state = "start";
         this.stateTime = 0;
         battleBg.reset();
@@ -464,7 +458,7 @@ var mainScreen = {
         //ボスの登場の演出中(WARNINGから着地まで)は、ボスと演出以外は動かない
         if(this.state != "over" && !this.cinematic()){
             drone.update();
-            this.updateFuel();
+            this.updateYaruki();
         }
 
         switch(this.state){
@@ -543,7 +537,7 @@ var mainScreen = {
         if(this.invincible > 0) this.invincible--;
         if(this.guard > 0) this.guard--;
         timeStop.tick();    //時止めワープのクールタイム
-        if(this.noFuelMsg > 0) this.noFuelMsg--;
+        if(this.yarukiMsg > 0) this.yarukiMsg--;
         bossDebug.tick();
         if(this.rareMsgTime > 0) this.rareMsgTime--;
         this.tickTimers();
@@ -551,14 +545,6 @@ var mainScreen = {
     //演出の時間を進める(登場の演出中も止めない分)
     tickTimers:function(){
         if(this.shake > 0) this.shake--;
-        if(this.moveMsg > 0) this.moveMsg--;
-        //衝撃波のチャージ：動いた距離だけ進む(協力プレイのゲストもここで進む)
-        var mv = Math.min(BLAST_MOVE_STEP, Math.hypot(drone.X - this.lastDX, drone.Y - this.lastDY));
-        this.lastDX = drone.X; this.lastDY = drone.Y;
-        if(this.moveNeed > 0){
-            this.moveNeed = Math.max(0, this.moveNeed - mv);
-            if(this.moveNeed == 0) fx.ring(drone.X, drone.Y, 30, "255,170,80", 12, 2);    //チャージ完了の合図
-        }
         this.comboStep();
         if(this.justT > 0 && !this.justSlow) this.justT--;
         if(this.bossIntro > 0) this.bossIntro--;
@@ -574,21 +560,12 @@ var mainScreen = {
         return this.bossWave && (this.state == "start" || this.bossFreeze);
     },
 
-    //動くと燃料を使い、止まっていると回復する。空になると追従が遅くなる
-    updateFuel:function(){
-        this.fuel -= drone.Speed * FUEL_PER_PX;
-        this.fuel = Math.min(this.fuel + FUEL_REGEN, this.maxFuel);
-        if(this.fuel <= 0){
-            this.fuel = 0;
-            //燃料切れになった瞬間に音で知らせる
-            if(!this.fuelOut) sound.play("error");
-            this.fuelOut = true;
-            drone.slow = true;
-        }
-        if(drone.slow && this.fuel >= FUEL_RESUME){
-            drone.slow = false;
-            this.fuelOut = false;
-        }
+    //動くとやる気がたまる(止まっていると、たまりも減りもしない。その場で待つより動き回るほうが得をするように)
+    updateYaruki:function(){
+        if(drone.Speed >= MOVE_MIN) this.addYaruki(Math.min(drone.Speed, YARUKI_STEP)*YARUKI_PER_PX);
+    },
+    addYaruki:function(_n){
+        this.yaruki = Math.min(YARUKI_MAX, this.yaruki + _n);
     },
 
     spawn:function(){
@@ -623,20 +600,14 @@ var mainScreen = {
         enemies.push(makeEnemy(pickEnemyType()));
     },
 
-    //クリック：燃料を使って周りの敵をまとめて攻撃し、敵の弾を消す
+    //クリック：やる気を使って周りの敵をまとめて攻撃し、敵の弾を消す
     blast:function(){
-        if(this.moveNeed > 0){
-            this.moveMsg = 60;
+        if(this.yaruki < YARUKI_COST){
+            this.yarukiMsg = 60;
             sound.play("error");
             return;
         }
-        if(this.fuel < BLAST_COST){
-            this.noFuelMsg = 60;
-            sound.play("error");
-            return;
-        }
-        this.fuel -= BLAST_COST;
-        this.moveNeed = BLAST_MOVE;
+        this.yaruki -= YARUKI_COST;
         var just = this.isJust();
         //ピンチを切り抜けられるよう、周りの弾はすぐ消して少しのあいだ無敵に
         //ジャストのときは、消す代わりに近い順に敵へはね返す
@@ -662,7 +633,7 @@ var mainScreen = {
             if(e.dead || e.harmless) continue;
             var dx = e.x - drone.X, dy = e.y - drone.Y, d = Math.hypot(dx,dy) || 1;
             if(d > BLAST_RADIUS + e.r) continue;
-            //構えている突進は身を固めて耐える(早押しは燃料を使うだけ。飛び出したところを合わせる)
+            //構えている突進は身を固めて耐える(早押しはやる気を使うだけ。飛び出したところを合わせる)
             if(this.bracing(e)){
                 if(!coop.isGuest()){ e.vx = dx/d*BLAST_PUSH*0.3; e.vy = dy/d*BLAST_PUSH*0.3; }
                 fx.sparks(e.x, e.y, 6, "200,200,210", 4, 2);
@@ -864,12 +835,12 @@ var mainScreen = {
             this.hitEnemy(_e, Math.max(_e.hp, 1), "counter");
         }
     },
-    //ジャスト成功：弾をはね返し、突進を弾き返し、燃料を戻し、スローモーション・閃光・音で手ごたえを出す
+    //ジャスト成功：弾をはね返し、突進を弾き返し、やる気をため、スローモーション・閃光・音で手ごたえを出す
     //_tier：1 は JUST(見返りが小さい)、2 か省くと PERFECT
     justBlast:function(_near,_rams,_tier){
         var good = _tier == 1;
         this.justPerfect = !good;
-        this.justRefund = good ? JUST_GOOD.refund : JUST_REFUND;
+        this.justYaruki = good ? JUST_GOOD.yaruki : JUST_YARUKI;
         _rams = _rams || [];
         this.justHits = 0;
         battleBg.ripple(drone.X, drone.Y, 36, 9, 75, BG_JUST_COLOR);
@@ -898,7 +869,7 @@ var mainScreen = {
             }
         }
         this.just++;
-        this.fuel = Math.min(this.maxFuel, this.fuel + this.justRefund);
+        this.addYaruki(this.justYaruki);
         this.guard = good ? JUST_GOOD.guard : JUST_GUARD;
         //ひとり用は画面のすべてをゆっくりにする。協力プレイは画面のずれを防ぐため、敵と弾だけをゆっくりにする
         //(敵と弾を動かしているのはホスト。ゲストのジャストは相方に知らせ、ホストがゆっくりにする。coop.readEvents)
@@ -954,16 +925,16 @@ var mainScreen = {
     },
     drawTouchBlast:function(){
         var b = this.touchBlast;
-        var ok = this.fuel >= BLAST_COST && !(this.moveNeed > 0);
+        var ok = this.yaruki >= YARUKI_COST;
         ctx.fillStyle = ok ? "rgba(220,40,40,0.85)" : "rgba(160,160,160,0.6)";
         ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
         ctx.strokeStyle = "#fff";
         ctx.lineWidth = 3;
         ctx.beginPath(); ctx.arc(b.x,b.y,b.r - 6,0,Math.PI*2); ctx.stroke();
-        //燃料と、動いてたまるチャージの少ないほう
+        //やる気がたまっていく様子
         ctx.strokeStyle = ok ? "#fff" : "#555";
         ctx.lineWidth = 4;
-        ctx.beginPath(); ctx.arc(b.x,b.y,b.r + 3,-Math.PI/2,-Math.PI/2 + Math.PI*2*Math.min(1,this.fuel/BLAST_COST,1 - (this.moveNeed || 0)/BLAST_MOVE)); ctx.stroke();
+        ctx.beginPath(); ctx.arc(b.x,b.y,b.r + 3,-Math.PI/2,-Math.PI/2 + Math.PI*2*Math.min(1,this.yaruki/YARUKI_COST)); ctx.stroke();
         ctx.lineWidth = 1;
         ctx.fillStyle = "#fff";
         ctx.textAlign = "center";
@@ -1129,7 +1100,7 @@ var mainScreen = {
         popup(_e.x,_e.y - _e.r,"+" + _e.score);
         killBlast(_e.x,_e.y,_e.r,_e.type == "goldbug" ? "255,215,0" : null);
         for(var i=0; i<_e.parts; i++) this.drop("part",_e.x,_e.y);
-        if(Math.random() < FUEL_DROP_RATE) this.drop("fuel",_e.x,_e.y);
+        if(Math.random() < YARUKI_DROP_RATE) this.drop("yaruki",_e.x,_e.y);
         special.onKill(_e);
         this.revenge(_e);
     },
@@ -1285,7 +1256,7 @@ var mainScreen = {
     },
 
     //敵の弾
-    //当たり判定はドローン中心の小さな点だけ。すれすれでよけると「かすり」で燃料が回復する
+    //当たり判定はドローン中心の小さな点だけ。すれすれでよけると「かすり」でやる気がたまる
     updateShots:function(){
         for(var i=enemyShots.length-1; i>=0; i--){
             var b = enemyShots[i];
@@ -1326,7 +1297,7 @@ var mainScreen = {
                 else{ this.comboCd = COMBO_CD; this.addCombo(b); }
                 battleBg.graze(b.x, b.y, this.comboTier());
                 this.grazeFlash = GRAZE_FLASH_TIME;
-                this.fuel = Math.min(this.maxFuel, this.fuel + GRAZE_FUEL);
+                this.addYaruki(YARUKI_GRAZE);
                 game.score += 2;
                 effects.push({ x:drone.X + (b.x - drone.X)*0.6, y:drone.Y + (b.y - drone.Y)*0.6,
                                vx:(Math.random()-0.5)*2, vy:(Math.random()-0.5)*2,
@@ -1367,9 +1338,9 @@ var mainScreen = {
                     popup(p.x,p.y - 10,"報酬カプセル！ 報酬+1","#b8860b");
                     sound.play("reward");
                 }else{
-                    this.fuel = Math.min(this.maxFuel, this.fuel + 40);
-                    popup(p.x,p.y - 10,"燃料+40","#c33");
-                    sound.play("fuel");
+                    this.addYaruki(YARUKI_PICKUP);
+                    popup(p.x,p.y - 10,"やる気+" + YARUKI_PICKUP,"#e07020");
+                    sound.play("yaruki");
                 }
                 pickups.splice(i,1);
             }else if(p.life <= 0){
@@ -1505,26 +1476,12 @@ var mainScreen = {
             ctx.beginPath(); ctx.arc(drone.X,drone.Y,HIT_CORE*0.75,0,Math.PI*2); ctx.fill();
         }
 
-        //衝撃波のチャージ(動くとたまる)：ドローン君のまわりのオレンジの弧
-        if(this.moveNeed > 0 && !this.down && this.state == "play"){
-            ctx.strokeStyle = "rgba(255,150,50,0.75)";
-            ctx.lineWidth = 3;
-            ctx.beginPath(); ctx.arc(drone.X,drone.Y,26,-Math.PI/2,-Math.PI/2 + Math.PI*2*(1 - this.moveNeed/BLAST_MOVE)); ctx.stroke();
-            ctx.strokeStyle = "rgba(255,150,50,0.2)";
-            ctx.beginPath(); ctx.arc(drone.X,drone.Y,26,0,Math.PI*2); ctx.stroke();
-            ctx.lineWidth = 1;
-        }
         this.drawEffects();
         this.drawKaiIntro();
         ctx.font = "bold 14px sans-serif";
-        if(this.fuelOut && this.state != "over" && !this.down){
-            this.drawSlowMark("燃料切れ！止まると回復", "210,40,40", 38);
-        }else if(this.moveMsg > 0){
+        if(this.yarukiMsg > 0){
             ctx.fillStyle = "#c60";
-            ctx.fillText("動いてチャージ！",drone.X,drone.Y - 34);
-        }else if(this.noFuelMsg > 0){
-            ctx.fillStyle = "#c33";
-            ctx.fillText("燃料が足りない！",drone.X,drone.Y - 34);
+            ctx.fillText("やる気が足りない！",drone.X,drone.Y - 34);
         }
         ctx.restore();
         if(this.slowPow > 0) this.drawSlowFx();
@@ -1770,13 +1727,18 @@ var mainScreen = {
             ctx.fillStyle = "#fff";
             ctx.fillRect(-1.5,-1.5,3,3);
         }else{
-            ctx.fillStyle = "#d33";
-            ctx.fillRect(-6,-8,12,16);
+            //やる気：オレンジの玉が脈打つ
+            var s = 1 + Math.sin(_p.t*0.2)*0.08;
+            ctx.scale(s,s);
+            ctx.fillStyle = "#e07020";
+            ctx.beginPath(); ctx.arc(0,0,8,0,Math.PI*2); ctx.fill();
+            ctx.strokeStyle = "#7a3000";
+            ctx.stroke();
             ctx.fillStyle = "#fff";
             ctx.font = "bold 10px sans-serif";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillText("F",0,1);
+            ctx.fillText("気",0,1);
         }
         ctx.restore();
     },
@@ -1799,21 +1761,20 @@ var mainScreen = {
             }
         }
 
-        //燃料
+        //やる気
         ctx.fillStyle = "#000";
-        ctx.fillText("燃料",14,44);
+        var f0 = ctx.font;
+        ctx.font = f0.replace(/[0-9]+px/,"12px");     //3文字なのでゲージにかからないよう小さめに
+        ctx.fillText("やる気",13,44);
+        ctx.font = f0;
         var bw = 160;
         ctx.strokeStyle = "#000";
         ctx.strokeRect(56.5,37.5,bw,13);
-        ctx.fillStyle = drone.slow ? "#d33" : (this.fuel >= BLAST_COST ? "#555" : "#aaa");
-        ctx.fillRect(58,39,(bw-3)*this.fuel/this.maxFuel,10);
+        ctx.fillStyle = this.yaruki >= YARUKI_COST ? "#e07020" : "#aaa";
+        ctx.fillRect(58,39,(bw-3)*this.yaruki/YARUKI_MAX,10);
         //衝撃波に必要な量の目盛り
         ctx.fillStyle = "#d33";
-        ctx.fillRect(57 + bw*BLAST_COST/this.maxFuel,34,2,20);
-        if(drone.slow){
-            ctx.fillStyle = "#d33";
-            ctx.fillText("燃料切れ！",bw + 66,44);
-        }
+        ctx.fillRect(57 + bw*YARUKI_COST/YARUKI_MAX,34,2,20);
 
         //装備(下のゲージは次の攻撃までの溜まり具合)と発動中のシナジー
         var eq = arms.equipped();
@@ -1861,17 +1822,17 @@ var mainScreen = {
             ctx.font = "13px sans-serif";
             ctx.fillStyle = "#777";
             if(touch){
-                ctx.fillText("画面のどこでもドラッグで移動（指の動いた分だけ）　／　右下のボタン：衝撃波（燃料" + BLAST_COST + "・弾を消して近くの敵を攻撃）",14,CH - 36);
+                ctx.fillText("画面のどこでもドラッグで移動（指の動いた分だけ）　／　右下のボタン：衝撃波（やる気" + YARUKI_COST + "・弾を消して近くの敵を攻撃）",14,CH - 36);
             }else{
-                ctx.fillText("敵には自動で攻撃します　／　クリック：衝撃波（燃料" + BLAST_COST + "・弾を消して近くの敵を攻撃）　／　動くと燃料を使い、止まると回復",14,CH - 36);
+                ctx.fillText("敵には自動で攻撃します　／　クリック：衝撃波（やる気" + YARUKI_COST + "・弾を消して近くの敵を攻撃）　／　動くと、やる気がたまる",14,CH - 36);
             }
-            ctx.fillText("弾は中心の赤い点に当たらなければ大丈夫。すれすれでかすると燃料が回復",14,CH - 16);
+            ctx.fillText("弾は中心の赤い点に当たらなければ大丈夫。すれすれでかすると、やる気がたまる",14,CH - 16);
         }else if(game.wave <= 4 && this.just == 0){
             //操作に慣れたころに、ジャスト衝撃波を教える(一度成功したら消す)
             ctx.textAlign = "left";
             ctx.font = "13px sans-serif";
             ctx.fillStyle = "#777";
-            ctx.fillText("弾や突進が当たる直前に衝撃波を出すと「ジャスト」(ぎりぎりほど強い)。衝撃波のあとは動くと次がたまる",14,CH - 16);
+            ctx.fillText("弾や突進が当たる直前に衝撃波を出すと「ジャスト」(ぎりぎりほど強い)",14,CH - 16);
         }
         if(touch && this.state != "over") this.drawTouchBlast();
         ctx.fillStyle = "#000";
@@ -2250,9 +2211,9 @@ var mainScreen = {
         ctx.strokeText(word,0,0);
         ctx.fillStyle = age < 3 ? "#fff" : "rgb(" + JUST_COLOR + ")";
         ctx.fillText(word,0,0);
-        //下に小さく、得たもの(燃料・はね返した数・そのうち当たった数。当たるたびに数が増える)
+        //下に小さく、得たもの(やる気・はね返した数・そのうち当たった数。当たるたびに数が増える)
         if(age >= 4){
-            var sub = "燃料+" + this.justRefund + (this.justRamN > 0 ? "　カウンター" + (this.justRamN > 1 ? "×" + this.justRamN : "") : "")
+            var sub = "やる気+" + this.justYaruki + (this.justRamN > 0 ? "　カウンター" + (this.justRamN > 1 ? "×" + this.justRamN : "") : "")
                     + (this.justN > 0 ? "　反射×" + this.justN : "")
                     + (this.justN + this.justRamN > 0 ? "　命中 " + this.justHits : "");
             ctx.font = "bold 14px sans-serif";

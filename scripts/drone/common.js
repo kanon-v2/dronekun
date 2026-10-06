@@ -281,8 +281,7 @@ const STATS = [
     { key:"speed",    name:"追従速度", desc:"マウスに追いつく速さ",       values:[30,25,21,17,14] },    //追従の遅れ(小さいほど速い)
     { key:"accuracy", name:"追従精度", desc:"ふらつきの小ささ",           values:[40,32,25,18,12] },    //ふらつきの幅(px)
     { key:"armor",    name:"頑丈さ",   desc:"耐えられる被弾数",           values:[2,3,3,4,5] },         //最大耐久
-    { key:"brain",    name:"賢さ",     desc:"全装備の攻撃頻度と射程",     values:[70,62,55,48,42] },    //攻撃間隔の目安(equipment.jsのarms.rate)
-    { key:"fuel",     name:"燃料",     desc:"燃料タンクの大きさ",         values:[80,95,110,130,150] }
+    { key:"brain",    name:"賢さ",     desc:"全装備の攻撃頻度と射程",     values:[70,62,55,48,42] }     //攻撃間隔の目安(equipment.jsのarms.rate)
 ];
 const MAX_LEVEL = 5;
 const UPGRADE_COST = [0,5,10,16,24];  //レベルL→L+1に必要なパーツ数 = UPGRADE_COST[L]
@@ -292,14 +291,13 @@ const UPGRADE_COST = [0,5,10,16,24];  //レベルL→L+1に必要なパーツ数
 const BUFF_POWER = 0.10;    //強化弾頭1つあたりのダメージの増え方(割合)
 const BUFF_RAPID = 0.08;    //冷却装置1つあたりの攻撃間隔の縮み方(割合)
 const BUFF_PLATE = 1;       //予備装甲1つあたりの最大耐久の増え方
-const BUFF_TANK  = 20;      //増設タンク1つあたりの燃料の増え方
 const BUFF_WARP_CD = 20;    //時止めワープ(timeStop.js)のクールタイム(秒)
+const OLD_TANK_COST = [15,25,35];   //なくなった「増設タンク」の値段(古いセーブで買った分のパーツを返すため)
 //info：説明欄に出す文(省略すると desc と「重ねて買うほど…」)
 const BUFFS = [
     { key:"power", name:"強化弾頭",   desc:"全装備のダメージ+" + BUFF_POWER*100 + "%", cost:[30,45,60] },
     { key:"rapid", name:"冷却装置",   desc:"全装備の攻撃間隔-" + BUFF_RAPID*100 + "%", cost:[30,45,60] },
     { key:"plate", name:"予備装甲",   desc:"耐えられる被弾数+" + BUFF_PLATE,                cost:[40,70] },
-    { key:"tank",  name:"増設タンク", desc:"燃料タンク+" + BUFF_TANK,                       cost:[15,25,35] },
     { key:"warp",  name:"時止めワープ", desc:"被弾を回避・" + BUFF_WARP_CD + "秒に1回",     cost:[90],
       info:["被弾する瞬間に自動で時が止まり、ダメージなしで、クリック・タップした場所へワープ",
             "使うと" + BUFF_WARP_CD + "秒は使えません（WAVEの始めは使える）。協力プレイ・対戦では働きません"] }
@@ -340,7 +338,6 @@ var game = {
     stat:function(_key){
         var bonus = 0;      //ショップのバフの分
         if(_key == "armor") bonus = this.buff("plate")*BUFF_PLATE;
-        if(_key == "fuel")  bonus = this.buff("tank")*BUFF_TANK;
         for(var i=0; i<STATS.length; i++){
             if(STATS[i].key == _key) return STATS[i].values[this.level[_key]-1] + bonus;
         }
@@ -410,6 +407,12 @@ var save = {
             game.seen = d.seen || {};
             game.shop = d.shop || null;     //同じWAVEで読み直しても品ぞろえは変わらない
             game.buffs = d.buffs || {};
+            //なくなった能力「燃料」の強化と、ショップの「増設タンク」に使ったパーツを返す(燃料がなくなる前のセーブ)
+            var refund = 0;
+            for(var lv=1; d.level && lv < (d.level.fuel || 1); lv++) refund += UPGRADE_COST[lv];
+            for(var n=0; n<(game.buffs.tank || 0); n++) refund += OLD_TANK_COST[n] || 0;
+            delete game.buffs.tank;
+            game.parts += refund;
             return true;
         }catch(e){ return false; }
     },
@@ -881,7 +884,7 @@ var drone = {
     preY:CH/2,
     delay:30,       //追従の遅れ(追従速度)
     wobble:0,       //ふらつきの幅(追従精度)
-    slow:false,     //燃料切れで遅くなっているか
+    slow:false,     //遅くなっているか(対戦のEMP・冷凍)
     wt:0,           //ふらつき用の時間
     R:14,           //当たり判定の半径
     calcXY: function(){

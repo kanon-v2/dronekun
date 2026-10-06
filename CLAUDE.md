@@ -95,7 +95,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 | シナジーの組み合わせ・色 | `equipment.js` の `SYNERGIES`・`SYN_COLOR`(追加の装備のものは `armsExtra.js`) |
 | 敵の種類・弾幕の増え方 | `mainScreen.js` の `ENEMY_TYPES`・`danmaku()`・`HIT_CORE`・`GRAZE_RANGE` |
 | 雑魚敵の見た目・色 | `enemyArt.js` の `enemyArt`・`ENEMY_COLOR`、ボスの動きは `QUEEN_*`・`FORT_*`・`KAI_*` |
-| 衝撃波・ジャスト衝撃波・ジャスト・カウンター | `mainScreen.js` の `BLAST_*`・`JUST_*`・`COUNTER_*`(ジャストの段階 PERFECT／JUST は `JUST_PERFECT`・`JUST_RAM_PERFECT`・`JUST_GOOD`、動いてたまるチャージは `BLAST_MOVE`)、対戦でのダメージは `versus.js` の `VS_DAMAGE_MUL.blast` |
+| 衝撃波・ジャスト衝撃波・ジャスト・カウンター | `mainScreen.js` の `BLAST_*`・`JUST_*`・`COUNTER_*`(ジャストの段階 PERFECT／JUST は `JUST_PERFECT`・`JUST_RAM_PERFECT`・`JUST_GOOD`)、衝撃波に使う「やる気」(動く・かする・ジャスト・敵が落とす「やる気」でたまる)は `YARUKI_*`・`MOVE_MIN`、対戦でのダメージは `versus.js` の `VS_DAMAGE_MUL.blast` |
 | 突進の予備動作(パリィの試作) | `mainScreen.js` の `TELL_*`・`pickDashStyle()`(構え方の出やすさ)・`JUST_SHOTS`(弾でもジャストにするか)。動きは `updateDasher`、絵は `enemyArt.dasher` |
 | かすりコンボ・かすりバースト(強スキル) | `mainScreen.js` の `GRAZE_*`・`COMBO_*`・`SKILL_*` |
 | レア敵・ボス | `bosses.js` の `RARE_*`・`BOSS_EVERY`・`makeBoss()`・`KAI_PATTERNS` |
@@ -153,7 +153,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 - ジャスト衝撃波(`mainScreen.justBlast`)：ひとり用は画面のすべてをゆっくりにするが、協力プレイでは画面がずれないよう、出来事(`addEvent` の3)で相方に知らせ、敵と弾を動かしているホストが `slowmo` でゆっくりにする(`JUST_COOP_SLOW`)。
 - ジャスト・カウンター(`mainScreen.counter`)：ぶつかる直前の突進・人間のドローン(`COUNTER_TYPES`)をジャスト衝撃波で弾き返す。ゲストは出来事の4(敵の番号)で知らせ、ホストが弾き返す。弾き返した突進は状態の印(`flags` の64)で届き、ゲストには当たらない。
 - 協力プレイ中は敵の体力2倍(`COOP_HP_MUL`)、強化・装備は各自、セーブしない。
-- 拾ったパーツはふたりとも受け取る。自分が拾った数の合計(`partsGot`)を送り合い、増えた分を足す(`shareParts`)。報酬カプセル・燃料は拾った人だけ。
+- 拾ったパーツはふたりとも受け取る。自分が拾った数の合計(`partsGot`)を送り合い、増えた分を足す(`shareParts`)。報酬カプセル・やる気は拾った人だけ。
 - コンティニュー：強化画面で `save.write` が呼ばれると、協力プレイ中はセーブの代わりに `coop.checkpoint` に覚える。ふたりとも撃墜されたらゲームオーバー画面でコンティニューを押せて、ふたりとも押すと(相方がいなければすぐ)ホストが `checkpoint` に戻して強化画面へ。ゲストはホストが強化画面へ戻ったのを見てついていく(`continueGame`)。
 - 通信は PeerJS(WebRTC)。ブラウザ同士が直接つながり、アカウントは不要。
   - ホストは4文字の部屋コードを作り、`COOP_ID_PREFIX` + コードを PeerJS の ID にして待つ。ゲストはその ID へつなぐ。

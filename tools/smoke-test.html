@@ -76,37 +76,40 @@ try{
         check("戦闘 WAVE" + c[0] + "（" + c[1] + "）を25秒", errors.length == before, "敵" + enemies.length + " 弾" + enemyShots.length);
     });
 
-    // 燃料切れ：遅くなり、ドローン君のまわりに知らせが出て、燃料が戻ると解除
+    // やる気：動くとたまり、止まっていると増えも減りもしない
     setup(2, { gun:1 }, ["gun",null,null], 1);
     page.change(1); mainScreen.update();
-    mainScreen.fuel = 0.01; MouseX = drone.X + 200; MouseY = drone.Y;
-    mainScreen.update(); mainScreen.update(); draw1();
-    var outNow = mainScreen.fuelOut && drone.slow;
-    mainScreen.fuel = FUEL_RESUME + 1; MouseX = drone.X; MouseY = drone.Y;
-    mainScreen.update();
-    check("燃料切れで遅くなり、回復で戻る", outNow && !mainScreen.fuelOut && !drone.slow);
+    MouseX = drone.X; MouseY = drone.Y;
+    for(var i=0; i<120; i++) mainScreen.update();     //ドローン君が止まりきるまで待つ
+    mainScreen.yaruki = 10;
+    for(var i=0; i<30; i++) mainScreen.update();
+    var fStill = mainScreen.yaruki;
+    MouseX = drone.X + 300; MouseY = drone.Y;
+    for(var i=0; i<30; i++) mainScreen.update();
+    draw1();
+    check("やる気は動くとたまり、止まっていると変わらない", fStill == 10 && mainScreen.yaruki > 10 && !drone.slow, "止まって" + fStill + " 動いて" + mainScreen.yaruki.toFixed(2));
 
-    // ジャスト衝撃波：当たる直前の弾があればはね返して燃料が戻る。遠い弾だけならふつうの衝撃波
+    // ジャスト衝撃波：当たる直前の弾があればはね返してやる気がたまる。遠い弾だけならふつうの衝撃波
     setup(2, { gun:1 }, ["gun",null,null], 1);
     page.change(1); MouseIn = true;
     while(mainScreen.state != "play") mainScreen.update();
     enemies = []; enemyShots = [];
-    var je = makeEnemy(pickEnemyType()); je.x = drone.X + 220; je.y = drone.Y; je.vx = je.vy = 0; je.hp = je.maxHp = 999; enemies.push(je);
+    var je = makeEnemy("bug"); je.x = drone.X + 220; je.y = drone.Y; je.vx = je.vy = 0; je.speed = 0; je.hp = je.maxHp = 999; enemies.push(je);
     var je2 = makeEnemy("bug"); je2.x = drone.X + 80; je2.y = drone.Y; je2.hp = je2.maxHp = 999; enemies.push(je2);     //衝撃波の範囲内の敵
     enemyShots.push({ x:drone.X - 200, y:drone.Y, vx:-3, vy:0, r:5 });     //遠ざかる弾
-    mainScreen.maxFuel = 200; mainScreen.fuel = 100; mainScreen.moveNeed = 0; mainScreen.blast();
-    var normalOk = mainScreen.just == 0 && mainScreen.fuel == 100 - BLAST_COST && enemyShots.length == 1 && je2.hp == 999 - BLAST_DMG;
+    mainScreen.yaruki = 100; mainScreen.blast();
+    var normalOk = mainScreen.just == 0 && mainScreen.yaruki == 100 - YARUKI_COST && enemyShots.length == 1 && je2.hp == 999 - BLAST_DMG;
     enemies.splice(enemies.indexOf(je2),1);
     enemyShots = [{ x:drone.X - 30, y:drone.Y + 2, vx:4, vy:0, r:5 }, { x:drone.X + 50, y:drone.Y - 60, vx:0, vy:0, r:5 }];
-    mainScreen.maxFuel = 200; mainScreen.fuel = 100; mainScreen.moveNeed = 0; mainScreen.blast();
-    var justBullets =arms.bullets.filter(function(b){ return b.just; }).length, jf = mainScreen.fuel, jn = mainScreen.just, jh = mainScreen.justSlow + "/" + mainScreen.justT;
-    var justOk = mainScreen.just == 1 && mainScreen.fuel == Math.min(mainScreen.maxFuel, 100 - BLAST_COST + JUST_REFUND) && justBullets == 2 && mainScreen.justSlow > 0 && mainScreen.justT > 0;
+    mainScreen.yaruki = 100; mainScreen.blast();
+    var justBullets =arms.bullets.filter(function(b){ return b.just; }).length, jf = mainScreen.yaruki, jn = mainScreen.just, jh = mainScreen.justSlow + "/" + mainScreen.justT;
+    var justOk = mainScreen.just == 1 && mainScreen.yaruki == Math.min(YARUKI_MAX, 100 - YARUKI_COST + JUST_YARUKI) && justBullets == 2 && mainScreen.justSlow > 0 && mainScreen.justT > 0;
     var st0 = mainScreen.stateTime, jerr = errors.length;
     for(var i=0; i<20; i++){ mainScreen.update(); if(i % 5 == 0) draw1(); }
     var slowOk = mainScreen.stateTime - st0 < 14;      //ゆっくりの間は20コマで14コマより少なく進む
     for(var i=0; i<80; i++){ mainScreen.update(); if(i % 5 == 0) draw1(); }
-    check("衝撃波は周りの敵にダメージ(龍は出ない)。ジャスト衝撃波は直前の弾をはね返して敵に当て、燃料が戻り、ゆっくりになる(遠い弾だけならふつう)", normalOk && justOk && slowOk && mainScreen.justHits > 0 && je.hp < 999 && errors.length == jerr,
-          "ふつう" + normalOk + " ジャスト" + justOk + " 反射" + justBullets + " 敵" + je.hp + " 燃料" + jf + " 回数" + jn + " ゆっくり" + jh + "/" + slowOk + " 命中" + mainScreen.justHits);
+    check("衝撃波は周りの敵にダメージ(龍は出ない)。ジャスト衝撃波は直前の弾をはね返して敵に当て、やる気がたまり、ゆっくりになる(遠い弾だけならふつう)", normalOk && justOk && slowOk && mainScreen.justHits > 0 && je.hp < 999 && errors.length == jerr,
+          "ふつう" + normalOk + " ジャスト" + justOk + " 反射" + justBullets + " 敵" + je.hp + " やる気" + jf + " 回数" + jn + " ゆっくり" + jh + "/" + slowOk + " 命中" + mainScreen.justHits);
 
     // ジャスト・カウンター：ぶつかる直前の突進は、衝撃波で敵の方へ弾き返す(遠ざかる突進・虫はそのまま)
     setup(2, { gun:1 }, ["gun",null,null], 1);
@@ -117,9 +120,9 @@ try{
     var kt = makeEnemy("bug"); kt.x = drone.X - 260; kt.y = drone.Y - 20; kt.vx = kt.vy = 0; kt.speed = 0; kt.hp = kt.maxHp = 999; enemies.push(kt);
     var kd = makeEnemy("dasher"); kd.x = drone.X + 40; kd.y = drone.Y; kd.tell = TELL.dash; kd.vx = -5; kd.vy = 0; enemies.push(kd);    //ぶつかる直前の突進
     var kf = makeEnemy("dasher"); kf.x = drone.X + 400; kf.y = drone.Y + 120; kf.tell = TELL.dash; kf.vx = 5; kf.vy = 0; enemies.push(kf);  //遠ざかる突進
-    mainScreen.maxFuel = 200; mainScreen.fuel = 100; var kj = mainScreen.just;
+    mainScreen.yaruki = 100; var kj = mainScreen.just;
     var kJust = mainScreen.isJust();
-    mainScreen.moveNeed = 0; mainScreen.blast();
+    mainScreen.blast();
     var kStart = mainScreen.just == kj + 1 && mainScreen.justRamN == 1 && kd.countered > 0 && kd.vx < 0 && !kf.countered;
     var kHp = mainScreen.hp, kScore = game.score;
     for(var i=0; i<300 && !kd.dead; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
@@ -136,9 +139,9 @@ try{
     var merr = errors.length;
     var mt = makeEnemy("panzer"); mt.x = drone.X - 260; mt.y = drone.Y - 20; mt.vx = mt.vy = 0; mt.speed = 0; mt.timer = 9999; mt.hp = mt.maxHp = 999; enemies.push(mt);
     var md = makeEnemy("mdrone"); md.x = drone.X + 40; md.y = drone.Y; md.vx = -2.2; md.vy = 0; enemies.push(md);    //ぶつかる直前の人間のドローン
-    mainScreen.maxFuel = 200; mainScreen.fuel = 100;
+    mainScreen.yaruki = 100;
     var mJust = mainScreen.isJust() && mainScreen.justRams[0] == md;
-    mainScreen.moveNeed = 0; mainScreen.blast();
+    mainScreen.blast();
     var mStart = mainScreen.justRamN == 1 && md.countered > 0 && md.vx < 0;
     var mHp = mainScreen.hp;
     for(var i=0; i<300 && !md.dead; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
@@ -146,29 +149,34 @@ try{
           mJust && mStart && md.dead && mt.hp < 999 && mainScreen.hp == mHp && errors.length == merr,
           "判定" + mJust + " 開始" + mStart + " 砕けた" + md.dead + " 敵" + mt.hp + " 体力" + mHp + "→" + mainScreen.hp);
 
-    // ジャストの段階：ぎりぎりは PERFECT、少し早いと JUST(見返りが小さい)。衝撃波のあとは動くまで次が出せない
+    // ジャストの段階：ぎりぎりは PERFECT、少し早いと JUST(見返りが小さい)。やる気が足りないと衝撃波は出ない
     setup(3, {}, [null,null,null], 1);
     page.change(1); MouseIn = true;
     while(mainScreen.state != "play") mainScreen.update();
     enemies = []; MouseX = drone.X; MouseY = drone.Y;
     var perr = errors.length;
-    mainScreen.maxFuel = 200; mainScreen.fuel = 100; mainScreen.moveNeed = 0;
+    mainScreen.yaruki = 100;
     enemyShots = [{ x:drone.X - 20, y:drone.Y, vx:4, vy:0, r:5 }];      //すぐ当たる弾
     mainScreen.blast();
-    var pPerfect = mainScreen.justTier == 2 && mainScreen.justPerfect === true && mainScreen.fuel == 100 - BLAST_COST + JUST_REFUND;
-    var pf = mainScreen.fuel;
-    enemyShots = [{ x:drone.X - 20, y:drone.Y, vx:4, vy:0, r:5 }];
-    mainScreen.blast();     //動いていないので出せない
-    var pBlocked = mainScreen.fuel == pf && mainScreen.moveMsg > 0 && mainScreen.moveNeed == BLAST_MOVE;
-    for(var i=0; i<12; i++){ drone.X += (i < 6 ? 25 : -25); mainScreen.tickTimers(); }   //行って戻る(合わせて300px)
-    var pCharged = mainScreen.moveNeed == 0;
+    var pPerfect = mainScreen.justTier == 2 && mainScreen.justPerfect === true && mainScreen.yaruki == 100 - YARUKI_COST + JUST_YARUKI;
+    var pf = mainScreen.yaruki;
     mainScreen.justSlow = 0;
     enemyShots = [{ x:drone.X - 55, y:drone.Y, vx:4, vy:0, r:5 }];      //少し早い(10フレームほど先に当たる)
     mainScreen.blast();
-    var pGood = mainScreen.justTier == 1 && mainScreen.justPerfect === false && mainScreen.fuel == pf - BLAST_COST + JUST_GOOD.refund && mainScreen.justSlow < JUST_SLOW_TIME;
+    var pGood = mainScreen.justTier == 1 && mainScreen.justPerfect === false && mainScreen.yaruki == pf - YARUKI_COST + JUST_GOOD.yaruki && mainScreen.justSlow < JUST_SLOW_TIME;
     for(var i=0; i<20; i++){ mainScreen.update(); if(i % 5 == 0) draw1(); }
-    check("ジャストの段階(ぎりぎりはPERFECT、少し早いとJUSTで見返りが小さい)と、動くまで次の衝撃波が出せないチャージ", pPerfect && pBlocked && pCharged && pGood && errors.length == perr,
-          "PERFECT" + pPerfect + " 止める" + pBlocked + " チャージ" + pCharged + " JUST" + pGood + " 燃料" + mainScreen.fuel);
+    mainScreen.yaruki = YARUKI_COST - 1; var j0 = mainScreen.just;
+    mainScreen.blast();
+    var pLow = mainScreen.yaruki == YARUKI_COST - 1 && mainScreen.yarukiMsg > 0 && mainScreen.just == j0;
+    draw1();
+    check("ジャストの段階(ぎりぎりはPERFECT、少し早いとJUSTで見返りが小さい)。やる気が足りないと衝撃波は出ない", pPerfect && pGood && pLow && errors.length == perr,
+          "PERFECT" + pPerfect + " JUST" + pGood + " 足りない" + pLow + " やる気" + mainScreen.yaruki);
+
+    // 燃料がなくなる前のセーブ：能力「燃料」の強化と「増設タンク」に使ったパーツが返る
+    var oldSave = JSON.stringify({ wave:4, parts:3, score:0, level:{ speed:1, accuracy:1, armor:1, brain:1, fuel:3 }, buffs:{ tank:2, power:1 } });
+    var restored = save.restore(oldSave);
+    check("古いセーブの「燃料」と「増設タンク」のパーツを返す", restored && game.parts == 3 + UPGRADE_COST[1] + UPGRADE_COST[2] + 15 + 25 && !game.buffs.tank && game.buff("power") == 1 && game.level.fuel === undefined,
+          "パーツ" + game.parts);
 
     // 突進の予備動作(パリィの試作)：にじり寄って構え、炎が伸びて飛び出す。構えている間はジャストにならず、飛び出しに合わせるとジャスト
     setup(6, {}, [null,null,null], 1);
@@ -176,7 +184,6 @@ try{
     while(mainScreen.state != "play") mainScreen.update();
     enemies = []; enemyShots = []; MouseX = drone.X; MouseY = drone.Y;
     var terr = errors.length, tlog = [TELL.aim];
-    mainScreen.maxFuel = 200;
     var td = makeEnemy("dasher"); td.style = "creep"; td.fake = false; td.chain = 0; td.near = 150; td.timer = 1;
     td.x = drone.X + 320; td.y = drone.Y; td.hp = td.maxHp = 999; enemies.push(td);
     for(var i=0; i<400 && td.tell != TELL.lock; i++){ mainScreen.update(); if(tlog[tlog.length-1] != td.tell) tlog.push(td.tell); }
@@ -184,12 +191,12 @@ try{
     var lockNoJust = !mainScreen.isJust();
     //構えている突進が衝撃波に耐える設定なら、早押しは効かない
     var braced = true;
-    if(TELL_BRACE){ mainScreen.fuel = 100; mainScreen.moveNeed = 0; mainScreen.blast(); braced = td.hp == 999 && !td.countered && mainScreen.just == 0; }
+    if(TELL_BRACE){ mainScreen.yaruki = 100; mainScreen.blast(); braced = td.hp == 999 && !td.countered && mainScreen.just == 0; }
     for(var i=0; i<80 && td.tell != TELL.dash; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
     var burstOk = td.tell == TELL.dash && Math.abs(Math.hypot(td.vx,td.vy) - td.speed*TELL_BURST) < 0.5;
     var tJust = false;
     for(var i=0; i<60 && !td.countered; i++){
-        if(mainScreen.isJust()){ tJust = true; mainScreen.fuel = 100; mainScreen.moveNeed = 0; mainScreen.blast(); break; }
+        if(mainScreen.isJust()){ tJust = true; mainScreen.yaruki = 100; mainScreen.blast(); break; }
         mainScreen.update();
     }
     var tCounter = td.countered > 0 && mainScreen.just == 1;
@@ -219,7 +226,7 @@ try{
     var cLog = [];
     for(var n=0; n<TELL_CHAIN; n++){
         cd.x = drone.X + 40; cd.y = drone.Y; cd.tell = TELL.dash; cd.vx = -cd.speed*TELL_BURST; cd.vy = 0;
-        mainScreen.fuel = 100; mainScreen.moveNeed = 0; mainScreen.blast();
+        mainScreen.yaruki = 100; mainScreen.blast();
         cLog.push(cd.countered ? "返" : cd.tell == TELL.brake ? "弾" + cd.parried : "?");
         if(cd.tell == TELL.brake) cd.chain--;   //よろけたあと次の突進へ(残りの回数を減らすのは brake の終わり)
     }
@@ -339,12 +346,12 @@ try{
     // ショップのバフ：買うと能力・ダメージに効き、セーブに残る。買える回数には上限があり、はじめからで消える
     setup(6, { gun:1 }, ["gun",null,null], 3); game.parts = 500;
     page.change(2); upgradeScreen.tab = "shop"; draw1();
-    var armor0 = game.stat("armor"), fuel0 = game.stat("fuel"), rate0 = arms.rate();
+    var armor0 = game.stat("armor"), rate0 = arms.rate();
     var tapBuff = function(k){ var i = BUFFS.map(function(b){ return b.key; }).indexOf(k); MouseX = buffCards[i].X + 10; MouseY = buffCards[i].Y + 10; Click = 1; upgradeScreen.update(); Click = 0; };
-    tapBuff("power"); tapBuff("rapid"); tapBuff("plate"); tapBuff("tank");
+    tapBuff("power"); tapBuff("rapid"); tapBuff("plate");
     for(var i=0; i<5; i++) tapBuff("plate");    //上限より多く押しても増えない
     var spent = 500 - game.parts, maxPlate = BUFFS[2].cost.length;
-    var statsUp = game.stat("armor") == armor0 + BUFF_PLATE*maxPlate && game.stat("fuel") == fuel0 + BUFF_TANK && arms.rate() < rate0;
+    var statsUp = game.stat("armor") == armor0 + BUFF_PLATE*maxPlate && arms.rate() < rate0;
     draw1();
     page.change(1);
     var tgt = { hp:10, maxHp:10, x:100, y:100, r:10 }; mainScreen.hitEnemy(tgt, 1, "gun");
@@ -354,7 +361,7 @@ try{
     var keptBuff = game.buff("power") == 1 && game.buff("plate") == maxPlate;
     game.reset();
     check("ショップのバフ：能力・ダメージに効き、上限まで買え、セーブに残り、はじめからで消える",
-          statsUp && dmgUp && hpUp && keptBuff && game.buff("power") == 0 && spent == 30 + 30 + 40 + 70 + 15,
+          statsUp && dmgUp && hpUp && keptBuff && game.buff("power") == 0 && spent == 30 + 30 + 40 + 70,
           "使ったパーツ" + spent + " " + [statsUp,dmgUp,hpUp,keptBuff].join(""));
 
     // ショップの時止めワープ：被弾の瞬間に自動で時が止まってワープし、BUFF_WARP_CD 秒は使えない(その間はふつうに被弾)
@@ -362,7 +369,7 @@ try{
     page.change(2); upgradeScreen.tab = "shop";
     var hasWarpBefore = timeStop.owned();
     tapBuff("warp"); tapBuff("warp");    //1回だけ買える
-    var warpBought = game.buff("warp") == 1 && game.parts == 500 - BUFFS[4].cost[0];
+    var warpBought = game.buff("warp") == 1 && game.parts == 500 - BUFFS[3].cost[0];
     draw1();
     page.change(1); MouseIn = true;
     for(var fw=0; fw<80; fw++){ MouseX = 600; MouseY = 300; mainScreen.update(); }

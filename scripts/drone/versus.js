@@ -92,8 +92,8 @@ var versus = {
         enemies = []; enemyShots = []; pickups = []; effects = []; popups = [];
         var M = mainScreen;
         M.down = false; M.state = "play";
-        M.maxFuel = game.stat("fuel"); M.fuel = M.maxFuel;
-        M.guard = 0; M.invincible = 0; M.shake = 0; M.tint = null; M.slowmo = 0; M.noFuelMsg = 0; M.fuelOut = false; M.clock = 0;
+        M.yaruki = YARUKI_MAX;
+        M.guard = 0; M.invincible = 0; M.shake = 0; M.tint = null; M.slowmo = 0; M.yarukiMsg = 0; M.clock = 0;
         arms.reset();
         drone.applyStats();
         drone.slow = false;
@@ -156,12 +156,12 @@ var versus = {
     //クリック：円い衝撃波。範囲内にいる相手にダメージ。出した直後は無敵
     blast:function(){
         var M = mainScreen;
-        if(M.fuel < BLAST_COST){
-            M.noFuelMsg = 60;
+        if(M.yaruki < YARUKI_COST){
+            M.yarukiMsg = 60;
             sound.play("error");
             return;
         }
-        M.fuel -= BLAST_COST;
+        M.yaruki -= YARUKI_COST;
         M.guard = BLAST_GUARD;
         //相手の位置は相手の画面で決まるので、はじき飛ばさずダメージだけ
         for(var i=0; i<enemies.length; i++){
@@ -272,7 +272,7 @@ var versus = {
         if(M.tint && --M.tint.life <= 0) M.tint = null;
         if(this.empSlow > 0) this.empSlow--;
         if(this.iceSlow > 0) this.iceSlow--;
-        M.updateFuel();
+        M.updateYaruki();
         if(this.empSlow > 0 || this.iceSlow > 0) drone.slow = true;   //EMP・冷凍を受けている間は遅い
         drone.update();
         if(this.live() && Click == 1) this.blast();
@@ -281,7 +281,7 @@ var versus = {
         M.updateEffects();
         if(M.guard > 0) M.guard--;
         if(M.shake > 0) M.shake--;
-        if(M.noFuelMsg > 0) M.noFuelMsg--;
+        if(M.yarukiMsg > 0) M.yarukiMsg--;
         if(this.hurtCd > 0) this.hurtCd--;
         if(this.t == VS_COUNTDOWN) sound.play("warning");
 
@@ -455,13 +455,12 @@ var versus = {
         }
         M.drawEffects();
         //遅くなっている理由をドローン君のまわりに出す(「あなた」の名札より上)
-        if(this.phase == "fight" && M.fuelOut) M.drawSlowMark("燃料切れ！止まると回復", "210,40,40", 50);
-        else if(this.phase == "fight" && this.empSlow > 0) M.drawSlowMark("EMPで減速中", "134,102,204", 50);
+        if(this.phase == "fight" && this.empSlow > 0) M.drawSlowMark("EMPで減速中", "134,102,204", 50);
         else if(this.phase == "fight" && this.iceSlow > 0) M.drawSlowMark("凍って減速中", "91,184,222", 50);
-        else if(M.noFuelMsg > 0){
+        else if(M.yarukiMsg > 0){
             ctx.font = "bold 14px sans-serif";
             ctx.fillStyle = "#c33";
-            ctx.fillText("燃料が足りない！",drone.X,drone.Y - 48);
+            ctx.fillText("やる気が足りない！",drone.X,drone.Y - 48);
         }
         ctx.restore();
         if(M.tint){
@@ -499,24 +498,24 @@ var versus = {
         ctx.fillStyle = "#000";
     },
 
-    //上部：ふたりの耐久と自分の燃料
+    //上部：ふたりの耐久と自分のやる気
     drawHud:function(){
         var o = this.other, M = mainScreen;
         var rivalHp = o && o.r == this.round && o.hp != null ? o.hp : VS_HP;
         this.bar(16, 14, "あなた", this.hp, "#222", "left");
         this.bar(CW - 16, 14, "相手", rivalHp, "rgb(" + VS_COLOR + ")", "right");
-        //燃料
+        //やる気
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
         ctx.font = "12px sans-serif";
         ctx.fillStyle = "#555";
-        ctx.fillText("燃料", 16, 52);
+        ctx.fillText("やる気", 16, 52);
         ctx.strokeStyle = "#999";
         ctx.strokeRect(50.5, 46.5, 150, 10);
-        ctx.fillStyle = M.fuel >= BLAST_COST ? "#555" : "#bbb";
-        ctx.fillRect(51, 47, 149*M.fuel/M.maxFuel, 9);
+        ctx.fillStyle = M.yaruki >= YARUKI_COST ? "#e07020" : "#bbb";
+        ctx.fillRect(51, 47, 149*M.yaruki/YARUKI_MAX, 9);
         ctx.fillStyle = "#c33";
-        ctx.fillRect(50 + 150*BLAST_COST/M.maxFuel, 44, 2, 15);
+        ctx.fillRect(50 + 150*YARUKI_COST/YARUKI_MAX, 44, 2, 15);
         if(this.empSlow > 0){
             ctx.fillStyle = "#86c";
             ctx.fillText("EMPで減速中", 210, 52);

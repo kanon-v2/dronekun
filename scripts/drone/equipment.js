@@ -12,7 +12,7 @@ const WEAPONS = {
                lvText:["1発ずつ発射","2発同時に発射","3発同時に発射"],
                cd:[120,105,90] },
     laser:   { name:"レーザー", mark:"光", color:"#d33",
-               desc:"一直線上の敵をすべて貫く。燃料を8使う。",
+               desc:"一直線上の敵をすべて貫く。",
                lvText:["威力2","威力3","威力4"],
                cd:[140,120,100] },
     bug:     { name:"虫射出",   mark:"虫", color:"#3a7",
@@ -36,7 +36,7 @@ const WEAPONS = {
                lvText:["水を連射","連射速度アップ","2本同時に水を出す"],
                cd:[7,6,5] },
     emp:     { name:"EMP",      mark:"波", color:"#86c",
-               desc:"周りに電磁波を放ち、敵を遅くする。燃料を10使う。",
+               desc:"周りに電磁波を放ち、敵を遅くする。",
                lvText:["範囲130・威力1","範囲150・威力2","範囲170・威力3"],
                cd:[220,190,160] }
 };
@@ -54,8 +54,6 @@ const WATER_SPEED = 8;
 const WATER_LIFE  = 30;     //水が届く距離はおよそ WATER_SPEED × WATER_LIFE
 const WATER_PUSH  = 0.22;   //当たった敵を押し返す強さ
 const WET_TIME    = 180;    //濡れている時間(3秒)
-const LASER_FUEL = 8;
-const EMP_FUEL = 10;
 
 //------------------------------------------------------------------------------
 //  シナジー(2つを同時に装備すると発動)
@@ -311,10 +309,8 @@ var arms = {
                 return true;
 
             case "laser":
-                if(mainScreen.fuel < LASER_FUEL) return false;
                 var t = this.nearest(drone.X,drone.Y,range*1.5);
                 if(!t) return false;
-                mainScreen.fuel -= LASER_FUEL;
                 var dx = t.x - drone.X, dy = t.y - drone.Y, d = Math.hypot(dx,dy) || 1;
                 dx /= d; dy /= d;
                 var focused = false, steamHits = [];
@@ -387,8 +383,6 @@ var arms = {
             case "emp":
                 var R = [130,150,170][_lv-1];
                 if(!this.nearest(drone.X,drone.Y,R)) return false;
-                if(mainScreen.fuel < EMP_FUEL) return false;
-                mainScreen.fuel -= EMP_FUEL;
                 for(var i=0; i<enemies.length; i++){
                     var e = enemies[i];
                     if(Math.hypot(e.x - drone.X, e.y - drone.Y) < R + e.r){

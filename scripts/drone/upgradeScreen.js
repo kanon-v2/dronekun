@@ -416,7 +416,6 @@ var upgradeScreen = {
         ctx.font = "15px sans-serif";
         var info = [
             "耐久　　" + game.stat("armor"),
-            "燃料　　" + game.stat("fuel"),
             "攻撃速度 ×" + (1/arms.rate()).toFixed(2),
             "射程　　" + game.range() + "px"
         ];

@@ -426,7 +426,7 @@ var sound = {
                 this.partTime = now;
                 this.tone("triangle",this.freq(84 + this.partCombo),0,0.07,0.07,S);
                 break;
-            case "fuel":      this.tone("triangle",660,1320,0.16,0.08,S); break;
+            case "yaruki":    this.tone("triangle",660,1320,0.16,0.08,S); break;
             //かすり：かすりコンボが続くほど音程が上がる(mainScreen.addCombo が grazeCombo に入れる)
             case "graze":
                 var gk = Math.pow(2, Math.min(this.grazeCombo || 0, 24)/24);   //24コンボで1オクターブ上
