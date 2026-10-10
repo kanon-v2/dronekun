@@ -169,10 +169,18 @@ const SPAWN_MIN       = 22;
 //敵の強さの伸び方(WAVEごと)。何周もして強くなる前提なので、伸びは大きめ
 const DANMAKU_GROW    = 0.09;   //弾の速さ・数がWAVE1つごとに増える割合
 const DANMAKU_MAX     = 2.1;    //弾の速さ・数の倍率の上限(難易度の倍率を掛ける前)
-const ENEMY_HP_GROW   = 0.25;   //敵の体力がWAVE1つごとに増える割合
+const ENEMY_HP_GROW   = 0.28;   //敵の体力がWAVE1つごとに増える割合
+//WAVEの雑魚敵の数：(WAVE_ENEMY_BASE + WAVE×WAVE_ENEMY_STEP)×難易度の count + 難易度の extra
+const WAVE_ENEMY_BASE = 6;
+const WAVE_ENEMY_STEP = 3;
 //パーツ：敵が落とす数(ENEMY_TYPES の parts)にこれと難易度の倍率を掛ける(端数は確率で1つ)
 const PARTS_DROP_MUL  = 0.5;
 const PARTS_REWARD    = 5;      //報酬カードの「パーツ」でもらえる数(難易度の倍率を掛ける)
+//このWAVEで出てくる雑魚敵の数(ボスWAVEはこの3分の1)
+function waveEnemies(_wave){
+    var d = difficulty();
+    return Math.round((WAVE_ENEMY_BASE + _wave*WAVE_ENEMY_STEP)*d.count + d.extra);
+}
 //落とすパーツの数(_n：もとの数)
 function partsDrop(_n){
     var x = _n*PARTS_DROP_MUL*difficulty().parts;
@@ -397,7 +405,7 @@ var mainScreen = {
         this.maxHp = game.stat("armor");
         this.hp = this.maxHp;
         this.yaruki = YARUKI_MAX;
-        this.toSpawn = 6 + game.wave*3;
+        this.toSpawn = waveEnemies(game.wave);
         this.bossWave = isBossWave(game.wave);
         if(this.bossWave){
             //ボスWAVEは雑魚が3分の1。最終WAVEはドローン君改との一騎打ち(雑魚なし)

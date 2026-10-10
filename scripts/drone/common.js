@@ -310,19 +310,22 @@ const OLD_LEVEL_MAP = [1,4,7,10,14];
 //  難易度(出撃するときに選ぶ。いつでも4つとも選べる)。難しいほど敵が強く、落とすパーツが多い
 //  hp：敵の体力の倍率　shot：弾の速さ・数の倍率(danmaku に掛ける)　spawn：敵が出てくる間隔の倍率
 //  revenge：倒れた敵の撃ち返しの確率の倍率　parts：落とすパーツの倍率
-//  協力プレイ・対戦はいつもノーマル
+//  count：WAVEの敵の数の倍率　extra：WAVEの敵の数に足す数(序盤から敵を多くするため。mainScreen.js の waveEnemies)
+//  協力プレイはホストが部屋を作る前に選ぶ(coop.diff)。対戦はいつもノーマル
 //------------------------------------------------------------------------------
 const DIFFICULTIES = [
-    { id:"easy",     name:"イージー",     color:"#3a9a4a", hp:0.75, shot:0.85, spawn:1.2,  revenge:0.6, parts:0.6, desc:"敵が弱く、弾も遅い。パーツは少なめ" },
-    { id:"normal",   name:"ノーマル",     color:"#3a6fb0", hp:1,    shot:1,    spawn:1,    revenge:1,   parts:1,   desc:"ふつうの強さ" },
-    { id:"hard",     name:"ハード",       color:"#c07020", hp:1.3,  shot:1.15, spawn:0.85, revenge:1.3, parts:1.6, desc:"敵が硬く、弾が速い。パーツが多い" },
-    { id:"veryhard", name:"ベリーハード", color:"#b02030", hp:1.7,  shot:1.3,  spawn:0.72, revenge:1.6, parts:2.4, desc:"手ごわい。パーツがとても多い" }
+    { id:"easy",     name:"イージー",     color:"#3a9a4a", hp:0.9,  shot:0.85, spawn:1.15, count:1,    extra:0,  revenge:0.6, parts:0.6, desc:"敵が弱く、弾も遅い。パーツは少なめ" },
+    { id:"normal",   name:"ノーマル",     color:"#3a6fb0", hp:1.35, shot:1,    spawn:0.85, count:1.3,  extra:3,  revenge:1,   parts:1,   desc:"ふつうの強さ" },
+    { id:"hard",     name:"ハード",       color:"#c07020", hp:1.8,  shot:1.15, spawn:0.7,  count:1.55, extra:6,  revenge:1.3, parts:1.6, desc:"敵が硬くて多く、弾が速い。パーツが多い" },
+    { id:"veryhard", name:"ベリーハード", color:"#b02030", hp:2.35, shot:1.3,  spawn:0.5,  count:1.8,  extra:14, revenge:1.6, parts:2.4, desc:"最初から敵がとても多い。パーツがとても多い" }
 ];
 const DEFAULT_DIFF = 1;
 //今の難易度
 function difficulty(){
-    var shared = (typeof coop != "undefined" && coop.active) || (typeof versus != "undefined" && versus.active);
-    return DIFFICULTIES[shared ? DEFAULT_DIFF : game.diff] || DIFFICULTIES[DEFAULT_DIFF];
+    var n = game.diff;
+    if(typeof coop != "undefined" && coop.active) n = coop.diff;
+    if(typeof versus != "undefined" && versus.active) n = DEFAULT_DIFF;
+    return DIFFICULTIES[n] || DIFFICULTIES[DEFAULT_DIFF];
 }
 
 //ショップで買えるバフ。そのストーリーの間ずっと効く(セーブに残る。はじめからやり直すと消える)

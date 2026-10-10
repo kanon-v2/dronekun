@@ -169,13 +169,16 @@ var steps = [
         });
     },
     function(next){
-        //もう一度、部屋を作り直してつなぐ
+        //もう一度、部屋を作り直してつなぐ(今度はホストがハードを選ぶ。ゲストも同じ難易度になる)
         cmd("host", { cmd:"leave" });
-        setTimeout(function(){ cmd("host", { cmd:"create" }); }, 300);
+        setTimeout(function(){ cmd("host", { cmd:"create", diff:2 }); }, 300);
         waitFor(function(){ return st.host.waiting && st.host.code; }, 5000, function(){
             cmd("guest", { cmd:"join", code:st.host.code });
             waitFor(function(){ return both(function(s){ return s.active; }); }, 8000, function(ok){
-                check("作り直した部屋に入れる", ok, desc()); next();
+                check("作り直した部屋に入れる", ok, desc());
+                waitFor(function(){ return both(function(s){ return s.diff == "hard"; }); }, 3000, function(ok2){
+                    check("ホストが選んだ難易度にゲストも合わせる", ok2, "host:" + st.host.diff + " guest:" + st.guest.diff); next();
+                });
             });
         });
     },

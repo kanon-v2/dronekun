@@ -47,6 +47,7 @@ var coop = {
     lastRecv:0,
     active:false,       //協力プレイ中か
     mode:"coop",        //"coop"(協力プレイ)か "vs"(対戦。versus.js)。ゲストはホストから届いた値に合わせる
+    diff:DEFAULT_DIFF,  //協力プレイの難易度(DIFFICULTIES の番号)。ホストが部屋を作る前に選び、ゲストはホストから届いた値に合わせる
     role:null,          //"host" か "guest"
     code:null,
     waiting:false,      //ホストが相方を待っている
@@ -379,7 +380,7 @@ var coop = {
 
     //------------------------------------------------------------ ホスト→ゲスト
     buildHost:function(){
-        var s = { q:++this.sendQ, ph:this.phase(), w:game.wave, sc:game.score, ev:this.events, rd:this.localReady ? game.wave : 0, pc:this.partsGot, cn:this.wantContinue ? 1 : 0 };
+        var s = { q:++this.sendQ, ph:this.phase(), w:game.wave, sc:game.score, ev:this.events, rd:this.localReady ? game.wave : 0, pc:this.partsGot, cn:this.wantContinue ? 1 : 0, d:this.diff };
         if(!this.active) return s;
         var M = mainScreen;
         var r = Math.round;
@@ -541,6 +542,7 @@ var coop = {
         this.snapQ = _s.q;
         this.snap = _s;
         this.framesSinceSnap = 0;
+        if(DIFFICULTIES[_s.d]) this.diff = _s.d;   //難易度はホストに合わせる
         if(!this.active){
             //ホストの応答が来たらゲーム開始
             this.startGame();
@@ -564,7 +566,7 @@ var coop = {
         //ホストが次のWAVEへ進んだ(WAVEクリア)
         if(_s.w > game.wave && page.number != 4){
             for(var w=game.wave; w<_s.w; w++){
-                game.gainParts(Math.ceil(w/2));
+                game.gainParts(Math.max(1, Math.round(Math.ceil(w/2)*difficulty().parts)));    //WAVEクリアのパーツ(ホストの mainScreen と同じ)
                 game.pendingReward = (game.pendingReward || 0) + 1;
             }
             game.wave = _s.w;
@@ -966,6 +968,13 @@ var coopJoinButton   = new drawRect(CW/2 , GS*8.6 , GS*12 , GS*2.2);
 var coopCopyButton   = new drawRect(CW/2 - GS*4.2 , GS*11.6 , GS*7.6 , GS*1.5);
 var coopShareButton  = new drawRect(CW/2 + GS*4.2 , GS*11.6 , GS*7.6 , GS*1.5);
 var coopBackButton   = new drawRect(CW/2 , GS*15.3 , GS*8 , GS*1.6);
+//協力プレイの難易度のボタン(部屋を作る前に、ホストになる人が選ぶ)
+const COOP_DIFF_Y   = GS*5.4;   //ボタンの上の端
+const COOP_DIFF_GAP = GS*5.6;   //ボタンの間隔(中心どうし)
+var coopDiffButtons = [];
+for(var i=0; i<DIFFICULTIES.length; i++){
+    coopDiffButtons.push(new drawRect(CW/2 + (i - (DIFFICULTIES.length - 1)/2)*COOP_DIFF_GAP, COOP_DIFF_Y, GS*5.2, GS*1.4));
+}
 
 var coopScreen = {
     enter:function(){
@@ -980,7 +989,17 @@ var coopScreen = {
             return;
         }
         if(!coop.available) return;
+        this.layout();
         if(!coop.inRoom){
+            if(coop.mode == "coop"){
+                for(var i=0; i<coopDiffButtons.length; i++){
+                    if(coopDiffButtons[i].clicked()){
+                        sound.play("click");
+                        coop.diff = i;
+                        return;
+                    }
+                }
+            }
             if(coopCreateButton.clicked()){
                 sound.play("click");
                 coop.createRoom();
@@ -1006,6 +1025,33 @@ var coopScreen = {
                 return;
             }
         }
+    },
+
+    //ボタンの位置：協力プレイは難易度のボタンの分だけ、部屋を作る・入るボタンを下げる
+    layout:function(){
+        var withDiff = coop.mode == "coop";
+        coopCreateButton.Y = withDiff ? GS*7.3 : GS*5.6;
+        coopJoinButton.Y   = withDiff ? GS*10.0 : GS*8.6;
+    },
+    //難易度を選ぶボタン(選んでいるものは難易度の色で塗る)
+    drawDiff:function(){
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = "13px sans-serif";
+        ctx.fillStyle = "#555";
+        ctx.fillText("難易度（部屋を作る人が選びます）",CW/2,COOP_DIFF_Y - GS*0.5);
+        ctx.font = "bold 15px sans-serif";
+        for(var i=0; i<coopDiffButtons.length; i++){
+            var b = coopDiffButtons[i], d = DIFFICULTIES[i];
+            if(coop.diff == i){
+                b.fill(d.color);
+                ctx.fillStyle = "#fff";
+                b.text(d.name);
+            }else{
+                b.button(d.name);
+            }
+        }
+        ctx.fillStyle = "#000";
     },
 
     //画面の題名(協力プレイか対戦か)
@@ -1052,6 +1098,11 @@ var coopScreen = {
                 ctx.font = "15px sans-serif";
                 ctx.fillStyle = "#555";
                 ctx.fillText((coop.mode == "vs" ? "相手" : "相方") + "に部屋コードか招待リンクを送ってください。つながると始まります",CW/2,GS*5.4);
+                if(coop.mode == "coop"){
+                    ctx.font = "bold 15px sans-serif";
+                    ctx.fillStyle = DIFFICULTIES[coop.diff].color;
+                    ctx.fillText("難易度：" + DIFFICULTIES[coop.diff].name,CW/2,GS*4.6);
+                }
                 //部屋コードを大きく
                 ctx.font = "bold 64px monospace";
                 ctx.fillStyle = "#000";
@@ -1076,12 +1127,14 @@ var coopScreen = {
             ctx.fillStyle = "#000";
             ctx.fillText(coop.msg || "つないでいます…",CW/2,GS*7.5);
         }else{
+            this.layout();
+            if(coop.mode == "coop") this.drawDiff();
             ctx.font = "bold 22px serif";
             coopCreateButton.button("部屋を作る（ホスト）");
             coopJoinButton.button("部屋に入る（コードを入力）");
             ctx.font = "13px sans-serif";
             ctx.fillStyle = "#777";
-            ctx.fillText("招待リンクを開いた場合は、自動で部屋に入ります",CW/2,GS*11.6);
+            ctx.fillText("招待リンクを開いた場合は、自動で部屋に入ります",CW/2,coopJoinButton.Y + coopJoinButton.height + GS*0.9);
         }
         //エラーなどのお知らせ
         if(coop.msg && !(coop.inRoom && !coop.waiting)){

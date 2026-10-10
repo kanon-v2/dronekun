@@ -69,7 +69,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 - クリックは `Click == 1` が1コマだけ立つ。ボタンは `drawRect` の `clicked()` / `button()` を使う。
 - タッチ操作(`common.js`)：戦闘中・対戦の戦闘中・タイトル画面は、どこをドラッグしても指の動いた分だけドローン君の目標が動く(`isTouchDrag()`)。タイトル画面では、ボタンの上を触ったときだけタップとして押し(`startScreen.touchUI()`)、押し終わったら目標を元に戻す(`tapAt()`・`endTap()`。目標がボタンへ飛ばないように)。それ以外の画面はタップ。
 - セーブは `localStorage`。この周の進み具合は `dronekun_save`(強化画面に入ったときに自動セーブ。倒れる・クリアすると消える)、周をまたいで残るもの(パーツ・能力・見たストーリー)は `dronekun_meta`(`save.writeMeta`・`loadMeta`。タイトルに入るたびに読み直す)、ハイスコア `dronekun_best`・クリア済み `dronekun_cleared`。前の作り(能力はレベル5まで)のセーブは、はじめて読むときに `dronekun_meta` へ移す(能力は `OLD_LEVEL_MAP` で近い強さのレベルに)。
-- 周回(ローグライト)：タイトルの「出撃」で難易度(`DIFFICULTIES`。イージー・ノーマル・ハード・ベリーハード、いつでも4つとも選べる)を選び、WAVE1から始める(`startScreen.startRun` → `game.newRun`)。倒れてもパーツと能力は残り、装備・ショップのバフ・WAVEは毎回はじめから。2周目からは、出撃の前に強化画面でパーツを使って能力を上げられる。難易度は敵の体力・弾・出てくる間隔・撃ち返し・落とすパーツに掛かる(`difficulty()`。協力プレイ・対戦はいつもノーマル)。`game.reset()` は残るものまで全部消す(テスト用)。
+- 周回(ローグライト)：タイトルの「出撃」で難易度(`DIFFICULTIES`。イージー・ノーマル・ハード・ベリーハード、いつでも4つとも選べる)を選び、WAVE1から始める(`startScreen.startRun` → `game.newRun`)。倒れてもパーツと能力は残り、装備・ショップのバフ・WAVEは毎回はじめから。2周目からは、出撃の前に強化画面でパーツを使って能力を上げられる。難易度は敵の体力・弾・WAVEの敵の数・出てくる間隔・撃ち返し・落とすパーツに掛かる(`difficulty()`。協力プレイはホストが選んだ難易度 `coop.diff`、対戦はいつもノーマル)。`game.reset()` は残るものまで全部消す(テスト用)。
 - 画面右下のボタン(`sound.js` の `sound.buttons`)：BGM・SEはいつでも、「かすり範囲」「当たり判定」「ポインタ」の表示/非表示は戦闘中だけ出す(`when`。かすり範囲・当たり判定は対戦では出さない)。表示の設定は `common.js` の `viewOpt`(`localStorage` の `dronekun_view`。戦闘画面の方眼の設定もここに覚える)。ポインタを隠すのは戦闘中だけ(メニューでは操作に要るので出す)。
 - 全20WAVE(`FINAL_WAVE`)。5WAVEごとにボス。WAVE15(`REVEAL_WAVE`)のボス後に真実が明かされ、WAVE16からは人間の兵器が敵になる。何周もして能力(最大レベル `MAX_LEVEL` = 20)を上げて先へ進む前提なので、WAVEごとの敵の伸びは大きめ(`DANMAKU_*`・`ENEMY_HP_GROW`)、落とすパーツは少なめ(`PARTS_DROP_MUL`)。
 
@@ -93,7 +93,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 | 内容 | 場所 |
 |---|---|
 | 能力の値・強化コスト・ショップのバフ | `common.js` の `MAX_LEVEL`・`STATS`(`statValues(レベル1の値, レベル20の値)` で作る。伸び方は `STAT_CURVE`)・`UPGRADE_COST_*`・`BUFFS`・`BUFF_*`(時止めワープのクールタイムは `BUFF_WARP_CD`、演出の時間は `timeStop.js` の `WARP_*`) |
-| 難易度・パーツの数 | `common.js` の `DIFFICULTIES`、`mainScreen.js` の `PARTS_DROP_MUL`・`PARTS_REWARD`・`DANMAKU_*`・`ENEMY_HP_GROW` |
+| 難易度・パーツの数 | `common.js` の `DIFFICULTIES`(敵の数は `count`・`extra`)、`mainScreen.js` の `PARTS_DROP_MUL`・`PARTS_REWARD`・`DANMAKU_*`・`ENEMY_HP_GROW`・`WAVE_ENEMY_*`(`waveEnemies()`) |
 | 装備の強さ・攻撃間隔・ショップの値段 | `equipment.js` の `WEAPONS`・`SLOT_COST`・`SHOP_*`、水鉄砲は `WATER_*`。追加の装備は `armsExtra.js` の `WEAPONS` と `FIRE_*`・`BURN_*`・`DISC_*`・`WELL_*`・`BARRIER_*`・`SNIPE_*`・`FREEZE_*`・`ICE_*` |
 | シナジーの組み合わせ・色 | `equipment.js` の `SYNERGIES`・`SYN_COLOR`(追加の装備のものは `armsExtra.js`) |
 | 敵の種類・弾幕の増え方 | `mainScreen.js` の `ENEMY_TYPES`・`pickEnemyType()`・`danmaku()`・`HIT_CORE`・`GRAZE_RANGE`、敵が出てくる間隔は `SPAWN_*`、虫がときどき狙って撃つのは `BUG_SHOT_*`、虫・突進が倒れるときの撃ち返しは `REVENGE_*` |
@@ -155,7 +155,8 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 - 敵の状態：減速(EMP)・濡れ(水鉄砲)・燃える(火炎放射)・凍る(冷凍)は、ゲストが付けた回数をダメージと一緒に送り(`guestHit` の `dm`)、ホストが自分の敵に付ける。ホストからは状態の印を送る(`packEnemy` の `flags`)。燃えて削れる分と、凍った敵への2倍はホストだけで数える。ゲストの重力弾の渦は、相方の武器の見た目(`armsSummary`)で届いた位置でホストが敵を吸い寄せる。ゲストのバリアが防いだ弾は、防いだ位置を送り(`br`)、ホストがいちばん近い弾を消す。
 - ジャスト衝撃波(`mainScreen.justBlast`)：ひとり用は画面のすべてをゆっくりにするが、協力プレイでは画面がずれないよう、出来事(`addEvent` の3)で相方に知らせ、敵と弾を動かしているホストが `slowmo` でゆっくりにする(`JUST_COOP_SLOW`)。
 - ジャスト・カウンター(`mainScreen.counter`)：ぶつかる直前の突進・人間のドローン(`COUNTER_TYPES`)をジャスト衝撃波で弾き返す。ゲストは出来事の4(敵の番号)で知らせ、ホストが弾き返す。弾き返した突進は状態の印(`flags` の64)で届き、ゲストには当たらない。
-- 協力プレイ中は敵の体力2倍(`COOP_HP_MUL`)、強化・装備は各自、セーブしない。毎回レベル1・パーツ0から始める(ひとり用の能力は使わない)が、集めたパーツはひとり用の持っているパーツに足す(`game.gainParts` が `coop.unbanked` に数え、強化画面に入ったとき・ゲームオーバー・エンディング・抜けたときに `save.bankParts` で書く)。
+- 協力プレイの難易度は、ホストが部屋を作る前に部屋選びの画面で選ぶ(`coop.diff`)。ホストの状態(`buildHost` の `d`)でゲストに届き、ゲストも同じ難易度になる。
+- 協力プレイ中は敵の体力2倍(`COOP_HP_MUL`。難易度の倍率に掛ける)、強化・装備は各自、セーブしない。毎回レベル1・パーツ0から始める(ひとり用の能力は使わない)が、集めたパーツはひとり用の持っているパーツに足す(`game.gainParts` が `coop.unbanked` に数え、強化画面に入ったとき・ゲームオーバー・エンディング・抜けたときに `save.bankParts` で書く)。
 - 拾ったパーツはふたりとも受け取る。自分が拾った数の合計(`partsGot`)を送り合い、増えた分を足す(`shareParts`)。報酬カプセル・やる気は拾った人だけ。
 - コンティニュー：強化画面で `save.write` が呼ばれると、協力プレイ中はセーブの代わりに `coop.checkpoint` に覚える。ふたりとも撃墜されたらゲームオーバー画面でコンティニューを押せて、ふたりとも押すと(相方がいなければすぐ)ホストが `checkpoint` に戻して強化画面へ。ゲストはホストが強化画面へ戻ったのを見てついていく(`continueGame`)。
 - 通信は PeerJS(WebRTC)。ブラウザ同士が直接つながり、アカウントは不要。

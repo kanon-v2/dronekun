@@ -231,10 +231,13 @@ try{
     check("前の作りのセーブの能力を、近い強さのレベルに直して残す", migrated, JSON.stringify(game.level) + " パーツ" + game.parts);
     // 難易度：難しいほど敵が硬く、弾が速く、落とすパーツが多い
     setup(5, {}, [null,null,null], 1);
-    var dk = DIFFICULTIES.map(function(d, i){ game.diff = i; var e = makeEnemy("tank"); return [e.maxHp, danmaku().toFixed(2), DIFFICULTIES[i].parts]; });
+    var dk = DIFFICULTIES.map(function(d, i){ game.diff = i; var e = makeEnemy("tank"); return [e.maxHp, danmaku().toFixed(2), DIFFICULTIES[i].parts, waveEnemies(1)]; });
     game.diff = DEFAULT_DIFF;
     var diffOk = dk[0][0] < dk[1][0] && dk[1][0] < dk[3][0] && Number(dk[0][1]) < Number(dk[3][1]) && dk[0][2] < dk[3][2];
     check("難易度で敵の体力・弾・パーツが変わる", diffOk, dk.map(function(x){ return x.join("/"); }).join(" "));
+    // ノーマル以上は敵が多く、ベリーハードは WAVE1 から特に多い
+    var countOk = dk[0][3] < dk[1][3] && dk[1][3] < dk[2][3] && dk[3][3] >= dk[0][3]*2.5;
+    check("難易度で WAVE の敵の数が変わる(ベリーハードは序盤から多い)", countOk, "WAVE1の敵 " + dk.map(function(x){ return x[3]; }).join("/"));
 
     // 燃料がなくなる前のセーブ：能力「燃料」の強化と「増設タンク」に使ったパーツが返る
     var oldSave = JSON.stringify({ wave:4, parts:3, score:0, level:{ speed:1, accuracy:1, armor:1, brain:1, fuel:3 }, buffs:{ tank:2, power:1 } });
