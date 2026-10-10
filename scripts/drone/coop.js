@@ -21,6 +21,7 @@ const COOP_ID_PREFIX = "dronekun-room-";  //PeerJSのIDの頭に付ける(ほか
 const COOP_CODE_CHARS = "abcdefghjkmnpqrstuvwxyz23456789";  //部屋コードに使う文字(見間違えやすい i l o 0 1 は使わない)
 const COOP_TIMEOUT = 8000;  //相方から何も届かないまま、この時間(ミリ秒)たったら切断とみなす
 const COOP_NO_REPLY = 12000; //ゲストがつながってから、この時間(ミリ秒)ホストから何も届かなければ入り直しを案内する
+const COOP_KEEPALIVE = 1000;  //画面が止まっている(ウィンドウが隠れて描画が止まった)ときも、この間隔(ミリ秒)で生きている合図を送る
 const P2_COLOR    = "40,130,230";
 
 var enemySeq = 0;           //敵の通し番号(ホストとゲストで同じ敵を指すため)
@@ -58,6 +59,8 @@ var coop = {
     appliedQ:-1,
     framesSinceSnap:0,
     sendQ:0,
+    lastSend:0,         //最後に相方へ送った時刻(生きている合図を送るかどうかに使う)
+    partnerBye:false,   //相方から、自分で抜ける合図が届いた
     step:0,
     //ゲスト→ホスト(合計値)
     dmg:{},             //{e12:[ダメージ×10, EMP回数, 水回数]}
@@ -125,6 +128,7 @@ var coop = {
         });
         peer.on("error",function(e){
             if(self.peer != peer) return;
+            if(self.ignorePeerError(e)) return;
             //同じコードの部屋がもうあった：作り直す
             if(e.type == "unavailable-id"){ self.closePeer(); self.inRoom = false; self.createRoom(); return; }
             self.fail("部屋を作れませんでした（" + self.errorText(e) + "）");
@@ -154,6 +158,7 @@ var coop = {
         });
         peer.on("error",function(e){
             if(self.peer != peer) return;
+            if(self.ignorePeerError(e)) return;
             if(e.type == "peer-unavailable") self.fail("部屋「" + code.toUpperCase() + "」が見つかりませんでした。コードを確かめてください");
             else self.fail("つなげませんでした（" + self.errorText(e) + "）");
         });
@@ -162,6 +167,7 @@ var coop = {
     setupConn:function(_c){
         var self = this;
         this.conn = _c;
+        this.partnerBye = false;
         var onOpen = function(){
             if(self.conn != _c || self.connOpen) return;
             self.connOpen = true;
@@ -174,14 +180,16 @@ var coop = {
         _c.on("data",function(d){
             if(self.conn != _c || !d || typeof d != "object") return;
             onOpen();
-            self.remote = d;
             self.lastRecv = Date.now();
+            if(d.bye){ self.partnerBye = true; return; }    //相方が自分から抜ける合図(このあと通信が閉じる)
+            if(d.ka) return;    //生きている合図(keepAlive)：状態は入っていないので、最後に届いた状態はそのまま
+            self.remote = d;
         });
         _c.on("close",function(){
             if(self.conn != _c) return;
             self.conn = null;
             self.connOpen = false;
-            self.partnerLeft();
+            self.partnerLeft(self.partnerBye ? "bye" : "closed");
         });
         _c.on("error",function(){});
     },
@@ -196,6 +204,13 @@ var coop = {
             case "webrtc": return "通信の確立に失敗しました";
         }
         return (_e && _e.type) || "不明なエラー";
+    },
+
+    //相方とつながった後の PeerJS のエラーは無視する。回線が一瞬途切れると、仲介サーバーとのつながりが切れて
+    //"network" などのエラーが出るが、仲介サーバーは最初のつなぎ合わせにしか使わず、相方との通信はそのまま続く
+    //(本当に切れたときは、通信が閉じる・COOP_TIMEOUT の間なにも届かない、で分かる)
+    ignorePeerError:function(_e){
+        return this.connOpen;
     },
 
     //つなげなかった：部屋を閉じて、部屋選びの画面にメッセージを出す
@@ -254,15 +269,18 @@ var coop = {
         this.struck = {};
     },
 
-    partnerLeft:function(){
+    //相方がいなくなった。_why："bye" は相方が自分から抜けた、"timeout" は相方から COOP_TIMEOUT の間なにも届かなかった、
+    //"closed" は抜ける合図なしに通信が閉じられた(どれで切れたかを文に出す。原因を調べやすいように)
+    partnerLeft:function(_why){
+        var why = _why == "bye" ? "が退出した" : _why == "timeout" ? "からの通信が途絶えた" : "との接続が切れた";
         if(this.mode == "vs"){
             var fighting = versus.active;
             this.leave();
             if(fighting){
-                startScreen.notice = "対戦相手との接続が切れたので、タイトルに戻りました";
+                startScreen.notice = "対戦相手" + why + "ので、タイトルに戻りました";
                 page.change(0);
             }else{
-                this.say("相手との接続が切れました");
+                this.say("相手" + why.replace(/た$/,"ました"));
             }
             return;
         }
@@ -270,20 +288,22 @@ var coop = {
             var playing = this.active;
             this.leave();
             if(playing){
-                startScreen.notice = "ホストとの接続が切れたので、タイトルに戻りました";
+                startScreen.notice = "ホスト" + why + "ので、タイトルに戻りました";
                 page.change(0);
             }else{
-                this.say("ホストとの接続が切れました");
+                this.say("ホスト" + why.replace(/た$/,"ました"));
             }
         }else if(this.active){
             //最後に届いた状態を読み直して相方が残らないよう、届いたものも消す
             this.remote = null;
             this.partner = null;
-            this.say("相方が退出しました。ひとりで続けます");
+            this.say("相方" + why.replace(/た$/,"ました") + "。ひとりで続けます");
         }
     },
 
     leave:function(){
+        //相方に、自分から抜けることを知らせてから閉じる(相方の画面で「退出しました」と出す)
+        if(this.conn && this.connOpen){ try{ this.conn.send({ role:this.role, bye:1 }); }catch(e){} }
         if(this.active) save.bankParts();     //協力プレイで集めたパーツを、ひとり用のパーツに足す(戦闘の途中で抜けても、そこまでの分を)
         this.closePeer();
         this.checkpoint = null; this.wantContinue = false; this.hostCn = false;
@@ -316,7 +336,7 @@ var coop = {
         //始まる前は数えない(ホストが招待リンクを送るため別のアプリに切り替えている間は、ホストの画面が止まっているため)
         if((this.active || versus.active) && this.connOpen && Date.now() - this.lastRecv > COOP_TIMEOUT){
             this.closePeer();
-            this.partnerLeft();
+            this.partnerLeft("timeout");
             return;
         }
 
@@ -371,6 +391,7 @@ var coop = {
             else if(this.role == "host") this.conn.send({ role:"host", m:"coop", s:this.buildHost() });
             else this.conn.send({ role:"guest", g:this.buildGuest() });
         }catch(e){}
+        this.lastSend = Date.now();
     },
 
     phase:function(){
@@ -1147,6 +1168,16 @@ var coopScreen = {
         ctx.fillStyle = "#000";
     }
 };
+
+//生きている合図：ウィンドウが隠れる・ほかのウィンドウに覆われると、ブラウザが描画(requestAnimationFrame)を止め、
+//描画のループの中で送っている状態も止まる。そのままだと相方に切断とみなされるので、タイマーで合図だけ送る
+//(隠れたページのタイマーも1秒に1回は動く。止まっていた側は、戻ればホストの状態に追いつく)
+setInterval(function(){
+    if(!coop.conn || !coop.connOpen || !(coop.active || versus.active)) return;
+    if(Date.now() - coop.lastSend < COOP_KEEPALIVE) return;
+    try{ coop.conn.send({ role:coop.role, ka:1 }); }catch(e){}
+    coop.lastSend = Date.now();
+}, COOP_KEEPALIVE/2);
 
 //招待リンク(…#join=コード)で開かれたら、少し待ってから自動で部屋に入る
 (function(){

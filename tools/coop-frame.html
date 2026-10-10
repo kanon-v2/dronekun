@@ -113,12 +113,13 @@ mainScreen.counter = function(_e){ if(coop.role == "host" && inEvents && !_e.cou
 //対戦で与えたダメージの内訳(装備ごと。バランス調整用)
 var vsSrc = {}, vsHit0 = versus.hit;
 versus.hit = function(_e,_d,_src){ if(versus.live()) vsSrc[_src] = Math.round(((vsSrc[_src] || 0) + _d*(VS_DAMAGE_MUL[_src] || 1))*10)/10; return vsHit0.apply(this, arguments); };
-var loop = setInterval(function(){
+function tick(){
     try{
         for(var i=0; i<4; i++){ if(auto) autoPlay(); step(); }
         if(++ticks % 4 == 0){ ctx.fillStyle = "white"; ctx.fillRect(0,0,CW,CH); screens[page.number].draw(); }
     }catch(e){ errors.push(String(e)); }
-}, 16);
+}
+var loop = setInterval(tick, 16);
 
 //親ページへ状態を知らせる
 setInterval(function(){
@@ -152,6 +153,10 @@ window.addEventListener("message", function(ev){
     if(m.cmd == "auto"){ auto = true; unarmed = !!m.unarmed; }
     if(m.cmd == "leave"){ coop.leave(); page.change(0); }
     if(m.cmd == "stop"){ clearInterval(loop); auto = false; }
+    //ウィンドウが隠れて描画が止まったときの代わり：ms ミリ秒のあいだ更新(と状態の送信)を止める
+    if(m.cmd == "pause"){ clearInterval(loop); setTimeout(function(){ loop = setInterval(tick, 16); }, m.ms); }
+    //回線が一瞬途切れて、仲介サーバーとのつながりが切れたときの代わり：PeerJS と同じ "network" のエラーを出す
+    if(m.cmd == "netError" && coop.peer) coop.peer._emit("error", { type:"network", message:"Lost connection to server." });
 });
 </script>
 </body></html>

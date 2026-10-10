@@ -61,6 +61,7 @@ function vsDesc(){ return ["host","guest"].map(function(k){ var v = st[k] && st[
 function both(f){ return f(st.host) && f(st.guest); }
 function desc(){ return ["host","guest"].map(function(k){ var s = st[k]; return s ? k + ":p" + s.page + " w" + s.wave + (s.active ? " active" : "") + (s.msg ? " 「" + s.msg + "」" : "") : k + ":-"; }).join(" / "); }
 
+var COOP_PAUSE_TEST = 12000;   //ゲストの画面を止める時間(ミリ秒。COOP_TIMEOUT より長く)
 var steps = [
     function(next){
         waitFor(function(){ return true; }, 5000, function(){ cmd("host", { cmd:"create" }); next(); });
@@ -95,6 +96,25 @@ var steps = [
         waitFor(function(){ return st.guest.partner && st.host.partner && st.guest.enemies > 0; }, 10000, function(ok){
             check("戦闘中に相手と敵が見える", ok, "ゲスト側の敵" + st.guest.enemies); next();
         });
+    },
+    function(next){
+        //ゲストのウィンドウが隠れて描画が止まっても(状態を送れなくても)、生きている合図で切断とみなされない
+        cmd("guest", { cmd:"pause", ms:COOP_PAUSE_TEST });
+        setTimeout(function(){
+            waitFor(function(){ return st.guest.page == 1; }, 3000, function(){
+                var ok = st.host.partner && st.host.active && st.guest.active && st.host.msg.indexOf("途絶え") < 0;
+                check("ゲストの画面が" + COOP_PAUSE_TEST/1000 + "秒止まっても切れない", ok, desc() + " 「" + st.host.msg + "」"); next();
+            });
+        }, COOP_PAUSE_TEST + 500);
+    },
+    function(next){
+        //回線が一瞬途切れて仲介サーバーとのつながりが切れても(PeerJS の "network" エラー)、相方との通信は閉じない
+        cmd("host", { cmd:"netError" }); cmd("guest", { cmd:"netError" });
+        setTimeout(function(){
+            var ok = st.host.partner && st.guest.partner && st.host.active && st.guest.active && st.host.inRoom && st.guest.inRoom;
+            check("仲介サーバーとのつながりが切れても、相方との通信は続く", ok, desc());
+            next();
+        }, 3000);
     },
     function(next){
         waitFor(function(){ return both(function(s){ return s.wave >= 2; }); }, 150000, function(ok, ms){

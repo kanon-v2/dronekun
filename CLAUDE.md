@@ -164,6 +164,9 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
   - 招待リンクは `…#join=コード`。開くと自動で部屋に入る(`coop.js` の末尾)。
   - つなぎ方は `reliable:false`(再送しない)。状態は毎回まるごと送り、ゲストからは合計値を送るので、途中が抜けても困らない。
   - 始まった後に `COOP_TIMEOUT` の間なにも届かなければ切断とみなす。始まる前は数えない(ホストが招待リンクを送るために別のアプリへ切り替えている間は、画面が止まるため)。
+  - 状態は描画のループ(`requestAnimationFrame`)の中で送るので、ウィンドウが隠れる・覆われて描画が止まると送れない。そのため、タイマーで `COOP_KEEPALIVE` ごとに生きている合図(`ka`)だけ送り、切断とみなされないようにしている(`coop-test.html` で、ゲストの更新を12秒止めて確かめる)。
+  - 切れたときの文は、理由で分ける(`partnerLeft`)：相方が自分から抜けた(抜ける前に `bye` を送る)「退出しました」、なにも届かない「通信が途絶えました」、合図なしに閉じた「接続が切れました」。
+  - 相方とつながった後は、PeerJS のエラー(`peer.on("error")`)で部屋を閉じない(`ignorePeerError`)。回線が一瞬途切れると、仲介サーバーとのつながりが切れて `network` エラーが出るが、相方との通信は続いているため。以前はこれで切れていた(`coop-test.html` の `netError` で確かめる)。
   - ゲストが抜けたら、ホストはひとりで続ける。ホストが抜けたら、ゲストはタイトルへ戻る。始まった後の途中参加はできない。
 - 通信部分(`createRoom`・`joinRoom`・`setupConn`・`update` の相方の読み取り・`send`)と、状態の作り方(`buildHost`/`buildGuest`/`readHost`/`readGuest`/`guestSync`)は分けてある。
 - 本物の通信の確認は、ヘッドレスEdgeを `--remote-debugging-port` で起動し、DevTools プロトコルで2つのウィンドウを操作して行った。ヘッドレスでは、裏に回ったタブの `requestAnimationFrame` が止まる。2つ目は `Target.createTarget`(`newWindow:true`)で別ウィンドウとして開く。
