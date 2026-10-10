@@ -67,6 +67,7 @@ var coop = {
     partnerParts:0,     //相方が拾ったパーツのうち、自分にも足した数
     //コンティニュー(ふたりとも撃墜されたら、そのWAVEの強化画面からやり直す)
     checkpoint:null,    //強化画面で最後に覚えた進行状況(save.write が入れる)
+    unbanked:0,         //協力プレイで集めて、まだひとり用のパーツに足していない数(save.bankParts)
     wantContinue:false, //自分がコンティニューを押した
     hostCn:false,       //ゲスト：ホストがコンティニューを押した
     //ホスト側で反映済みの値
@@ -198,6 +199,7 @@ var coop = {
 
     //つなげなかった：部屋を閉じて、部屋選びの画面にメッセージを出す
     fail:function(_m){
+        if(this.active) save.bankParts();     //協力プレイで集めたパーツを、ひとり用のパーツに足す(戦闘の途中で抜けても、そこまでの分を)
         this.closePeer();
         this.inRoom = false;
         this.waiting = false;
@@ -224,6 +226,10 @@ var coop = {
             versus.start(this.role == "host");
             return;
         }
+        //前の作りのセーブが残っていれば、先に周をまたいで残るデータへ移しておく(協力プレイで集めたパーツを足す先)
+        game.reset();
+        save.loadMeta();
+        this.unbanked = 0;
         this.active = true;
         this.waiting = false;
         game.reset();
@@ -277,6 +283,7 @@ var coop = {
     },
 
     leave:function(){
+        if(this.active) save.bankParts();     //協力プレイで集めたパーツを、ひとり用のパーツに足す(戦闘の途中で抜けても、そこまでの分を)
         this.closePeer();
         this.checkpoint = null; this.wantContinue = false; this.hostCn = false;
         this.partsGot = 0; this.partnerParts = 0;

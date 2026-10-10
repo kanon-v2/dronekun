@@ -19,6 +19,7 @@ var gameoverScreen = {
         //ひとり用：この周は終わり。集めたパーツと能力は残して、次の周はWAVE1から(協力プレイはふたりともコンティニューを押すと、覚えておいた状態から)
         this.coopMode = coop.active;
         coop.wantContinue = false;
+        if(this.coopMode) save.bankParts();     //協力プレイで集めたパーツは、ひとり用のパーツに足す
         if(!this.coopMode){
             save.writeMeta();
             save.clear();

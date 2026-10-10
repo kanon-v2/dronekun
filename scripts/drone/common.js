@@ -374,6 +374,7 @@ var game = {
     gainParts:function(_n){
         this.parts += _n;
         this.runParts += _n;
+        if(typeof coop != "undefined" && coop.active) coop.unbanked += _n;    //協力プレイで集めた分は、ひとり用のパーツに足す(save.bankParts)
     },
     runParts:0,             //この周で集めたパーツ
     newRun:function(_diff){
@@ -430,12 +431,23 @@ var save = {
         //協力プレイはその場かぎり(ひとり用のセーブは上書きしない)。コンティニュー用にメモリにだけ覚えておく
         if(typeof coop != "undefined" && coop.active){
             coop.checkpoint = this.data();
+            this.bankParts();
             return;
         }
         try{
             localStorage.setItem(this.KEY, this.data());
         }catch(e){}
         this.writeMeta();
+    },
+    //協力プレイで集めたパーツを、ひとり用の持っているパーツに足して書く(協力プレイはレベル1・パーツ0から始め、能力は残さない)
+    bankParts:function(){
+        if(typeof coop == "undefined" || !coop.unbanked) return;
+        var m = null;
+        try{ m = JSON.parse(localStorage.getItem(this.META_KEY)); }catch(e){}
+        m = m || { v:2, parts:0, level:{}, seen:{} };
+        m.parts = (Number(m.parts) || 0) + coop.unbanked;
+        coop.unbanked = 0;
+        try{ localStorage.setItem(this.META_KEY, JSON.stringify(m)); }catch(e){}
     },
     //周をまたいで残るものだけを書く(倒れたとき・クリアしたとき。この周で拾ったパーツも残す)
     writeMeta:function(){
