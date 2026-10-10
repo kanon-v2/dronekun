@@ -249,7 +249,7 @@ try{
     setup(6, {}, [null,null,null], 1);
     page.change(1); MouseIn = true;
     while(mainScreen.state != "play") mainScreen.update();
-    enemies = []; enemyShots = []; MouseX = drone.X; MouseY = drone.Y;
+    enemies = []; enemyShots = []; mainScreen.toSpawn = 0; MouseX = drone.X; MouseY = drone.Y;     //試している間に新しい敵が出て邪魔しないように
     var terr = errors.length, tlog = [TELL.aim];
     var td = makeEnemy("dasher"); td.style = "creep"; td.fake = false; td.chain = 0; td.near = 150; td.timer = 1;
     td.x = drone.X + 320; td.y = drone.Y; td.hp = td.maxHp = 999; enemies.push(td);
@@ -275,7 +275,7 @@ try{
     setup(6, {}, [null,null,null], 1);     //前のジャストのゆっくりを残さない
     page.change(1);
     while(mainScreen.state != "play") mainScreen.update();
-    enemies = []; enemyShots = []; MouseX = drone.X; MouseY = drone.Y;
+    enemies = []; enemyShots = []; mainScreen.toSpawn = 0; MouseX = drone.X; MouseY = drone.Y;
     var fd = makeEnemy("dasher"); fd.style = "feint"; fd.fake = true; fd.chain = 0; fd.tell = TELL.lock; fd.timer = 3;
     fd.x = drone.X + 150; fd.y = drone.Y; fd.aimX = -1; fd.aimY = 0; fd.hp = fd.maxHp = 999; enemies.push(fd);
     for(var i=0; i<5; i++) mainScreen.update();
