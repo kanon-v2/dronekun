@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<!--
+    難易度の測定(ひとり用の序盤〜中盤)
+    ・WAVEごとに「動かない」と「よけて動く(smoke-test.html の bot と同じ)」で何回か戦い、被弾の回数とクリアまでの秒数を表にする
+    ・被弾しても倒れない(数えるだけ)。#gear=std で、デバッグのボス戦の「標準」の装備(弾・ミサイル・テスラ。そのWAVEまで遊んだだいたいの強さ)
+      省くと「弾」だけ(レベルは WAVE に合わせて少し上げる)・能力はレベル1
+    ・#runs=5 で1つあたりの回数、#waves=1-6 で測る WAVE を選べる
+    ・ヘッドレスで: msedge --headless=new --disable-gpu --allow-file-access-from-files --virtual-time-budget=600000 --dump-dom tools/difficulty.html
+-->
+<html lang="ja"><head><meta charset="UTF-8"><base href="../"><title>難易度の測定</title>
+<style>body{ font-family:sans-serif; } #Canvas{ display:none; }</style></head>
+<body><div id="Bigbox"><canvas id="Canvas"></canvas></div><pre id="result">running...</pre>
+<script src="scripts/drone/common.js"></script>
+<script src="scripts/drone/sound.js"></script>
+<script src="scripts/drone/equipment.js"></script>
+<script src="scripts/drone/armsExtra.js"></script>
+<script src="scripts/drone/bosses.js"></script>
+<script src="scripts/drone/startScreen.js"></script>
+<script src="scripts/drone/mainScreen.js"></script>
+<script src="scripts/drone/forces.js"></script>
+<script src="scripts/drone/enemyArt.js"></script>
+<script src="scripts/drone/upgradeScreen.js"></script>
+<script src="scripts/drone/gameoverScreen.js"></script>
+<script src="scripts/drone/story.js"></script>
+<script src="scripts/drone/battleBg.js"></script>
+<script src="scripts/drone/bossDebug.js"></script>
+<script src="scripts/drone/timeStop.js"></script>
+<script src="lib/peerjs.min.js"></script>
+<script src="scripts/drone/coop.js"></script>
+<script src="scripts/drone/versus.js"></script>
+<script src="scripts/drone/draw.js"></script>
+<script>
+var hashArg = function(_k, _d){ var m = location.hash.match(new RegExp(_k + "=([^&]+)")); return m ? m[1] : _d; };
+var RUNS = Number(hashArg("runs", 5));
+var W = hashArg("waves", "1-6").split("-").map(Number);
+var MAX_FRAMES = 60*150;    //1回の上限(150秒)
+var GEAR = hashArg("gear", "gun");
+var DIFF = Number(hashArg("diff", DEFAULT_DIFF));     //難易度の番号(0:イージー 1:ノーマル 2:ハード 3:ベリーハード)
+
+var frames = 0;
+//よけながら円を描いて飛ぶ(smoke-test.html の bot と同じ)
+function bot(){
+    frames++; MouseIn = true;
+    MouseX = 480 + 300*Math.cos(frames/60); MouseY = 270 + 170*Math.sin(frames/45);
+    var tx = 0, ty = 0, list = enemyShots.concat(enemies.filter(function(e){ return !e.harmless; }));
+    for(var i=0; i<list.length; i++){ var o = list[i], dx = drone.X - o.x, dy = drone.Y - o.y, d = Math.hypot(dx,dy) || 1, R = (o.r || 5) + 90; if(d < R){ tx += dx/d*(R-d); ty += dy/d*(R-d); } }
+    if(tx || ty){ MouseX = drone.X + tx*2; MouseY = drone.Y + ty*2; }
+    MouseX = Math.max(30, Math.min(CW-30, MouseX)); MouseY = Math.max(30, Math.min(CH-30, MouseY));
+}
+var hits = 0;
+mainScreen.damage = function(){ hits++; this.invincible = INVINCIBLE_TIME; this.breakCombo(true); };
+sound.play = function(){};
+
+function run(_w, _move){
+    save.clear(); game.reset(); game.wave = _w;
+    if(GEAR == "std"){ bossDebug.gear = 1; bossDebug.prepare(_w); }
+    else{ game.owned = { gun:Math.min(3, Math.ceil(_w/2)) }; game.slots = ["gun",null,null]; game.slotCount = 3; }
+    game.seen = { prologue:true, s3:true, s5:true, s8:true, s10:true, s12:true, reveal:false, s17:true, s19:true };
+    game.diff = DIFF; game.runParts = 0;
+    page.change(1); MouseIn = true;
+    var sx = drone.X, sy = drone.Y;
+    hits = 0; frames = 0;
+    var f = 0;
+    while(page.number == 1 && mainScreen.state != "clear" && f < MAX_FRAMES){
+        if(_move) bot(); else { MouseX = sx; MouseY = sy; }
+        mainScreen.update(); f++;
+    }
+    return { hits:hits, sec:f/60, clear:mainScreen.state == "clear", parts:game.runParts };
+}
+var out = ["難易度：" + DIFFICULTIES[DIFF].name + "　装備：" + (GEAR == "std" ? "標準(弾・ミサイル・テスラ)" : "弾だけ") + "　" + RUNS + "回の平均", "WAVE  動かない(被弾/秒/パーツ)      よけて動く(被弾/秒/パーツ)"];
+for(var w=W[0]; w<=W[1]; w++){
+    var r = [false,true].map(function(m){
+        var h = 0, s = 0, c = 0, p = 0;
+        for(var i=0; i<RUNS; i++){ var x = run(w, m); h += x.hits; s += x.sec; p += x.parts; if(x.clear) c++; }
+        return (h/RUNS).toFixed(1) + "回 / " + (s/RUNS).toFixed(0) + "秒 / パーツ" + (p/RUNS).toFixed(0) + (c < RUNS ? "(終わらず" + (RUNS - c) + ")" : "");
+    });
+    out.push("  " + w + "   " + r[0] + "        " + r[1]);
+}
+document.getElementById("result").textContent = out.join("\n");
+</script>
+</body></html>

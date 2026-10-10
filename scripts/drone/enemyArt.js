@@ -33,7 +33,7 @@ var ENEMY_COLOR = {
 const QUEEN_FLAP    = 0.75;     //羽ばたきの速さ(ラジアン/フレーム)
 const QUEEN_BREATH  = 0.055;    //息づかい(体のゆれ)の速さ(ラジアン/フレーム)
 const QUEEN_RAGE    = 1.45;     //怒ったときに動きが速くなる倍率
-const QUEEN_AIM_LEN = 55;       //突進の構えの長さ(フレーム。bosses.js の aim と同じ)
+const QUEEN_CROUCH  = 0.5;      //構えている間の縮こまり(0～1)。本物の突進の合図(bosses.js の QUEEN_CUE)で1まで強まる
 
 //移動要塞(ボス)：装甲の板・コア・主砲・左右の砲台・噴射口を別々に動かす
 const FORT_BREATH   = 0.045;    //装甲の板がふくらむ波の速さ(ラジアン/フレーム)
@@ -129,13 +129,15 @@ var enemyArt = {
         var tempo = _e.enraged ? QUEEN_RAGE : 1;
         var t = _e.t*tempo;
         var b = t*QUEEN_BREATH;     //息づかいの位相(部位ごとにここからずらす)
-        //突進の構え：だんだん縮こまって震える(0～1)
-        var charge = _e.mode == "aim" ? 1 - Math.max(0,_e.count)/QUEEN_AIM_LEN : 0;
+        //突進の構え：縮こまって震える(0～1)。本物の突進だけ、最後の合図(cue)でさらに強まる(フェイントは強まらない)
+        var cue = _e.mode == "aim" && !_e.fake && _e.count <= QUEEN_CUE ? 1 - Math.max(0,_e.count)/QUEEN_CUE : 0;
+        var charge = _e.mode == "aim" ? QUEEN_CROUCH + (1 - QUEEN_CROUCH)*cue : 0;
+        var dizzy = _e.mode == "stagger" ? 1 : 0;     //弾かれてよろけている
         var dash = _e.mode == "dash";
         //動く向きへ体を傾ける(突進中は大きく)
         var lean = Math.max(-0.32, Math.min(0.32, (_e.vx || 0)*0.04));
         //被弾：部位ごとにばらばらに揺れる
-        var hit = _body ? 1 : 0;
+        var hit = _body || dizzy ? 1 : 0;
         var jit = function(_i){ return hit*Math.sin(_e.t*2.7 + _i*1.9)*2.2 + charge*Math.sin(_e.t*1.9 + _i*2.3)*1.4; };
         var bodyCol = _body || (_e.enraged ? C.rage : C.body);
         var gold = _body || C.gold;
@@ -154,7 +156,7 @@ var enemyArt = {
             var f = Math.sin(buzz - k*0.9);                 //-1～1
             var len = k ? 30 : 23;
             var spread = dash ? (k ? 1.9 : 2.2) + f*0.12      //突進中は後ろへたたむ
-                              : (k ? 1.05 : 1.55) + f*(0.32 + charge*0.15);
+                              : (k ? 1.05 : 1.55) + f*(0.32 + charge*0.15) - cue*0.45;   //合図で羽を大きく開く
             for(var s=-1; s<=1; s+=2){
                 ctx.save();
                 ctx.translate(s*9, -15 + k*2 + jit(k + s));
@@ -182,6 +184,20 @@ var enemyArt = {
         ctx.beginPath(); ctx.moveTo(-3.5,-2); ctx.lineTo(0,sting); ctx.lineTo(3.5,-2); ctx.closePath();
         self.fillInk(_body || C.mid, 1.2);
         if(charge > 0) self.halo(0,sting - 2,6 + charge*4,"255,60,50",charge);
+        if(cue > 0){
+            //合図：針の先に星のきらめき(明るい背景でも見えるよう、暗いふちの上に金と白で描く)
+            self.halo(0,sting,8 + cue*12,"255,200,60",cue);
+            var g = 6 + cue*10, w = 1.5 + cue*1.5;
+            ctx.save();
+            ctx.translate(0,sting);
+            ctx.rotate(_e.t*0.15);
+            for(var k=0; k<2; k++){
+                ctx.strokeStyle = k ? "#fff6c8" : C.ink;
+                ctx.lineWidth = k ? w : w + 2.5;
+                ctx.beginPath(); ctx.moveTo(-g,0); ctx.lineTo(g,0); ctx.moveTo(0,-g); ctx.lineTo(0,g); ctx.stroke();
+            }
+            ctx.restore();
+        }
         ctx.restore();
         ctx.beginPath(); ctx.ellipse(0,19*swell,19,21*swell,0,0,Math.PI*2);
         self.fillInk(bodyCol, 1.6);

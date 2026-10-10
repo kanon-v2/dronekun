@@ -793,9 +793,9 @@ var endingScreen = {
         this.newRecord = game.score > best;
         if(this.newRecord) save.setBest(game.score);
         this.best = Math.max(best, game.score);
-        //クリアしたのでセーブは消して、クリア済みの印を残す(協力プレイではひとり用のセーブは消さない)
+        //クリアしたのでこの周のセーブは消して(パーツ・能力は残す)、クリア済みの印を残す(協力プレイではひとり用のセーブは消さない)
         this.coopMode = coop.active;
-        if(!coop.active) save.clear();
+        if(!coop.active){ save.writeMeta(); save.clear(); }
         try{ localStorage.setItem("dronekun_cleared","1"); }catch(e){}
         this.t = 0;
     },

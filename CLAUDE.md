@@ -21,6 +21,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
   `msedge --headless=new --disable-gpu --allow-file-access-from-files --virtual-time-budget=3000 --window-size=960,540 --screenshot=<出力.png> <file:///...html>`
   特定の画面を撮りたいときは、`<base href="../">` を入れたテスト用HTMLで状態を作ってから撮る(`tools/smoke-test.html` の書き方を参照)。
 - バランス調整は、よけて動く自動プレイ(`smoke-test.html` の `bot()`)を何回か回して、到達WAVEで比べる。1回だけの結果は運の差が大きい。
+- 難易度の測定は `tools/difficulty.html`。WAVEごとに「動かない」と「よけて動く」で戦い、被弾の回数とクリアまでの秒数を表にする(`#runs=6&waves=1-9&gear=std` で回数・WAVE・装備を選ぶ。ヘッドレスEdgeの `--dump-dom` で結果を読む)。
 
 ヘッドレスブラウザの注意:
 - `--virtual-time-budget` を大きくしすぎない。毎フレーム描画すると実時間がとても長くなる(描画は数フレームに1回で十分)。
@@ -67,9 +68,10 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 - 更新は `draw.js` で1/60秒ごと(画面のリフレッシュレートに依存しない)。`update()` が1コマ、`draw()` が描画。
 - クリックは `Click == 1` が1コマだけ立つ。ボタンは `drawRect` の `clicked()` / `button()` を使う。
 - タッチ操作(`common.js`)：戦闘中・対戦の戦闘中・タイトル画面は、どこをドラッグしても指の動いた分だけドローン君の目標が動く(`isTouchDrag()`)。タイトル画面では、ボタンの上を触ったときだけタップとして押し(`startScreen.touchUI()`)、押し終わったら目標を元に戻す(`tapAt()`・`endTap()`。目標がボタンへ飛ばないように)。それ以外の画面はタップ。
-- セーブは `localStorage`(`dronekun_save`・ハイスコア `dronekun_best`・クリア済み `dronekun_cleared`)。強化画面に入ったときに自動セーブ。
+- セーブは `localStorage`。この周の進み具合は `dronekun_save`(強化画面に入ったときに自動セーブ。倒れる・クリアすると消える)、周をまたいで残るもの(パーツ・能力・見たストーリー)は `dronekun_meta`(`save.writeMeta`・`loadMeta`。タイトルに入るたびに読み直す)、ハイスコア `dronekun_best`・クリア済み `dronekun_cleared`。前の作り(能力はレベル5まで)のセーブは、はじめて読むときに `dronekun_meta` へ移す(能力は `OLD_LEVEL_MAP` で近い強さのレベルに)。
+- 周回(ローグライト)：タイトルの「出撃」で難易度(`DIFFICULTIES`。イージー・ノーマル・ハード・ベリーハード、いつでも4つとも選べる)を選び、WAVE1から始める(`startScreen.startRun` → `game.newRun`)。倒れてもパーツと能力は残り、装備・ショップのバフ・WAVEは毎回はじめから。2周目からは、出撃の前に強化画面でパーツを使って能力を上げられる。難易度は敵の体力・弾・出てくる間隔・撃ち返し・落とすパーツに掛かる(`difficulty()`。協力プレイ・対戦はいつもノーマル)。`game.reset()` は残るものまで全部消す(テスト用)。
 - 画面右下のボタン(`sound.js` の `sound.buttons`)：BGM・SEはいつでも、「かすり範囲」「当たり判定」「ポインタ」の表示/非表示は戦闘中だけ出す(`when`。かすり範囲・当たり判定は対戦では出さない)。表示の設定は `common.js` の `viewOpt`(`localStorage` の `dronekun_view`。戦闘画面の方眼の設定もここに覚える)。ポインタを隠すのは戦闘中だけ(メニューでは操作に要るので出す)。
-- 全20WAVE(`FINAL_WAVE`)。5WAVEごとにボス。WAVE15(`REVEAL_WAVE`)のボス後に真実が明かされ、WAVE16からは人間の兵器が敵になる。
+- 全20WAVE(`FINAL_WAVE`)。5WAVEごとにボス。WAVE15(`REVEAL_WAVE`)のボス後に真実が明かされ、WAVE16からは人間の兵器が敵になる。何周もして能力(最大レベル `MAX_LEVEL` = 20)を上げて先へ進む前提なので、WAVEごとの敵の伸びは大きめ(`DANMAKU_*`・`ENEMY_HP_GROW`)、落とすパーツは少なめ(`PARTS_DROP_MUL`)。
 
 ## 書き方の決まり
 
@@ -90,15 +92,16 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 
 | 内容 | 場所 |
 |---|---|
-| 能力の値・強化コスト・ショップのバフ | `common.js` の `STATS`・`UPGRADE_COST`・`BUFFS`・`BUFF_*`(時止めワープのクールタイムは `BUFF_WARP_CD`、演出の時間は `timeStop.js` の `WARP_*`) |
+| 能力の値・強化コスト・ショップのバフ | `common.js` の `MAX_LEVEL`・`STATS`(`statValues(レベル1の値, レベル20の値)` で作る。伸び方は `STAT_CURVE`)・`UPGRADE_COST_*`・`BUFFS`・`BUFF_*`(時止めワープのクールタイムは `BUFF_WARP_CD`、演出の時間は `timeStop.js` の `WARP_*`) |
+| 難易度・パーツの数 | `common.js` の `DIFFICULTIES`、`mainScreen.js` の `PARTS_DROP_MUL`・`PARTS_REWARD`・`DANMAKU_*`・`ENEMY_HP_GROW` |
 | 装備の強さ・攻撃間隔・ショップの値段 | `equipment.js` の `WEAPONS`・`SLOT_COST`・`SHOP_*`、水鉄砲は `WATER_*`。追加の装備は `armsExtra.js` の `WEAPONS` と `FIRE_*`・`BURN_*`・`DISC_*`・`WELL_*`・`BARRIER_*`・`SNIPE_*`・`FREEZE_*`・`ICE_*` |
 | シナジーの組み合わせ・色 | `equipment.js` の `SYNERGIES`・`SYN_COLOR`(追加の装備のものは `armsExtra.js`) |
-| 敵の種類・弾幕の増え方 | `mainScreen.js` の `ENEMY_TYPES`・`danmaku()`・`HIT_CORE`・`GRAZE_RANGE` |
+| 敵の種類・弾幕の増え方 | `mainScreen.js` の `ENEMY_TYPES`・`pickEnemyType()`・`danmaku()`・`HIT_CORE`・`GRAZE_RANGE`、敵が出てくる間隔は `SPAWN_*`、虫がときどき狙って撃つのは `BUG_SHOT_*`、虫・突進が倒れるときの撃ち返しは `REVENGE_*` |
 | 雑魚敵の見た目・色 | `enemyArt.js` の `enemyArt`・`ENEMY_COLOR`、ボスの動きは `QUEEN_*`・`FORT_*`・`KAI_*` |
 | 衝撃波・ジャスト衝撃波・ジャスト・カウンター | `mainScreen.js` の `BLAST_*`・`JUST_*`・`COUNTER_*`(ジャストの段階 PERFECT／JUST は `JUST_PERFECT`・`JUST_RAM_PERFECT`・`JUST_GOOD`)、衝撃波に使う「やる気」(動く・かする・ジャスト・敵が落とす「やる気」でたまる)は `YARUKI_*`・`MOVE_MIN`、対戦でのダメージは `versus.js` の `VS_DAMAGE_MUL.blast` |
 | 突進の予備動作(パリィの試作) | `mainScreen.js` の `TELL_*`・`pickDashStyle()`(構え方の出やすさ)・`JUST_SHOTS`(弾でもジャストにするか)。動きは `updateDasher`、絵は `enemyArt.dasher` |
 | かすりコンボ・かすりバースト(強スキル) | `mainScreen.js` の `GRAZE_*`・`COMBO_*`・`SKILL_*` |
-| レア敵・ボス | `bosses.js` の `RARE_*`・`BOSS_EVERY`・`makeBoss()`・`KAI_PATTERNS` |
+| レア敵・ボス | `bosses.js` の `RARE_*`・`BOSS_EVERY`・`makeBoss()`・`KAI_PATTERNS`、女王蜂の突進の予備動作(構えのばらつき・合図・フェイント・連続突進・弾いたときのダメージ)は `QUEEN_*` |
 | 同胞・人間の兵器 | `forces.js` の `kinRate()`・`pickHuman()` |
 | ストーリーの文章・背景・流れる時期 | `story.js` の `STORIES`・`STORY_SKY`・`STORY_AFTER` |
 | BGM | `sound.js` の `TRACKS` |
@@ -129,7 +132,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 - 大きさ・当たり判定(`r`)と色の役割(虫の灰色の羽・突進の赤・回転砲台のオレンジ・人間の兵器のオリーブ)は変えない。被弾したときは胴体を白く塗る(`_body`)。
 - 協力プレイのゲストの画面でも同じに見えるよう、絵に使う値はホストから届くもの(`t`・`vx`・`vy`・`face`・`timer`・`spin`・`firing`・`fuse`・`aimX`/`aimY`・`turret`・`flash`)だけにする。新しい値を使うときは `coop.js` の `packEnemy` と受け取り側も直す。
 - `tools/enemy-art.html`：雑魚敵を大きく並べ、等倍と状態の違い(被弾・濡れ・EMP・傷)も並べて動かす。`#still` で撮影用に止める。
-- 女王蜂(ボス)は Undertale の敵のように、頭・胸・お尻・針・羽・脚・触角・冠を別々に、つけ根を軸に動かす。部位ごとに周期とタイミングをずらし、頭は体の傾きを先取りし、お尻・針・冠・触角は遅れてついてくる。突進の構え(`mode` の `aim`・`count`)で縮こまって震え、突進(`dash`)で羽をたたむ。使う値は `t`・`vx`・`mode`・`count`・`enraged`・`flash`(協力プレイのゲストにも届く)だけ。
+- 女王蜂(ボス)は Undertale の敵のように、頭・胸・お尻・針・羽・脚・触角・冠を別々に、つけ根を軸に動かす。部位ごとに周期とタイミングをずらし、頭は体の傾きを先取りし、お尻・針・冠・触角は遅れてついてくる。突進の構え(`mode` の `aim`・`count`)で縮こまって震え、突進(`dash`)で羽をたたむ。使う値は `t`・`vx`・`mode`・`count`・`enraged`・`flash`・`fake`(協力プレイのゲストにも届く)だけ。本物の突進の前だけ、最後の `QUEEN_CUE` の間に羽を開き、針の先に星のきらめきを出す(フェイントでは出ない)。突進をジャスト衝撃波で弾かれると `stagger` でよろける(`special.parry`)。
 - 移動要塞(ボス)も同じ考え方で、装甲の板8枚(波のように順にふくらむ。渦巻き弾で開いて中の光が見え、輪が半周まわる)・コア(目のように狙う向きを見て、ときどきシャッターが閉じる。レーザーの予告で開いて光る)・主砲(3方向弾の反動・レーザーで伸びる)・左右の砲台(主砲に遅れて揺れ、少し遅れて撃つ)・噴射口3つ(炎がばらばらにゆらぐ)を動かす。使う値は `t`・`vx`・`mode`・`count`・`angle`・`enraged`・`flash`。
 - ドローン君改(ボス)は、本体がスキンのシートの絵(1枚に焼き込まれている)なので、絵を上(プロペラ・棒)と下(胴体)に切り抜いて2回描き(`KAI_SPLIT`)、上を遅れて弾ませ、傾きにも遅れてしならせる。まわりに図形の改造部品を足して別々に動かす：左右の副砲(エネルギーの線でつながって浮かび、狙う相手は `nearestPlayer` なのでどちらの画面でも同じ。レーザーの予告で前へ出て光をためる)・背中の装甲の輪とケーブル(出力の段階 `phase` で数が増える。五龍の陣 `circleT` で広がる)・胸の鼓動の光・落雷の予告(`strikes`)で副砲から走る稲妻。ブレード・地雷・予告の円は前と同じく `bosses.js` の `drawKaiParts`。
 - `tools/boss-art.html`：ボスの前の絵と新しい絵・怒り・被弾を並べ、下に時間をずらしたコマを並べる(1枚で動きがわかる)。ふだんは女王蜂、`#fortress` で移動要塞、`#kai` でドローン君改。`#still` で撮影用に止める。

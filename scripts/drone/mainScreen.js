@@ -73,7 +73,7 @@ const JUST_GOOD = { slow:0.45, max:8, yaruki:10, guard:36 };   //JUST の見返�
 const JUST_COOP_SLOW  = 40;     //協力プレイで、敵と弾がゆっくりになる時間(ふたりの画面で同じ。ふつうの衝撃波は BLAST_SLOWMO)
 const JUST_COLOR      = "90,220,255";
 //ジャスト・カウンター：体当たりしてくる敵がぶつかる直前に衝撃波を出すとジャストになり、その敵を敵の群れへ弾き返す
-const COUNTER_TYPES   = ["dasher","mdrone"];    //弾き返せる敵(突進・人間のドローン)
+const COUNTER_TYPES   = ["dasher","mdrone","queen"];    //弾き返せる敵(突進・人間のドローン・女王蜂の突進)
 const COUNTER_SPEED   = 11;     //弾き返した突進の速さ(突進そのものは5)
 const COUNTER_TURN    = 0.08;   //狙った敵へ曲がる強さ(1フレームのラジアン)
 const COUNTER_RANGE   = 700;    //狙う敵を探す距離(いなければ来た向きへ返す)
@@ -154,9 +154,33 @@ const SHOT_KINDS = {
     dragon: { r:9 }     //追尾する黒い龍(ドローン君改)
 };
 
-//WAVEが進むほど弾が速く、多くなる(1.0～最大1.8倍)
+//撃ち返し：虫・突進は倒れるときにプレイヤーへ弾を撃ち返す(止まったままでは勝てないように。序盤から)
+const REVENGE_FROM    = 1;      //撃ち返しが始まるWAVE
+const REVENGE_RATE    = 0.45;   //撃ち返す確率(REVENGE_FROM のWAVE)
+const REVENGE_RATE_UP = 0.08;   //WAVEが1つ進むごとに増える確率
+//敵が出てくる間隔(フレーム)：SPAWN_FIRST - WAVE×SPAWN_STEP。SPAWN_MIN より短くはしない(実際はこの0.6～1.4倍でばらつく)
+//虫も、ときどきプレイヤーを狙って1発撃つ(序盤の敵のほとんどが虫なので、止まっていると当たるように)
+const BUG_SHOT_FIRST  = [45,100];   //画面に入ってから最初に撃つまで(フレーム。この間でばらつく)
+const BUG_SHOT_EVERY  = [150,230];  //2発目からの間隔
+const BUG_SHOT_SPEED  = 2.3;        //弾の速さ(danmaku() を掛ける)
+const SPAWN_FIRST     = 62;
+const SPAWN_STEP      = 4;
+const SPAWN_MIN       = 22;
+//敵の強さの伸び方(WAVEごと)。何周もして強くなる前提なので、伸びは大きめ
+const DANMAKU_GROW    = 0.09;   //弾の速さ・数がWAVE1つごとに増える割合
+const DANMAKU_MAX     = 2.1;    //弾の速さ・数の倍率の上限(難易度の倍率を掛ける前)
+const ENEMY_HP_GROW   = 0.25;   //敵の体力がWAVE1つごとに増える割合
+//パーツ：敵が落とす数(ENEMY_TYPES の parts)にこれと難易度の倍率を掛ける(端数は確率で1つ)
+const PARTS_DROP_MUL  = 0.5;
+const PARTS_REWARD    = 5;      //報酬カードの「パーツ」でもらえる数(難易度の倍率を掛ける)
+//落とすパーツの数(_n：もとの数)
+function partsDrop(_n){
+    var x = _n*PARTS_DROP_MUL*difficulty().parts;
+    return Math.floor(x) + (Math.random() < x - Math.floor(x) ? 1 : 0);
+}
+//WAVEが進むほど弾が速く、多くなる(1.0～DANMAKU_MAX 倍。難易度の倍率も掛ける)
 function danmaku(){
-    return Math.min(1.8, 1 + (game.wave - 1)*0.07);
+    return Math.min(DANMAKU_MAX, 1 + (game.wave - 1)*DANMAKU_GROW)*difficulty().shot;
 }
 
 //敵の弾を撃つ
@@ -189,8 +213,8 @@ function pickEnemyType(){
     //真実に気付いたあとは人間との戦い
     if(w > REVEAL_WAVE) return forces.pickHuman(w);
     var list = [["bug",10]];
-    if(w >= 2) list.push(["dasher",3 + w]);
-    if(w >= 2) list.push(["shooter",2 + w*0.8]);
+    list.push(["dasher",2 + w]);         //WAVE1から(止まっていると突っ込まれる)
+    list.push(["shooter",1.5 + w*0.8]);  //WAVE1から(狙って撃つ)
     if(w >= 3) list.push(["spinner",1 + w*0.5]);
     if(w >= 4) list.push(["tank",1 + w*0.5]);
     if(w >= 5) list.push(["bomber",1 + w*0.4]);
@@ -208,7 +232,7 @@ function makeEnemy(_type){
     var T = ENEMY_TYPES[_type];
     //WAVEが進むほど硬くなる
     //(協力プレイでは2倍)
-    var hp = Math.ceil(T.hp * (1 + (game.wave-1)*0.2)) * coop.hpMul();
+    var hp = Math.ceil(T.hp * (1 + (game.wave-1)*ENEMY_HP_GROW)*difficulty().hp) * coop.hpMul();
     var e = {
         id:++enemySeq,  //通し番号(協力プレイで同じ敵を指すため)
         type:_type, r:T.r, hp:hp, maxHp:hp, score:T.score, parts:T.parts,
@@ -237,6 +261,8 @@ function makeEnemy(_type){
         e.timer = 60;
         e.spin = Math.random()*Math.PI*2;
         e.firing = 0;       //回転砲台が撃ち続ける残り時間
+    }else if(_type == "bug"){
+        e.shotT = randIn(BUG_SHOT_FIRST);
     }else if(_type == "tank"){
         e.timer = 120 + Math.floor(Math.random()*60);
     }else if(_type == "bomber"){
@@ -482,8 +508,8 @@ var mainScreen = {
                 if(this.toSpawn == 0 && enemies.length == 0){
                     this.state = "clear";
                     this.stateTime = 0;
-                    this.bonus = Math.ceil(game.wave/2);
-                    game.parts += this.bonus;
+                    this.bonus = Math.max(1, Math.round(Math.ceil(game.wave/2)*difficulty().parts));     //WAVEクリアのパーツ(難易度の倍率を掛ける)
+                    game.gainParts(this.bonus);
                     sound.stopMusic();
                     sound.play("clear");
                     enemyShots = [];
@@ -577,7 +603,7 @@ var mainScreen = {
         if(this.toSpawn <= 0) return;
         this.spawnTimer--;
         if(this.spawnTimer > 0) return;
-        this.spawnTimer = Math.max(22, 75 - game.wave*5) * (0.6 + Math.random()*0.8);
+        this.spawnTimer = Math.max(SPAWN_MIN, SPAWN_FIRST - game.wave*SPAWN_STEP) * difficulty().spawn * (0.6 + Math.random()*0.8);
         this.toSpawn--;
         this.spawned++;
         //同胞が紛れ込む(WAVE3では必ず1体は出る)
@@ -684,9 +710,10 @@ var mainScreen = {
         this.justTier = tier;
         return tier > 0;
     },
-    //ジャスト・カウンターで弾き返せる敵か(突進は飛び出している間だけ)
+    //ジャスト・カウンターで弾き返せる敵か(突進は飛び出している間だけ。女王蜂も突進している間だけ)
     canCounter:function(_e){
         if(_e.dead || _e.countered || _e.rival || COUNTER_TYPES.indexOf(_e.type) < 0) return false;
+        if(_e.type == "queen") return _e.mode == "dash";
         return !(_e.type == "dasher" && _e.tell != TELL.dash);
     },
     //構えている(衝撃波に耐える)突進か
@@ -714,6 +741,7 @@ var mainScreen = {
     counter:function(_e){
         if(coop.isGuest()){ coop.onCounter(_e); return; }
         if(_e.dead || _e.countered) return;
+        if(_e.boss){ special.parry(_e); return; }     //ボス(女王蜂)は飛ばさず、弾いてよろけさせる(bosses.js)
         //連続突進の途中なら、はじいてよろけさせるだけ(次の突進が来る)。全部弾くと最後に強く弾き返す
         if(_e.type == "dasher" && _e.chain > 0){
             _e.parried++;
@@ -1099,7 +1127,7 @@ var mainScreen = {
         game.score += _e.score;
         popup(_e.x,_e.y - _e.r,"+" + _e.score);
         killBlast(_e.x,_e.y,_e.r,_e.type == "goldbug" ? "255,215,0" : null);
-        for(var i=0; i<_e.parts; i++) this.drop("part",_e.x,_e.y);
+        for(var i=partsDrop(_e.parts); i>0; i--) this.drop("part",_e.x,_e.y);
         if(Math.random() < YARUKI_DROP_RATE) this.drop("yaruki",_e.x,_e.y);
         special.onKill(_e);
         this.revenge(_e);
@@ -1107,10 +1135,10 @@ var mainScreen = {
 
     //撃ち返し：WAVE4から、小さな敵が倒れぎわにドローンを狙って弾を撃つ
     revenge:function(_e){
-        if(game.wave < 4 || this.state != "play") return;
+        if(game.wave < REVENGE_FROM || this.state != "play") return;
         if(_e.type != "bug" && _e.type != "dasher") return;
         if(_e.countered) return;    //弾き返した突進は撃ち返さない
-        if(Math.random() > Math.min(1, 0.3 + (game.wave - 4)*0.1)) return;
+        if(Math.random() > Math.min(1, (REVENGE_RATE + (game.wave - REVENGE_FROM)*REVENGE_RATE_UP)*difficulty().revenge)) return;
         var tgt = nearestPlayer(_e.x,_e.y);
         var dx = tgt.X - _e.x, dy = tgt.Y - _e.y;
         if(Math.hypot(dx,dy) < 90) return;  //目の前で撃たれるのは避けようがないので撃たない
@@ -1145,6 +1173,14 @@ var mainScreen = {
                     var wig = Math.sin(e.t*0.1) * 0.8;
                     e.vx += ((dx/d - dy/d*wig) * e.speed - e.vx) * 0.04;
                     e.vy += ((dy/d + dx/d*wig) * e.speed - e.vy) * 0.04;
+                    //画面の中にいる間、ときどき狙って1発撃つ(目の前では撃たない。避けようがないので)
+                    if(e.shotT != null && e.x > 0 && e.x < CW && e.y > 0 && e.y < CH && --e.shotT <= 0){
+                        e.shotT = randIn(BUG_SHOT_EVERY);
+                        if(this.state == "play" && d > 90){
+                            fireShot(e.x,e.y,Math.atan2(dy,dx),BUG_SHOT_SPEED*danmaku(),"small");
+                            sound.play("enemyShot");
+                        }
+                    }
                     break;
                 case "tank":
                     e.vx += (dx/d*e.speed - e.vx) * 0.03;
@@ -1330,7 +1366,7 @@ var mainScreen = {
             if(d < drone.R + 6 && !this.down){
                 coop.onCollect(p);
                 if(p.kind == "part"){
-                    game.parts++;
+                    game.gainParts(1);
                     sound.play("part");
                 }else if(p.kind == "capsule"){
                     //WAVEクリア後に選べる報酬が1回増える
@@ -1800,6 +1836,12 @@ var mainScreen = {
         ctx.fillStyle = "#000";
         ctx.font = "bold 20px sans-serif";
         ctx.fillText("WAVE " + game.wave + " / " + FINAL_WAVE,CW - 14,20);
+        //難易度(WAVEの左に小さく)
+        var dw = ctx.measureText("WAVE " + game.wave + " / " + FINAL_WAVE).width;
+        ctx.font = "bold 13px sans-serif";
+        ctx.fillStyle = difficulty().color;
+        ctx.fillText(difficulty().name,CW - 24 - dw,21);
+        ctx.fillStyle = "#000";
         ctx.font = "bold 14px sans-serif";
         ctx.fillText((bossDebug.trial ? "敵 " + enemies.length : "残りの敵 " + (this.toSpawn + enemies.length)) + "　SCORE " + game.score + "　パーツ " + game.parts,CW - 14,44);
         if(this.graze > 0){

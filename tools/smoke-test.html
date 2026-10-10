@@ -45,15 +45,18 @@ function bot(){
     MouseX = Math.max(30, Math.min(CW-30, MouseX)); MouseY = Math.max(30, Math.min(CH-30, MouseY));
 }
 function skipStory(){ var n = 0; while(page.number == 4 && n < 300){ Click = 1; storyScreen.update(); Click = 0; n++; } }
-function setup(w, owned, slots, lv){ save.clear(); game.reset(); game.wave = w; game.owned = owned; game.slots = slots; game.slotCount = 3; for(var k in game.level) game.level[k] = lv; game.seen = { prologue:true, s3:true, s5:true, s8:true, s10:true, s12:true, reveal:w > REVEAL_WAVE, s17:true, s19:true }; }
+function setup(w, owned, slots, lv){ save.clearAll(); game.reset(); game.wave = w; game.owned = owned; game.slots = slots; game.slotCount = 3; for(var k in game.level) game.level[k] = lv; game.seen = { prologue:true, s3:true, s5:true, s8:true, s10:true, s12:true, reveal:w > REVEAL_WAVE, s17:true, s19:true }; }
 
 try{
-    var keepSave = localStorage.getItem("dronekun_save"), keepBest = localStorage.getItem("dronekun_best"), keepClear = localStorage.getItem("dronekun_cleared");
+    var keepSave = localStorage.getItem("dronekun_save"), keepMeta = localStorage.getItem("dronekun_meta"), keepBest = localStorage.getItem("dronekun_best"), keepClear = localStorage.getItem("dronekun_cleared");
 
     // 1. ストーリーと画面の流れ
-    save.clear(); game.reset(); page.change(0); draw1();
+    save.clearAll(); game.reset(); page.change(0); draw1();
     MouseIn = true; MouseX = startButton.X + 10; MouseY = startButton.Y + 10; Click = 1; startScreen.update(); Click = 0;
-    check("はじめから → プロローグ", page.number == 4 && storyScreen.id == "prologue");
+    var diffOpen = startScreen.diffSel && page.number == 0;
+    MouseX = diffCards[2].X + 10; MouseY = diffCards[2].Y + 10; Click = 1; startScreen.update(); Click = 0;     //ハードを選ぶ
+    check("出撃 → 難易度を選ぶ → プロローグ", diffOpen && page.number == 4 && storyScreen.id == "prologue" && game.diff == 2 && difficulty().id == "hard", "窓" + diffOpen + " 難易度" + game.diff);
+    game.diff = DEFAULT_DIFF;
     draw1(); skipStory();
     check("プロローグ → WAVE1", page.number == 1 && game.wave == 1);
     var flow = [];
@@ -81,6 +84,7 @@ try{
     page.change(1); mainScreen.update();
     MouseX = drone.X; MouseY = drone.Y;
     for(var i=0; i<120; i++) mainScreen.update();     //ドローン君が止まりきるまで待つ
+    enemies = []; enemyShots = []; pickups = []; mainScreen.toSpawn = 0;     //かすり・拾うことでたまらないように
     mainScreen.yaruki = 10;
     for(var i=0; i<30; i++) mainScreen.update();
     var fStill = mainScreen.yaruki;
@@ -89,12 +93,28 @@ try{
     draw1();
     check("やる気は動くとたまり、止まっていると変わらない", fStill == 10 && mainScreen.yaruki > 10 && !drone.slow, "止まって" + fStill + " 動いて" + mainScreen.yaruki.toFixed(2));
 
+    // 序盤の敵の攻撃：虫はときどき狙って撃ち、虫・突進は倒れるときに撃ち返す(WAVE1から)
+    setup(1, {}, [null,null,null], 1);
+    page.change(1); MouseIn = true;
+    while(mainScreen.state != "play") mainScreen.update();
+    enemies = []; enemyShots = []; mainScreen.toSpawn = 0; MouseX = drone.X; MouseY = drone.Y;
+    var be = makeEnemy("bug"); be.x = drone.X > CW/2 ? drone.X - 250 : drone.X + 250; be.y = drone.Y; be.shotT = 1; be.hp = be.maxHp = 999; enemies.push(be);
+    mainScreen.update();
+    var bugShot = enemyShots.length == 1 && enemyShots[0].vx*(drone.X - be.x) > 0 && be.shotT >= BUG_SHOT_EVERY[0];     //ドローン君の方へ撃つ
+    enemyShots = [];
+    var rv = 0, rand0 = Math.random;
+    Math.random = function(){ return 0; };      //撃ち返しの確率を必ず通す
+    for(var i=0; i<3; i++){ var ve = makeEnemy("bug"); ve.x = drone.X - 300; ve.y = drone.Y - 100; enemies.push(ve); mainScreen.hitEnemy(ve, 999); }
+    Math.random = rand0;
+    rv = enemyShots.length;
+    check("序盤から、虫はときどき狙って撃ち、倒れた虫は撃ち返す", bugShot && rv >= 3, "虫の弾" + bugShot + " 撃ち返し" + rv);
+
     // ジャスト衝撃波：当たる直前の弾があればはね返してやる気がたまる。遠い弾だけならふつうの衝撃波
     setup(2, { gun:1 }, ["gun",null,null], 1);
     page.change(1); MouseIn = true;
     while(mainScreen.state != "play") mainScreen.update();
-    enemies = []; enemyShots = [];
-    var je = makeEnemy("bug"); je.x = drone.X + 220; je.y = drone.Y; je.vx = je.vy = 0; je.speed = 0; je.hp = je.maxHp = 999; enemies.push(je);
+    enemies = []; enemyShots = []; mainScreen.toSpawn = 0;     //新しく出た敵に、はね返した弾が先に当たらないように
+    var je = makeEnemy("bug"); je.x = drone.X + 220; je.y = drone.Y; je.vx = je.vy = 0; je.speed = 0; je.shotT = null; je.hp = je.maxHp = 999; enemies.push(je);
     var je2 = makeEnemy("bug"); je2.x = drone.X + 80; je2.y = drone.Y; je2.hp = je2.maxHp = 999; enemies.push(je2);     //衝撃波の範囲内の敵
     enemyShots.push({ x:drone.X - 200, y:drone.Y, vx:-3, vy:0, r:5 });     //遠ざかる弾
     mainScreen.yaruki = 100; mainScreen.blast();
@@ -107,7 +127,7 @@ try{
     var st0 = mainScreen.stateTime, jerr = errors.length;
     for(var i=0; i<20; i++){ mainScreen.update(); if(i % 5 == 0) draw1(); }
     var slowOk = mainScreen.stateTime - st0 < 14;      //ゆっくりの間は20コマで14コマより少なく進む
-    for(var i=0; i<80; i++){ mainScreen.update(); if(i % 5 == 0) draw1(); }
+    for(var i=0; i<300 && mainScreen.justHits == 0; i++){ mainScreen.update(); if(i % 5 == 0) draw1(); }     //はね返した弾は曲がりきれずに回り込むことがあるので、当たるまで待つ
     check("衝撃波は周りの敵にダメージ(龍は出ない)。ジャスト衝撃波は直前の弾をはね返して敵に当て、やる気がたまり、ゆっくりになる(遠い弾だけならふつう)", normalOk && justOk && slowOk && mainScreen.justHits > 0 && je.hp < 999 && errors.length == jerr,
           "ふつう" + normalOk + " ジャスト" + justOk + " 反射" + justBullets + " 敵" + je.hp + " やる気" + jf + " 回数" + jn + " ゆっくり" + jh + "/" + slowOk + " 命中" + mainScreen.justHits);
 
@@ -172,10 +192,38 @@ try{
     check("ジャストの段階(ぎりぎりはPERFECT、少し早いとJUSTで見返りが小さい)。やる気が足りないと衝撃波は出ない", pPerfect && pGood && pLow && errors.length == perr,
           "PERFECT" + pPerfect + " JUST" + pGood + " 足りない" + pLow + " やる気" + mainScreen.yaruki);
 
+    // 周回：能力はレベル20まで。倒れてもパーツ・能力は残り、同じ難易度でWAVE1から出撃し直す(2周目からは強化画面から)
+    var curveOk = STATS.every(function(s){ return s.values.length == MAX_LEVEL; }) && UPGRADE_COST.length == MAX_LEVEL
+               && STATS[0].values[0] > STATS[0].values[MAX_LEVEL - 1] && STATS[2].values[MAX_LEVEL - 1] > STATS[2].values[0]
+               && UPGRADE_COST.every(function(c, i){ return i < 2 || c >= UPGRADE_COST[i - 1]; });
+    setup(4, { gun:2 }, ["gun",null,null], 1); game.seen.prologue = true; game.diff = 3;
+    game.level.armor = 6; game.parts = 40; game.runParts = 12;
+    page.change(2); var runSaved = save.exists();
+    page.change(3); draw1();
+    var overKeeps = !save.exists() && JSON.parse(localStorage.getItem("dronekun_meta")).parts == 40;
+    MouseX = retryButton.X + 10; MouseY = retryButton.Y + 10; Click = 1; gameoverScreen.update(); Click = 0;
+    var rerun = page.number == 2 && game.wave == 1 && game.diff == 3 && game.level.armor == 6 && game.parts == 40 && game.owned.gun == 1 && !game.owned.missile && game.runParts == 0;
+    game.reset(); page.change(0);
+    var metaBack = game.level.armor == 6 && game.parts == 40 && game.seen.prologue;
+    check("周回：能力はレベル" + MAX_LEVEL + "まで。倒れてもパーツと能力は残り、同じ難易度でWAVE1から強化画面へ。タイトルで読み直す",
+          curveOk && runSaved && overKeeps && rerun && metaBack, [curveOk,runSaved,overKeeps,rerun,metaBack].join(""));
+    // 前の作り(能力はレベル5まで)のセーブ：パーツ・能力を周をまたいで残すデータに移す(能力は近い強さのレベルに)
+    save.clearAll();
+    localStorage.setItem("dronekun_save", JSON.stringify({ wave:7, parts:33, score:0, level:{ speed:5, accuracy:2, armor:1, brain:3 }, seen:{ prologue:true } }));
+    game.reset(); page.change(0);
+    var migrated = game.level.speed == OLD_LEVEL_MAP[4] && game.level.accuracy == OLD_LEVEL_MAP[1] && game.level.brain == OLD_LEVEL_MAP[2] && game.parts == 33 && game.wave == 1 && localStorage.getItem("dronekun_meta") != null;
+    check("前の作りのセーブの能力を、近い強さのレベルに直して残す", migrated, JSON.stringify(game.level) + " パーツ" + game.parts);
+    // 難易度：難しいほど敵が硬く、弾が速く、落とすパーツが多い
+    setup(5, {}, [null,null,null], 1);
+    var dk = DIFFICULTIES.map(function(d, i){ game.diff = i; var e = makeEnemy("tank"); return [e.maxHp, danmaku().toFixed(2), DIFFICULTIES[i].parts]; });
+    game.diff = DEFAULT_DIFF;
+    var diffOk = dk[0][0] < dk[1][0] && dk[1][0] < dk[3][0] && Number(dk[0][1]) < Number(dk[3][1]) && dk[0][2] < dk[3][2];
+    check("難易度で敵の体力・弾・パーツが変わる", diffOk, dk.map(function(x){ return x.join("/"); }).join(" "));
+
     // 燃料がなくなる前のセーブ：能力「燃料」の強化と「増設タンク」に使ったパーツが返る
     var oldSave = JSON.stringify({ wave:4, parts:3, score:0, level:{ speed:1, accuracy:1, armor:1, brain:1, fuel:3 }, buffs:{ tank:2, power:1 } });
     var restored = save.restore(oldSave);
-    check("古いセーブの「燃料」と「増設タンク」のパーツを返す", restored && game.parts == 3 + UPGRADE_COST[1] + UPGRADE_COST[2] + 15 + 25 && !game.buffs.tank && game.buff("power") == 1 && game.level.fuel === undefined,
+    check("古いセーブの「燃料」と「増設タンク」のパーツを返す", restored && game.parts == 3 + OLD_FUEL_COST[1] + OLD_FUEL_COST[2] + 15 + 25 && !game.buffs.tank && game.buff("power") == 1 && game.level.fuel === undefined,
           "パーツ" + game.parts);
 
     // 突進の予備動作(パリィの試作)：にじり寄って構え、炎が伸びて飛び出す。構えている間はジャストにならず、飛び出しに合わせるとジャスト
@@ -239,6 +287,37 @@ try{
     var ad = makeEnemy("dasher"); ad.tell = TELL.lock; ad.timer = 3; ad.fake = false; enemies = [ad]; draw1();
     ad.fake = true; draw1(); ad.tell = TELL.creep; draw1(); ad.tell = TELL.brake; draw1();
     check("突進の予備動作の絵を描ける", errors.length == terr, "");
+
+    // 女王蜂の突進：フェイントは前へ出て止まり構え直す。突進にジャストで弾くとよろけ、連続突進を全部弾くと大ダメージで目を回す
+    setup(5, {}, [null,null,null], 1);
+    page.change(1); MouseIn = true;
+    while(mainScreen.state != "play") mainScreen.update();
+    enemies = []; enemyShots = []; MouseX = drone.X; MouseY = drone.Y;
+    var qerr = errors.length;
+    var qb = makeBoss("queen"); qb.mode = "idle"; qb.x = drone.X + 300; qb.y = drone.Y; qb.hp = qb.maxHp = 999; enemies.push(qb);
+    var qStep = function(){ var dx = drone.X - qb.x, dy = drone.Y - qb.y; special.queen(qb, dx, dy, Math.hypot(dx,dy) || 1); qb.x += qb.vx; qb.y += qb.vy; };
+    special.queenAim(qb, [1,1], false); qb.fake = true; qb.chain = 0; qb.dashes = 1; qb.parried = 0;
+    for(var i=0; i<QUEEN_CUE + 2; i++) qStep();
+    var qFeint = qb.mode == "feint";
+    for(var i=0; i<QUEEN_FEINT_T + 1; i++) qStep();
+    var qReaim = qb.mode == "aim" && !qb.fake;
+    //ぶつかる直前の突進はジャスト・カウンターの対象
+    qb.mode = "dash"; qb.x = drone.X + 70; qb.y = drone.Y; qb.aimX = -1; qb.aimY = 0; qb.vx = -8; qb.vy = 0;
+    var qJust = mainScreen.isJust() && mainScreen.justRams.indexOf(qb) >= 0;
+    //連続突進を3回とも弾く
+    qb.chain = QUEEN_CHAIN - 1; qb.dashes = QUEEN_CHAIN; qb.parried = 0;
+    var qLog = [], hp0 = qb.hp;
+    for(var n=0; n<QUEEN_CHAIN; n++){
+        qb.mode = "dash"; qb.aimX = -1; qb.aimY = 0;
+        mainScreen.counter(qb);
+        qLog.push(qb.mode + qb.parried);
+        if(qb.chain > 0) qb.chain--;    //よろけのあと次の突進へ(残りを減らすのは stagger の終わり)
+    }
+    var qPerfect = qb.mode == "stagger" && qb.count == QUEEN_BREAK && hp0 - qb.hp >= QUEEN_PARRY_DMG*QUEEN_CHAIN + QUEEN_PERFECT_DMG && !qb.countered;
+    for(var i=0; i<20; i++){ mainScreen.update(); if(i % 5 == 0) draw1(); }
+    check("女王蜂の突進：フェイントで構え直し、突進を弾くとよろけ、連続突進を全部弾くと大ダメージで目を回す",
+          qFeint && qReaim && qJust && qLog.join() == "stagger1,stagger2,stagger3" && qPerfect && errors.length == qerr,
+          "フェイント" + qFeint + " 構え直す" + qReaim + " ジャスト" + qJust + " 流れ" + qLog.join() + " 連続" + qPerfect + " 体力" + hp0 + "→" + qb.hp);
 
     // かすりコンボ：かするとコンボが増えて威力が上がり、時間切れ・被弾で途切れる
     setup(2, { gun:1 }, ["gun",null,null], 1);
@@ -490,14 +569,14 @@ try{
 
     //女王蜂(ボス)：部位ごとに動く絵。ゆらゆら・突進の構え・突進・怒り・被弾のどれでも描ける
     var qErr = errors.length, qDrawn = 0;
-    ["idle","aim","dash"].forEach(function(m){
+    ["idle","aim","dash","feint","stagger","aim"].forEach(function(m, mi){
         [false,true].forEach(function(rage){
-            var qe = { type:"queen", boss:true, r:BOSS_TYPES.queen.r, x:300, y:200, vx:m == "dash" ? 6 : 1, vy:0, t:0, mode:m, count:20,
+            var qe = { type:"queen", boss:true, r:BOSS_TYPES.queen.r, x:300, y:200, vx:m == "dash" ? 6 : 1, vy:0, t:0, mode:m, count:mi == 5 ? 60 : 10, fake:mi == 5,
                        aimX:0.8, aimY:0.6, flash:0, hp:5, maxHp:10, slow:0, wet:0, enraged:rage };
             for(var j=0; j<6; j++){ qe.t += 11; qe.flash = j % 2 ? 3 : 0; if(special.draw(qe, qe.flash ? "#fff" : null)) qDrawn++; mainScreen.drawEnemy(qe); }
         });
     });
-    check("女王蜂を部位ごとに動く絵で描ける(構え・突進・怒り・被弾)", qDrawn == 36 && errors.length == qErr && typeof enemyArt.queen == "function", qDrawn + "コマ");
+    check("女王蜂を部位ごとに動く絵で描ける(構え・合図・フェイント・突進・よろけ・怒り・被弾)", qDrawn == 72 && errors.length == qErr && typeof enemyArt.queen == "function", qDrawn + "コマ");
 
     //移動要塞(ボス)：渦巻き弾・3方向弾・レーザーの予告・レーザー・怒り・被弾のどれでも描ける
     var fErr = errors.length, fDrawn = 0;
@@ -671,6 +750,7 @@ try{
     //テスト前のセーブ等を戻す
     save.clear();
     if(keepSave) localStorage.setItem("dronekun_save", keepSave);
+    if(keepMeta) localStorage.setItem("dronekun_meta", keepMeta); else localStorage.removeItem("dronekun_meta");
     if(keepBest) localStorage.setItem("dronekun_best", keepBest);
     if(keepClear) localStorage.setItem("dronekun_cleared", keepClear); else localStorage.removeItem("dronekun_cleared");
     //ドローン君の振り向き：左から右へは正面を通って回り、止まると目標の向きになる(ばねなので少し行きすぎてから落ち着く)

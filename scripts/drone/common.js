@@ -274,17 +274,56 @@ function roundRectPath(_x,_y,_w,_h,_r){
 }
 
 //------------------------------------------------------------------------------
-//  ドローンの能力(メモ.txtの5項目)。レベル1～5
+//  ドローンの能力(メモ.txtの5項目)。レベル1～MAX_LEVEL
+//  能力とパーツは周をまたいで残る(倒れてもWAVE1からやり直すたびに、少しずつ強くなる)
 //------------------------------------------------------------------------------
-//強化しても伸びは控えめ(ドローン君は非力。装備とシナジーで補う)
+const MAX_LEVEL = 20;
+const STAT_CURVE = 0.8;     //レベルごとの伸び方(1でまっすぐ。小さいほど、はじめのうちに大きく伸びる)
+//レベル1の値 _a からレベル MAX_LEVEL の値 _b まで、レベルごとの値を作る(_int：整数にする)
+function statValues(_a,_b,_int){
+    var v = [];
+    for(var L=1; L<=MAX_LEVEL; L++){
+        var x = _a + (_b - _a)*Math.pow((L - 1)/(MAX_LEVEL - 1), STAT_CURVE);
+        v.push(_int ? Math.floor(x + 1e-9) : Math.round(x*10)/10);
+    }
+    return v;
+}
+//強化しても1レベルの伸びは控えめ(何周もかけて上げきる。装備とシナジーで補う)
 const STATS = [
-    { key:"speed",    name:"追従速度", desc:"マウスに追いつく速さ",       values:[30,25,21,17,14] },    //追従の遅れ(小さいほど速い)
-    { key:"accuracy", name:"追従精度", desc:"ふらつきの小ささ",           values:[40,32,25,18,12] },    //ふらつきの幅(px)
-    { key:"armor",    name:"頑丈さ",   desc:"耐えられる被弾数",           values:[2,3,3,4,5] },         //最大耐久
-    { key:"brain",    name:"賢さ",     desc:"全装備の攻撃頻度と射程",     values:[70,62,55,48,42] }     //攻撃間隔の目安(equipment.jsのarms.rate)
+    { key:"speed",    name:"追従速度", desc:"マウスに追いつく速さ",       values:statValues(30,9) },       //追従の遅れ(小さいほど速い)
+    { key:"accuracy", name:"追従精度", desc:"ふらつきの小ささ",           values:statValues(40,4) },       //ふらつきの幅(px)
+    { key:"armor",    name:"頑丈さ",   desc:"耐えられる被弾数",           values:statValues(2,8,true) },   //最大耐久
+    { key:"brain",    name:"賢さ",     desc:"全装備の攻撃頻度と射程",     values:statValues(70,30) }       //攻撃間隔の目安(equipment.jsのarms.rate)
 ];
-const MAX_LEVEL = 5;
-const UPGRADE_COST = [0,5,10,16,24];  //レベルL→L+1に必要なパーツ数 = UPGRADE_COST[L]
+//レベルL→L+1に必要なパーツ数 = UPGRADE_COST[L](レベルが上がるほど高い)
+const UPGRADE_COST_BASE = 4;
+const UPGRADE_COST_GROW = 0.5;
+var UPGRADE_COST = (function(){
+    var c = [0];
+    for(var l=1; l<MAX_LEVEL; l++) c.push(Math.round(UPGRADE_COST_BASE + l*l*UPGRADE_COST_GROW));
+    return c;
+})();
+//レベルが5までだったころのセーブの能力を、近い強さの新しいレベルに直す(OLD_LEVEL_MAP[古いレベル - 1])
+const OLD_LEVEL_MAP = [1,4,7,10,14];
+
+//------------------------------------------------------------------------------
+//  難易度(出撃するときに選ぶ。いつでも4つとも選べる)。難しいほど敵が強く、落とすパーツが多い
+//  hp：敵の体力の倍率　shot：弾の速さ・数の倍率(danmaku に掛ける)　spawn：敵が出てくる間隔の倍率
+//  revenge：倒れた敵の撃ち返しの確率の倍率　parts：落とすパーツの倍率
+//  協力プレイ・対戦はいつもノーマル
+//------------------------------------------------------------------------------
+const DIFFICULTIES = [
+    { id:"easy",     name:"イージー",     color:"#3a9a4a", hp:0.75, shot:0.85, spawn:1.2,  revenge:0.6, parts:0.6, desc:"敵が弱く、弾も遅い。パーツは少なめ" },
+    { id:"normal",   name:"ノーマル",     color:"#3a6fb0", hp:1,    shot:1,    spawn:1,    revenge:1,   parts:1,   desc:"ふつうの強さ" },
+    { id:"hard",     name:"ハード",       color:"#c07020", hp:1.3,  shot:1.15, spawn:0.85, revenge:1.3, parts:1.6, desc:"敵が硬く、弾が速い。パーツが多い" },
+    { id:"veryhard", name:"ベリーハード", color:"#b02030", hp:1.7,  shot:1.3,  spawn:0.72, revenge:1.6, parts:2.4, desc:"手ごわい。パーツがとても多い" }
+];
+const DEFAULT_DIFF = 1;
+//今の難易度
+function difficulty(){
+    var shared = (typeof coop != "undefined" && coop.active) || (typeof versus != "undefined" && versus.active);
+    return DIFFICULTIES[shared ? DEFAULT_DIFF : game.diff] || DIFFICULTIES[DEFAULT_DIFF];
+}
 
 //ショップで買えるバフ。そのストーリーの間ずっと効く(セーブに残る。はじめからやり直すと消える)
 //cost の長さが買える回数。n回目の値段 = cost[n-1](パーツ)
@@ -293,6 +332,7 @@ const BUFF_RAPID = 0.08;    //冷却装置1つあたりの攻撃間隔の縮み�
 const BUFF_PLATE = 1;       //予備装甲1つあたりの最大耐久の増え方
 const BUFF_WARP_CD = 20;    //時止めワープ(timeStop.js)のクールタイム(秒)
 const OLD_TANK_COST = [15,25,35];   //なくなった「増設タンク」の値段(古いセーブで買った分のパーツを返すため)
+const OLD_FUEL_COST = [0,5,10,16,24];  //なくなった能力「燃料」の強化の値段(同じく)
 //info：説明欄に出す文(省略すると desc と「重ねて買うほど…」)
 const BUFFS = [
     { key:"power", name:"強化弾頭",   desc:"全装備のダメージ+" + BUFF_POWER*100 + "%", cost:[30,45,60] },
@@ -321,14 +361,28 @@ var game = {
     seen:{},                //見終わったストーリー {prologue:true, ...}
     shop:null,              //ショップの品ぞろえ { wave:そろえたWAVE, items:[装備のid], sold:[売り切れか] }
     buffs:{},               //ショップで買ったバフの数 {power:1, ...}
+    diff:DEFAULT_DIFF,      //この周の難易度(DIFFICULTIES の番号)
+    //すべてをはじめに戻す(周をまたいで残るパーツ・能力・見たストーリーも消える)
     reset:function(){
+        this.seen = {};
+        this.parts = 0;
+        for(var i=0; i<STATS.length; i++) this.level[STATS[i].key] = 1;
+        this.newRun(DEFAULT_DIFF);
+    },
+    //新しい周を始める：WAVE1・初期装備に戻す。パーツ・能力・見たストーリーは残す(装備・ショップのバフは毎回はじめから)
+    //パーツを手に入れる(この周で集めた数も数える。ゲームオーバー画面に出す)
+    gainParts:function(_n){
+        this.parts += _n;
+        this.runParts += _n;
+    },
+    runParts:0,             //この周で集めたパーツ
+    newRun:function(_diff){
+        this.runParts = 0;
+        this.diff = _diff;
         this.shop = null;
         this.buffs = {};
-        this.seen = {};
         this.wave = 1;
-        this.parts = 0;
         this.score = 0;
-        for(var i=0; i<STATS.length; i++) this.level[STATS[i].key] = 1;
         this.owned = { gun:1 };
         this.slots = ["gun",null,null];
         this.slotCount = 1;
@@ -357,16 +411,21 @@ game.reset();
 //  セーブ(ブラウザのlocalStorageに保存。使えない環境では何もしない)
 //------------------------------------------------------------------------------
 var save = {
-    KEY:"dronekun_save",
+    KEY:"dronekun_save",        //この周の進行状況(倒れる・クリアすると消える)
+    META_KEY:"dronekun_meta",   //周をまたいで残るもの(パーツ・能力・見たストーリー)
     BEST_KEY:"dronekun_best",
     //今の進行状況を文字列にする(セーブと、協力プレイのコンティニューに使う)
     data:function(){
         return JSON.stringify({
-            wave:game.wave, parts:game.parts, score:game.score, level:game.level,
+            wave:game.wave, parts:game.parts, score:game.score, level:game.level, diff:game.diff, runParts:game.runParts,
             owned:game.owned, slots:game.slots, slotCount:game.slotCount, pendingReward:game.pendingReward,
             seen:game.seen, shop:game.shop, buffs:game.buffs
         });
     },
+    metaData:function(){
+        return JSON.stringify({ v:2, parts:game.parts, level:game.level, seen:game.seen });
+    },
+    //この周の進行状況と、周をまたいで残るものを書く
     write:function(){
         //協力プレイはその場かぎり(ひとり用のセーブは上書きしない)。コンティニュー用にメモリにだけ覚えておく
         if(typeof coop != "undefined" && coop.active){
@@ -376,15 +435,52 @@ var save = {
         try{
             localStorage.setItem(this.KEY, this.data());
         }catch(e){}
+        this.writeMeta();
+    },
+    //周をまたいで残るものだけを書く(倒れたとき・クリアしたとき。この周で拾ったパーツも残す)
+    writeMeta:function(){
+        if(typeof coop != "undefined" && coop.active) return;
+        try{ localStorage.setItem(this.META_KEY, this.metaData()); }catch(e){}
     },
     exists:function(){
         try{ return localStorage.getItem(this.KEY) != null; }catch(e){ return false; }
     },
-    //読み込めたらtrue
+    //この周を読み込む。読み込めたらtrue(パーツ・能力は周をまたいで残る方を使う)
     load:function(){
         try{
-            return this.restore(localStorage.getItem(this.KEY));
+            if(!this.restore(localStorage.getItem(this.KEY))) return false;
+            this.loadMeta();
+            return true;
         }catch(e){ return false; }
+    },
+    //周をまたいで残るものを読み込む(なければ、前の作りのセーブから作る)
+    loadMeta:function(){
+        var m = null;
+        try{ m = JSON.parse(localStorage.getItem(this.META_KEY)); }catch(e){}
+        if(m){
+            game.parts = Number(m.parts) || 0;
+            for(var k in game.level) game.level[k] = Math.max(1, Math.min(MAX_LEVEL, (m.level && m.level[k]) || 1));
+            game.seen = m.seen || {};
+            return;
+        }
+        //前の作り(能力はレベル5まで、パーツはこの周のもの)のセーブ：パーツ・見たストーリーを引き継ぎ、能力は近い強さのレベルに直す
+        var old = null;
+        try{ old = localStorage.getItem(this.KEY); }catch(e){}
+        var d = null;
+        try{ d = old ? JSON.parse(old) : null; }catch(e){}
+        if(d && this.restoreMetaFrom(d)) this.writeMeta();
+    },
+    restoreMetaFrom:function(_d){
+        var run = { wave:game.wave, score:game.score, owned:game.owned, slots:game.slots, slotCount:game.slotCount,
+                    pendingReward:game.pendingReward, shop:game.shop, buffs:game.buffs, diff:game.diff, runParts:game.runParts };
+        if(!this.restore(JSON.stringify(_d))) return false;
+        for(var k in game.level){
+            var lv = (_d.level && _d.level[k]) || 1;
+            game.level[k] = OLD_LEVEL_MAP[Math.min(OLD_LEVEL_MAP.length, lv) - 1];
+        }
+        //この周の分は元に戻す(読み込んだのは周をまたいで残るものだけ)
+        for(var r in run) game[r] = run[r];
+        return true;
     },
     //data() で作った文字列から進行状況を戻す。戻せたらtrue
     restore:function(_s){
@@ -395,8 +491,10 @@ var save = {
             game.wave = d.wave;
             game.parts = d.parts;
             game.score = d.score;
+            game.diff = d.diff != null && DIFFICULTIES[d.diff] ? d.diff : DEFAULT_DIFF;
+            game.runParts = Number(d.runParts) || 0;
             for(var k in game.level){
-                if(d.level && d.level[k]) game.level[k] = d.level[k];
+                if(d.level && d.level[k]) game.level[k] = Math.min(MAX_LEVEL, d.level[k]);
             }
             //装備(古いセーブデータには無いので、そのときは初期装備のまま)
             if(d.owned) game.owned = d.owned;
@@ -409,15 +507,21 @@ var save = {
             game.buffs = d.buffs || {};
             //なくなった能力「燃料」の強化と、ショップの「増設タンク」に使ったパーツを返す(燃料がなくなる前のセーブ)
             var refund = 0;
-            for(var lv=1; d.level && lv < (d.level.fuel || 1); lv++) refund += UPGRADE_COST[lv];
+            for(var lv=1; d.level && lv < (d.level.fuel || 1); lv++) refund += OLD_FUEL_COST[lv] || 0;
             for(var n=0; n<(game.buffs.tank || 0); n++) refund += OLD_TANK_COST[n] || 0;
             delete game.buffs.tank;
             game.parts += refund;
             return true;
         }catch(e){ return false; }
     },
+    //この周の進行状況を消す(周をまたいで残るものは消さない)
     clear:function(){
         try{ localStorage.removeItem(this.KEY); }catch(e){}
+    },
+    //すべてのデータを消す(テスト用)
+    clearAll:function(){
+        this.clear();
+        try{ localStorage.removeItem(this.META_KEY); }catch(e){}
     },
     getBest:function(){
         try{ return Number(localStorage.getItem(this.BEST_KEY)) || 0; }catch(e){ return 0; }

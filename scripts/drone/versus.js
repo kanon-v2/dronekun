@@ -11,7 +11,7 @@
 const VS_HP = 300;             //耐久(装備のダメージで数える。雑魚敵の体力は1～5)。決着まで30秒ほどになるよう調整
 const VS_PICKS = 3;            //選べる装備の数
 const VS_WEAPON_LV = 3;        //装備のレベル(全部同じ)
-const VS_STAT_LV = 3;          //能力のレベル(全部同じ)
+const VS_STAT_LV = 8;          //能力のレベル(全部同じ。MAX_LEVEL は20)
 const VS_COUNTDOWN = 180;      //開始までの秒読み(フレーム)。この間は動けるが攻撃しない
 const VS_EMP_SLOW = 90;        //相手のEMPを受けたときに遅くなる時間(フレーム)
 const VS_ICE_SLOW = 60;        //相手の冷凍を受けたときに遅くなる時間(フレーム。対戦では凍って止まる代わり)

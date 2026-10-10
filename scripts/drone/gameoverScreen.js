@@ -10,16 +10,19 @@ var gameoverTitleButton = new drawRect(CW/2,GS*14,GS*14,GS*2.4);
 var gameoverScreen = {
     best:0,
     newRecord:false,
-    canRetry:false,
+
     enter:function(){
         var best = save.getBest();
         this.newRecord = game.score > best;
         if(this.newRecord) save.setBest(game.score);
         this.best = Math.max(best, game.score);
-        //最後に強化画面で保存した状態からやり直せる(協力プレイはふたりともコンティニューを押すと、覚えておいた状態から)
+        //ひとり用：この周は終わり。集めたパーツと能力は残して、次の周はWAVE1から(協力プレイはふたりともコンティニューを押すと、覚えておいた状態から)
         this.coopMode = coop.active;
         coop.wantContinue = false;
-        this.canRetry = save.exists();
+        if(!this.coopMode){
+            save.writeMeta();
+            save.clear();
+        }
     },
     update:function(){
         if(this.coopMode){
@@ -38,12 +41,7 @@ var gameoverScreen = {
         }
         if(retryButton.clicked()){
             sound.play("click");
-            if(this.canRetry && save.load()){
-                goUpgrade();
-            }else{
-                game.reset();
-                page.change(1);
-            }
+            startScreen.startRun(game.diff);   //同じ難易度でWAVE1から(2周目からは強化画面で能力を上げてから)
             return;
         }
         if(gameoverTitleButton.clicked()){
@@ -85,7 +83,12 @@ var gameoverScreen = {
             ctx.fillStyle = "#000";
             return;
         }
-        retryButton.button(this.canRetry ? "直前のWAVEからやり直す" : "もう一度はじめから");
+        ctx.font = "16px sans-serif";
+        ctx.fillStyle = "#555";
+        ctx.fillText("この周で集めたパーツ " + (game.runParts || 0) + "（持っているパーツ " + game.parts + "）は残ります",CW/2,GS*10.2);
+        ctx.fillStyle = "#000";
+        ctx.font = "bold 24px serif";
+        retryButton.button("もう一度出撃（" + difficulty().name + "・WAVE1から）");
         gameoverTitleButton.button("タイトルへ");
     }
 };

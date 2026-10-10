@@ -69,7 +69,7 @@ var bossDebug = {
             game.slotCount = 3;
         }else if(this.gear == 0){ lv = 1; wl = 1; game.owned = { gun:1 }; game.slots = ["gun",null,null]; game.slotCount = 1; }
         else{
-            lv = this.gear == 2 ? MAX_LEVEL : Math.min(MAX_LEVEL, 1 + Math.floor(_w/6));
+            lv = this.gear == 2 ? MAX_LEVEL : Math.min(MAX_LEVEL, 1 + Math.floor(_w*0.6));
             wl = this.gear == 2 ? MAX_WEAPON_LEVEL : Math.min(MAX_WEAPON_LEVEL, 1 + Math.floor(_w/7));
             game.owned = { gun:wl, missile:wl, tesla:wl };
             game.slots = ["gun","missile","tesla"];

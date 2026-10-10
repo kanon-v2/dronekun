@@ -23,6 +23,14 @@ var continueButton = new drawRect(TITLE_MENU_X, 214, 300, 46);
 var coopButton     = new drawRect(TITLE_MENU_X, 300, 300, 46);
 var versusButton   = new drawRect(TITLE_MENU_X, 354, 300, 46);
 
+//難易度を選ぶ窓(「出撃」で開く。DIFFICULTIES は common.js)
+const DIFF_W = 470;
+const DIFF_Y = 54;
+const DIFF_ROW = 74;
+var diffCards = [];
+for(var i=0; i<DIFFICULTIES.length; i++) diffCards.push(new drawRect(CW/2, DIFF_Y + 76 + i*DIFF_ROW, DIFF_W - 60, 64));
+var diffClose = new drawRect(CW/2, DIFF_Y + 76 + DIFFICULTIES.length*DIFF_ROW + 4, 160, 38);
+
 //右上の設定ボタンと、設定の窓(ドローン君の見た目・戦闘画面の方眼を選ぶ)
 var settingsButton = new drawRect(CW - 78, 18, 104, 34);
 const SETTINGS_W = 520;     //設定の窓の大きさ
@@ -57,8 +65,13 @@ var startScreen = {
     hover:-1,       //マウスが乗っているメニューの番号
     blips:[],       //レーダーに映る点
     settings:false, //設定の窓を開いているか
+    diffSel:false,  //難易度を選ぶ窓を開いているか
+    diffHover:-1,
     setHover:-1,    //設定の窓でマウスが乗っているもの(0,1:見た目 2〜6:方眼 7:閉じる)
     enter:function(){
+        //周をまたいで残るもの(パーツ・能力・見たストーリー)を読み直す(協力プレイ・対戦・デバッグのあとも元に戻るように)
+        game.reset();
+        save.loadMeta();
         this.hasSave = save.exists();
         this.best = save.getBest();
         try{ this.cleared = localStorage.getItem("dronekun_cleared") == "1"; }catch(e){ this.cleared = false; }
@@ -66,17 +79,104 @@ var startScreen = {
         this.t = 0;
         this.hover = -1;
         this.settings = false;
+        this.diffSel = false;
     },
     //タッチで、ボタンの上を触ったか(タイトル画面では、ボタン以外はドラッグでドローン君を動かす。common.js)
     touchUI:function(_x,_y){
+        if(this.settings || this.diffSel) return true;     //窓を開いている間は、どこを触ってもタップ
         var list = this.items();
         for(var i=0; i<list.length; i++) if(list[i][0].contains(_x,_y)) return true;
         return settingsButton.contains(_x,_y) || (debugUrl() && debugButton.contains(_x,_y));
     },
+    //新しい周を始める(_d：難易度の番号)。パーツ・能力・見たストーリーは残す。この周の進み具合は消す
+    //はじめてならプロローグからWAVE1へ。2周目からは強化画面(集めたパーツで能力を上げてから出撃)
+    startRun:function(_d){
+        save.clear();
+        game.newRun(_d);
+        if(!game.seen.prologue){
+            storyScreen.start("prologue",function(){ page.change(1); });
+        }else{
+            page.change(2);     //WAVEのあとのストーリーは流さない(まだWAVE1の前なので)
+        }
+    },
+    //難易度を選ぶ窓。Esc か「やめる」で閉じる
+    updateDiff:function(){
+        var h = -1;
+        for(var i=0; i<diffCards.length; i++) if(diffCards[i].contains(MouseX,MouseY)) h = i;
+        if(diffClose.contains(MouseX,MouseY)) h = diffCards.length;
+        if(h != this.diffHover && h >= 0) sound.play("hover");
+        this.diffHover = h;
+        for(var i=0; i<diffCards.length; i++){
+            if(diffCards[i].clicked()){
+                sound.play("click");
+                this.diffSel = false;
+                this.startRun(i);
+                return;
+            }
+        }
+        if(diffClose.clicked()){
+            sound.play("click");
+            this.diffSel = false;
+            this.hover = -1;
+        }
+    },
+    drawDiff:function(){
+        ctx.fillStyle = "rgba(247,247,244,0.85)";
+        ctx.fillRect(0,0,CW,CH);
+        var px = CW/2 - DIFF_W/2, py = DIFF_Y, ph = diffClose.Y + diffClose.height + 16 - py;
+        ctx.fillStyle = "rgba(0,0,0,0.12)";
+        ctx.fillRect(px + 6, py + 6, DIFF_W, ph);
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(px, py, DIFF_W, ph);
+        ctx.strokeStyle = TITLE_INK;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(px + 1, py + 1, DIFF_W - 2, ph - 2);
+        ctx.lineWidth = 1;
+        ctx.fillStyle = TITLE_ACCENT;
+        ctx.fillRect(px + 2, py + 2, 5, 44);
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.font = "bold 20px " + TITLE_UI_FONT;
+        ctx.fillStyle = TITLE_INK;
+        ctx.fillText("難易度を選ぶ", px + 26, py + 25);
+        ctx.font = "12px " + TITLE_UI_FONT;
+        ctx.fillStyle = "#6a6f6c";
+        ctx.fillText("倒れてもパーツと能力は残ります。WAVE1から出撃します", px + 26, py + 54);
+        for(var i=0; i<diffCards.length; i++){
+            var c = diffCards[i], d = DIFFICULTIES[i], on = this.diffHover == i;
+            ctx.fillStyle = on ? "#f0f0ec" : "#fff";
+            ctx.fillRect(c.X, c.Y, c.width, c.height);
+            ctx.strokeStyle = on ? TITLE_INK : "#c9ccc7";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(c.X + 1, c.Y + 1, c.width - 2, c.height - 2);
+            ctx.lineWidth = 1;
+            ctx.fillStyle = d.color;
+            ctx.fillRect(c.X + 2, c.Y + 2, 6, c.height - 4);
+            ctx.textAlign = "left";
+            ctx.font = "bold 18px " + TITLE_UI_FONT;
+            ctx.fillStyle = TITLE_INK;
+            ctx.fillText(d.name, c.X + 22, c.Y + 22);
+            ctx.font = "12px " + TITLE_UI_FONT;
+            ctx.fillStyle = "#6a6f6c";
+            ctx.fillText(d.desc, c.X + 22, c.Y + 46);
+            ctx.textAlign = "right";
+            ctx.font = "bold 13px " + TITLE_UI_FONT;
+            ctx.fillStyle = d.color;
+            ctx.fillText("パーツ ×" + d.parts, c.X + c.width - 16, c.Y + 22);
+        }
+        var on = this.diffHover == diffCards.length;
+        diffClose.fill(on ? TITLE_INK : "#fff");
+        ctx.strokeStyle = TITLE_INK;
+        ctx.strokeRect(diffClose.X + 0.5, diffClose.Y + 0.5, diffClose.width - 1, diffClose.height - 1);
+        ctx.textAlign = "center";
+        ctx.font = "bold 15px " + TITLE_UI_FONT;
+        ctx.fillStyle = on ? "#fff" : TITLE_INK;
+        ctx.fillText("やめる", CW/2, diffClose.Y + diffClose.height/2 + 1);
+    },
     //メニューの一覧([ボタン, 文字, 押せるか])
     items:function(){
         return [
-            [startButton, "はじめから", true],
+            [startButton, "出撃", true],
             [continueButton, "つづきから", this.hasSave],
             [coopButton, "協力プレイ", true],
             [versusButton, "対戦", true]
@@ -92,6 +192,10 @@ var startScreen = {
         }
         if(this.settings){
             this.updateSettings();
+            return;
+        }
+        if(this.diffSel){
+            this.updateDiff();
             return;
         }
         //デバッグのメニューを開く(URL に #debug を付けたときだけボタンが出る。スマホ用。bossDebug.js)
@@ -117,13 +221,11 @@ var startScreen = {
         if(h != this.hover && h >= 0) sound.play("hover");
         this.hover = h;
 
-        //はじめから：セーブを消してWAVE1へ
+        //出撃：難易度を選ぶ窓を開く(選ぶと新しい周が始まる。startRun)
         if(startButton.clicked()){
             sound.play("click");
-            save.clear();
-            game.reset();
-            //プロローグを見てからWAVE1へ
-            storyScreen.start("prologue",function(){ page.change(1); });
+            this.diffSel = true;
+            this.diffHover = -1;
             return;
         }
         //つづきから：セーブを読み込んで強化画面へ(見ていないストーリーがあれば先に)
@@ -200,6 +302,7 @@ var startScreen = {
         drone.draw();
         if(bossDebug.menu) bossDebug.drawMenu();
         if(this.settings) this.drawSettings();
+        if(this.diffSel) this.drawDiff();
     },
 
     drawBackground:function(){
@@ -346,7 +449,7 @@ var startScreen = {
             ctx.textAlign = "right";
             ctx.font = "11px " + TITLE_UI_FONT;
             ctx.fillStyle = on ? "rgba(255,255,255,0.7)" : "#8a8f8b";
-            var sub = ["プロローグから", ok ? "セーブから再開" : "セーブなし", "ストーリーをふたりで", "1対1"][i];
+            var sub = ["難易度を選んでWAVE1から", ok ? "この周を再開" : "出撃中の周なし", "ストーリーをふたりで", "1対1"][i];
             ctx.fillText(sub, b.X + b.width - 14, b.Y + b.height/2 + 1);
             ctx.restore();
             ctx.restore();
@@ -569,4 +672,5 @@ var startScreen = {
 //Escで設定の窓を閉じる
 document.addEventListener("keydown",function(e){
     if(page.number == 0 && startScreen.settings && e.code == "Escape") startScreen.closeSettings();
+    if(page.number == 0 && startScreen.diffSel && e.code == "Escape") startScreen.diffSel = false;
 },false);

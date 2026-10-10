@@ -13,7 +13,7 @@
 const COOP_TYPES  = ["bug","dasher","shooter","tank","spinner","bomber","kin","mdrone","heli","panzer","goldbug","carrier","queen","fortress","kai"];
 const COOP_SHOTS  = ["normal","small","big","water","missile","dragon"];
 const COOP_PICKS  = ["part","yaruki","capsule"];
-const COOP_MODES  = ["enter","idle","aim","dash","spiral","triple","laserAim","laser"];
+const COOP_MODES  = ["enter","idle","aim","dash","spiral","triple","laserAim","laser","feint","stagger"];
 const COOP_STATES = ["start","play","clear","over"];
 const COOP_LIMIT  = 12000;  //1回に送る状態の大きさの上限(バイト)。超えるときはゲストから遠いものから削る
 const COOP_HP_MUL = 2;      //協力プレイでの敵の体力の倍率
@@ -432,7 +432,7 @@ var coop = {
         if(_e.boss){
             var aimA = Math.atan2(_e.aimY || 0,_e.aimX || 1);
             _s.b = [_e.id, COOP_MODES.indexOf(_e.mode), r((_e.angle || 0)*100), _e.count || 0, _e.phase || 0,
-                    r((_e.bladeA || 0)*100), _e.circleT || 0, r(aimA*100)];
+                    r((_e.bladeA || 0)*100), _e.circleT || 0, r(aimA*100), _e.fake ? 1 : 0];   //最後は女王蜂のフェイントの印(合図を出さない)
             if(_e.mines){ _s.bm = []; for(var i=0; i<_e.mines.length; i++) _s.bm.push(r(_e.mines[i].x), r(_e.mines[i].y), _e.mines[i].t); }
             if(_e.strikes){ _s.bk = []; for(var i=0; i<_e.strikes.length; i++) _s.bk.push(r(_e.strikes[i].x), r(_e.strikes[i].y), _e.strikes[i].t); }
         }
@@ -557,7 +557,7 @@ var coop = {
         //ホストが次のWAVEへ進んだ(WAVEクリア)
         if(_s.w > game.wave && page.number != 4){
             for(var w=game.wave; w<_s.w; w++){
-                game.parts += Math.ceil(w/2);
+                game.gainParts(Math.ceil(w/2));
                 game.pendingReward = (game.pendingReward || 0) + 1;
             }
             game.wave = _s.w;
@@ -646,7 +646,7 @@ var coop = {
         if(!this.active || !(_total > this.partnerParts)) return;
         var n = _total - this.partnerParts;
         this.partnerParts = _total;
-        game.parts += n;
+        game.gainParts(n);
         if(page.number == 1 && this.partner) popup(this.partner.pos.X, this.partner.pos.Y - 24, "パーツ+" + n, "rgb(" + P2_COLOR + ")");
     },
     //ゲストの攻撃が当たった(ダメージはホストへ送る)
@@ -777,6 +777,7 @@ var coop = {
                 b.angle = S.b[2]/100; b.count = S.b[3]; b.phase = S.b[4];
                 b.bladeA = S.b[5]/100; b.circleT = S.b[6];
                 b.aimX = Math.cos(S.b[7]/100); b.aimY = Math.sin(S.b[7]/100);
+                b.fake = !!S.b[8];
                 if(b.type == "kai"){
                     b.mines = []; b.strikes = [];
                     var bm = S.bm || [], bk = S.bk || [];

@@ -5,6 +5,21 @@ const RARE_RATE  = 0.06;    //敵が出るたびにレア敵になる確率(WAVE
 const RARE_MAX   = 2;       //1WAVEに出るレア敵の最大数
 const BOSS_EVERY = 5;       //このWAVEごとにボスが出る
 const MINION_MAX = 6;       //女王蜂の手下が同時にいられる数
+//女王蜂の突進の予備動作(パリィの試作)：構えの長さを毎回変え、フェイント・連続突進を混ぜる
+//本物の突進の前だけ、針が白く光って羽が開く「合図」(QUEEN_CUE)が出る。突進にジャスト衝撃波を合わせると弾き返せる
+const QUEEN_AIM       = [35,85];    //構えの長さ(フレーム。この間でばらつく。最後の QUEEN_CUE で向きが固まる)
+const QUEEN_CUE       = 20;         //飛び出す直前の合図の長さ(フェイントでは出ない)
+const QUEEN_FEINT     = 0.3;        //構えがフェイントになる確率(怒ると QUEEN_FEINT_RAGE)
+const QUEEN_FEINT_RAGE = 0.45;
+const QUEEN_FEINT_T   = 12;         //フェイントで少し前へ出てから止まる時間
+const QUEEN_REAIM     = [20,45];    //フェイントのあと構え直す長さ
+const QUEEN_CHAIN     = 3;          //連続突進の回数(怒ると必ず、ふだんは QUEEN_CHAIN_RATE の確率)
+const QUEEN_CHAIN_RATE = 0.35;
+const QUEEN_CHAIN_AIM = [24,48];    //連続突進の2回目からの構えの長さ
+const QUEEN_STAGGER   = 34;         //突進を弾かれてよろける時間
+const QUEEN_PARRY_DMG = 5;          //突進を弾いたときのダメージ
+const QUEEN_PERFECT_DMG = 15;       //連続突進を全部弾いたときに足すダメージ
+const QUEEN_BREAK     = 150;        //連続突進を全部弾いたとき、目を回して止まる時間
 
 const RARE_TYPES = {
     goldbug: { name:"金色虫", r:10, hp:3, speed:3.4, score:100, parts:10 },  //逃げ回る。倒すとパーツが大量
@@ -36,7 +51,7 @@ function bossTypeFor(_w){
 
 function makeRare(_type){
     var T = RARE_TYPES[_type];
-    var hp = Math.ceil(T.hp * (1 + (game.wave-1)*0.2)) * coop.hpMul();
+    var hp = Math.ceil(T.hp * (1 + (game.wave-1)*ENEMY_HP_GROW)*difficulty().hp) * coop.hpMul();
     var e = {
         id:++enemySeq,
         type:_type, rare:true, name:T.name, r:T.r, hp:hp, maxHp:hp, score:T.score, parts:T.parts,
@@ -57,7 +72,7 @@ function makeRare(_type){
 
 function makeBoss(_type){
     var T = BOSS_TYPES[_type];
-    var hp = (60 + (game.wave - BOSS_EVERY)*16) * coop.hpMul();
+    var hp = Math.round((60 + (game.wave - BOSS_EVERY)*16)*difficulty().hp) * coop.hpMul();
     var b = {
         id:++enemySeq,
         type:_type, boss:true, name:T.name, r:T.r, hp:hp, maxHp:hp,
@@ -247,21 +262,36 @@ var special = {
                         if(n > 0) sound.play("summon");
                         _e.timer = _e.enraged ? 60 : 100;
                     }else{
-                        //突進の構え
-                        _e.mode = "aim";
-                        _e.count = 55;
+                        //突進の構え(連続突進になることもある)
+                        _e.chain = _e.enraged || Math.random() < QUEEN_CHAIN_RATE ? QUEEN_CHAIN - 1 : 0;
+                        _e.dashes = _e.chain + 1;   //この突進の回数(全部弾いたか数えるため)
+                        _e.parried = 0;
+                        this.queenAim(_e,QUEEN_AIM,true);
                     }
                 }
                 break;
             case "aim":
-                //最初は狙いを合わせ、直前で向きを固定する
+                //最初は狙いを合わせ、合図(最後の QUEEN_CUE)で向きを固定する
                 _e.vx *= 0.8; _e.vy *= 0.8;
-                if(_e.count > 15){ _e.aimX = _dx/_d; _e.aimY = _dy/_d; }
+                if(_e.count > QUEEN_CUE){ _e.aimX = _dx/_d; _e.aimY = _dy/_d; }
+                if(_e.count == QUEEN_CUE && !_e.fake) sound.play("tell");
                 if(--_e.count <= 0){
-                    _e.mode = "dash";
-                    _e.count = 32;
-                    sound.play("dash");
+                    if(_e.fake){
+                        //フェイント：少し前へ出て止まり、構え直す
+                        _e.fake = false;
+                        _e.mode = "feint";
+                        _e.count = QUEEN_FEINT_T;
+                        _e.vx = _e.aimX*3; _e.vy = _e.aimY*3;
+                    }else{
+                        _e.mode = "dash";
+                        _e.count = 32;
+                        sound.play("dash");
+                    }
                 }
+                break;
+            case "feint":
+                _e.vx *= 0.85; _e.vy *= 0.85;
+                if(--_e.count <= 0) this.queenAim(_e,QUEEN_REAIM,false);
                 break;
             case "dash":
                 _e.vx = _e.aimX*8;
@@ -270,13 +300,57 @@ var special = {
                     _e.x = Math.max(_e.r, Math.min(_e.x, CW - _e.r));
                     _e.y = Math.max(_e.r, Math.min(_e.y, CH - _e.r));
                     _e.vx = 0; _e.vy = 0;
-                    _e.mode = "idle";
-                    _e.hy = 130 + Math.random()*120;
-                    _e.timer = _e.enraged ? 40 : 70;
+                    if(_e.chain > 0){
+                        //連続突進：すぐ振り向いて次を構える
+                        _e.chain--;
+                        this.queenAim(_e,QUEEN_CHAIN_AIM,false);
+                        break;
+                    }
+                    this.queenRest(_e);
                     //怒っていると突進の終わりに弾をばらまく
                     this.ring(_e.x,_e.y,_e.enraged ? 14 : 6,2.4,Math.random(),"small");
                 }
                 break;
+            case "stagger":
+                //弾かれてよろける(連続突進を全部弾かれたときは長く目を回す)
+                _e.vx *= 0.9; _e.vy *= 0.9;
+                if(--_e.count <= 0){
+                    if(_e.chain > 0){ _e.chain--; this.queenAim(_e,QUEEN_CHAIN_AIM,false); }
+                    else this.queenRest(_e);
+                }
+                break;
+        }
+    },
+    //女王蜂が突進を構える(_range：構えの長さの範囲。_mayFake：フェイントになりうるか)
+    queenAim:function(_e,_range,_mayFake){
+        _e.mode = "aim";
+        _e.count = randIn(_range) + QUEEN_CUE;
+        _e.fake = _mayFake && Math.random() < (_e.enraged ? QUEEN_FEINT_RAGE : QUEEN_FEINT);
+    },
+    //突進を終えて、ふだんの動きへ戻る
+    queenRest:function(_e){
+        _e.mode = "idle";
+        _e.hy = 130 + Math.random()*120;
+        _e.timer = _e.enraged ? 40 : 70;
+    },
+    //突進をジャスト衝撃波で弾かれた(mainScreen.counter から。動かすのはホストとひとり用だけ)
+    //連続突進を全部弾くと、大きなダメージを受けて長く目を回す
+    parry:function(_e){
+        if(_e.type != "queen" || _e.mode != "dash") return;
+        _e.parried = (_e.parried || 0) + 1;
+        var perfect = _e.chain == 0 && _e.dashes > 1 && _e.parried >= _e.dashes;
+        _e.mode = "stagger";
+        _e.count = perfect ? QUEEN_BREAK : QUEEN_STAGGER;
+        _e.vx = -_e.aimX*7; _e.vy = -_e.aimY*7;
+        _e.flash = 10;
+        fx.flare(_e.x, _e.y, 50, JUST_COLOR, 14);
+        fx.sparks(_e.x, _e.y, 16, JUST_COLOR, 8, 3);
+        popup(_e.x, _e.y - _e.r - 10, perfect ? "連続カウンター！" : _e.dashes > 1 ? _e.parried + "/" + _e.dashes : "カウンター！", "rgb(30,150,200)");
+        mainScreen.hitEnemy(_e, QUEEN_PARRY_DMG + (perfect ? QUEEN_PERFECT_DMG : 0), "counter");
+        if(perfect){
+            fx.flare(_e.x, _e.y, 120, JUST_COLOR, 24);
+            fx.ring(_e.x, _e.y, 150, JUST_COLOR, 28, 8);
+            fx.shake(12);
         }
     },
 
@@ -605,7 +679,9 @@ var special = {
     //ボスの攻撃予告・レーザー(translateしていない状態で呼ばれる)
     drawAttack:function(_e){
         if(_e.type == "queen" && _e.mode == "aim"){
-            ctx.strokeStyle = "rgba(220,40,40," + (0.2 + 0.5*(1 - _e.count/55)) + ")";
+            //狙っている間は薄く、本物の突進の合図(QUEEN_CUE)で濃くなる(フェイントは薄いまま)
+            var cue = !_e.fake && _e.count <= QUEEN_CUE ? 1 - _e.count/QUEEN_CUE : 0;
+            ctx.strokeStyle = "rgba(220,40,40," + (0.25 + 0.6*cue) + ")";
             ctx.lineWidth = _e.r*1.2;
             ctx.globalAlpha = 0.25;
             ctx.beginPath(); ctx.moveTo(_e.x,_e.y); ctx.lineTo(_e.x + _e.aimX*1200, _e.y + _e.aimY*1200); ctx.stroke();

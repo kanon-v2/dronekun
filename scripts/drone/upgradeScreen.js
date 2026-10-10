@@ -77,6 +77,9 @@ var resetButton = new drawRect(825 , 72 , 210 , 32);
 const RESET_CONFIRM_TIME = 180;     //リセットの確認を待つ時間(3秒)
 const ROW_TOP = 115;
 const ROW_H = 58;
+const PIP_STEP = 11;     //能力のレベルの目盛り1つの幅(MAX_LEVEL 個並べる)
+const PIP_SIZE = 8;
+const PIP_GAP  = 4;      //5つごとにあける間
 var upgradeButtons = [];
 for(var i=0; i<STATS.length; i++){
     upgradeButtons.push(new drawRect(GS*28.3 , ROW_TOP + i*ROW_H + 6 , GS*5 , 40));
@@ -173,8 +176,10 @@ var upgradeScreen = {
         }
     },
 
+    //報酬カードの「パーツ」でもらえる数
+    rewardParts:function(){ return Math.max(1, Math.round(PARTS_REWARD*difficulty().parts)); },
     takeReward:function(_id){
-        if(_id == "parts") game.parts += 5;
+        if(_id == "parts") game.gainParts(this.rewardParts());
         else this.gainWeapon(_id);
         game.pendingReward--;
         save.write();
@@ -510,19 +515,20 @@ var upgradeScreen = {
             ctx.fillStyle = "#555";
             ctx.fillText(s.desc,GS*10.5,top + 38);
 
-            //レベルの目盛り
+            //レベルの目盛り(5つごとに少し間をあける)
             for(var j=0; j<MAX_LEVEL; j++){
+                var px = GS*16 + j*PIP_STEP + Math.floor(j/5)*PIP_GAP;
                 if(j < lv){
                     ctx.fillStyle = "#333";
-                    ctx.fillRect(GS*16 + j*26,top + 14,20,20);
+                    ctx.fillRect(px,top + 16,PIP_SIZE,16);
                 }else{
                     ctx.strokeStyle = "#999";
-                    ctx.strokeRect(GS*16 + j*26 + 0.5,top + 14.5,19,19);
+                    ctx.strokeRect(px + 0.5,top + 16.5,PIP_SIZE - 1,15);
                 }
             }
             ctx.fillStyle = "#000";
             ctx.font = "bold 14px sans-serif";
-            ctx.fillText("Lv." + lv,GS*16 + MAX_LEVEL*26 + 6,top + 24);
+            ctx.fillText("Lv." + lv,GS*16 + MAX_LEVEL*PIP_STEP + 3*PIP_GAP + 6,top + 24);
 
             ctx.font = "bold 16px sans-serif";
             if(lv >= MAX_LEVEL){
@@ -811,7 +817,7 @@ var upgradeScreen = {
                 ctx.fillRect(cx - 6,r.Y + 44,12,12);
                 ctx.fillStyle = "#000";
                 ctx.font = "bold 22px sans-serif";
-                ctx.fillText("パーツ＋5",cx,r.Y + 104);
+                ctx.fillText("パーツ＋" + this.rewardParts(),cx,r.Y + 104);
                 ctx.font = "14px sans-serif";
                 ctx.fillText("能力強化や装備枠の解放に使う",cx,r.Y + 140);
                 continue;
