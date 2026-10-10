@@ -23,6 +23,8 @@ const COOP_TIMEOUT = 30000; //相方から何も届かないまま、この時�
 const COOP_LAG_SHOW = 2000; //相方から何も届かない時間がこれ(ミリ秒)を超えたら、画面に「通信が不安定です」と出す
 const COOP_NO_REPLY = 12000; //ゲストがつながってから、この時間(ミリ秒)ホストから何も届かなければ入り直しを案内する
 const COOP_KEEPALIVE = 1000;  //画面が止まっている(ウィンドウが隠れて描画が止まった)ときも、この間隔(ミリ秒)で生きている合図を送る
+const COOP_CHANNEL = "dronekun-";  //相方との通信のチャンネルの名前の頭(送り直さない設定にするチャンネルを見分ける)
+const COOP_BUFFER_MAX = 32000;    //送れずにたまっている量(バイト)がこれを超えたら、新しい状態を積まない(回線が悪いときに古い状態がたまって遅れないように)
 const P2_COLOR    = "40,130,230";
 
 var enemySeq = 0;           //敵の通し番号(ホストとゲストで同じ敵を指すため)
@@ -60,6 +62,7 @@ var coop = {
     appliedQ:-1,
     framesSinceSnap:0,
     sendQ:0,
+    guestQ:-1,          //ホスト：ゲストから最後に読んだ状態の番号(古い状態を読まないように)
     lastSend:0,         //最後に相方へ送った時刻(生きている合図を送るかどうかに使う)
     partnerBye:false,   //相方から、自分で抜ける合図が届いた
     step:0,
@@ -155,7 +158,7 @@ var coop = {
         peer.on("open",function(){
             if(self.peer != peer) return;
             //状態は毎回まるごと送るので、途中が抜けても困らない「再送しない」つなぎ方にする(遅れがたまらない)
-            self.setupConn(peer.connect(COOP_ID_PREFIX + code, { reliable:false, serialization:"json" }));
+            self.setupConn(peer.connect(COOP_ID_PREFIX + code, { reliable:false, serialization:"json", label:COOP_CHANNEL + Date.now() }));
         });
         peer.on("error",function(e){
             if(self.peer != peer) return;
@@ -266,6 +269,7 @@ var coop = {
         arms.blockLog = [0];    //バリアで防いだ数(ゲスト→ホスト)
         this.events = []; this.evSeq = 0; this.evSeen = 0;
         this.snap = null; this.snapQ = -1; this.appliedQ = -1;
+        this.guestQ = -1;
         this.partner = null;
         this.struck = {};
     },
@@ -304,7 +308,8 @@ var coop = {
 
     leave:function(){
         //相方に、自分から抜けることを知らせてから閉じる(相方の画面で「退出しました」と出す)
-        if(this.conn && this.connOpen){ try{ this.conn.send({ role:this.role, bye:1 }); }catch(e){} }
+        //(送り直さない通信なので、落ちても届くよう何回か送る)
+        if(this.conn && this.connOpen){ for(var i=0; i<3; i++){ try{ this.conn.send({ role:this.role, bye:1 }); }catch(e){} } }
         if(this.active) save.bankParts();     //協力プレイで集めたパーツを、ひとり用のパーツに足す(戦闘の途中で抜けても、そこまでの分を)
         this.closePeer();
         this.checkpoint = null; this.wantContinue = false; this.hostCn = false;
@@ -387,6 +392,9 @@ var coop = {
     send:function(){
         if(!this.conn || !this.connOpen) return;
         if(++this.step % 2) return;
+        //送れずにたまっているときは積まない(たまった古い状態が先に届いて、新しい状態が遅れるので)
+        var dc = this.conn.dataChannel;
+        if(dc && dc.bufferedAmount > COOP_BUFFER_MAX) return;
         try{
             if(this.mode == "vs") this.conn.send({ role:this.role, m:"vs", v:versus.build() });
             else if(this.role == "host") this.conn.send({ role:"host", m:"coop", s:this.buildHost() });
@@ -493,6 +501,7 @@ var coop = {
     buildGuest:function(){
         var M = mainScreen, r = Math.round;
         var g = {
+            q:++this.sendQ,
             x:r(drone.X), y:r(drone.Y), d:drone.look.shown, hp:M.hp, mh:M.maxHp, dn:M.down ? 1 : 0,
             pg:page.number, rd:this.localReady ? game.wave : 0,
             dm:this.dmg, got:this.got.slice(-30), bl:this.blast, ev:this.events, pc:this.partsGot, cn:this.wantContinue ? 1 : 0,
@@ -505,6 +514,8 @@ var coop = {
 
     //ホスト：ゲストの状態を反映
     readGuest:function(_g){
+        if(_g.q < this.guestQ) return;     //順番が入れ替わって遅れて届いた古い状態は読まない(合計値が戻ってしまうので)
+        this.guestQ = _g.q || 0;
         if(!this.partner) this.partner = { pos:{ X:_g.x, Y:_g.y }, look:new DroneLook() };
         var P = this.partner;
         P.tx = _g.x; P.ty = _g.y; P.dir = _g.d; P.hp = _g.hp; P.mh = _g.mh; P.down = !!_g.dn;
@@ -560,7 +571,7 @@ var coop = {
 
     //ゲスト：ホストの状態を読んで、進行を合わせる
     readHost:function(_s){
-        if(_s.q == this.snapQ) return;
+        if(_s.q <= this.snapQ) return;     //同じ状態・順番が入れ替わって遅れて届いた古い状態は読まない
         this.snapQ = _s.q;
         this.snap = _s;
         this.framesSinceSnap = 0;
@@ -1189,6 +1200,24 @@ var coopScreen = {
         ctx.fillStyle = "#000";
     }
 };
+
+//相方との通信は、送り直さない(maxRetransmits:0)。PeerJS の reliable:false は「順番を守らない」だけで、届くまで送り直す。
+//送り直すと、回線が悪くなったときに送り直しが詰まり、待ち時間が倍々に延びて、回線が戻っても長いあいだ何も届かなくなる
+//(状態は毎回まるごと送るので、抜けたものを送り直す必要はない)。PeerJS には手を加えず、チャンネルを作るところで設定を足す
+(function(){
+    if(typeof RTCPeerConnection == "undefined" || !RTCPeerConnection.prototype.createDataChannel) return;
+    var create = RTCPeerConnection.prototype.createDataChannel;
+    RTCPeerConnection.prototype.createDataChannel = function(_label, _opt){
+        if(String(_label).indexOf(COOP_CHANNEL) == 0){
+            var o = {};
+            for(var k in _opt) o[k] = _opt[k];
+            o.ordered = false;
+            o.maxRetransmits = 0;
+            _opt = o;
+        }
+        return create.call(this, _label, _opt);
+    };
+})();
 
 //生きている合図：ウィンドウが隠れる・ほかのウィンドウに覆われると、ブラウザが描画(requestAnimationFrame)を止め、
 //描画のループの中で送っている状態も止まる。そのままだと相方に切断とみなされるので、タイマーで合図だけ送る
