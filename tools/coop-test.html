@@ -61,6 +61,7 @@ function vsDesc(){ return ["host","guest"].map(function(k){ var v = st[k] && st[
 function both(f){ return f(st.host) && f(st.guest); }
 function desc(){ return ["host","guest"].map(function(k){ var s = st[k]; return s ? k + ":p" + s.page + " w" + s.wave + (s.active ? " active" : "") + (s.msg ? " 「" + s.msg + "」" : "") : k + ":-"; }).join(" / "); }
 
+var COOP_MUTE_TEST = 15000;    //ホストが何も送らない時間(ミリ秒。前の切断までの時間8秒より長く、COOP_TIMEOUT より短く)
 var COOP_PAUSE_TEST = 12000;   //ゲストの画面を止める時間(ミリ秒。COOP_TIMEOUT より長く)
 var steps = [
     function(next){
@@ -106,6 +107,20 @@ var steps = [
                 check("ゲストの画面が" + COOP_PAUSE_TEST/1000 + "秒止まっても切れない", ok, desc() + " 「" + st.host.msg + "」"); next();
             });
         }, COOP_PAUSE_TEST + 500);
+    },
+    function(next){
+        //回線が悪くなってホストから COOP_MUTE_TEST の間なにも届かなくても、COOP_TIMEOUT までは切れずに待ち、「通信が不安定です」を出す
+        var lagMax = 0;
+        cmd("host", { cmd:"mute", ms:COOP_MUTE_TEST });
+        var iv = setInterval(function(){ lagMax = Math.max(lagMax, st.guest.lag || 0); }, 100);
+        setTimeout(function(){
+            waitFor(function(){ return st.guest.lag < 1000; }, 3000, function(){
+                clearInterval(iv);
+                var ok = lagMax >= COOP_MUTE_TEST - 2000 && st.host.partner && st.guest.partner && st.host.active && st.guest.active;
+                check("ホストから" + COOP_MUTE_TEST/1000 + "秒届かなくても切れずに待つ", ok, "待った最大" + Math.round(lagMax/1000) + "秒 " + desc());
+                next();
+            });
+        }, COOP_MUTE_TEST + 500);
     },
     function(next){
         //回線が一瞬途切れて仲介サーバーとのつながりが切れても(PeerJS の "network" エラー)、相方との通信は閉じない

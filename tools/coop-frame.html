@@ -124,7 +124,7 @@ var loop = setInterval(tick, 16);
 //親ページへ状態を知らせる
 setInterval(function(){
     top.postMessage({ st:true, name:window.name, page:page.number, active:coop.active, role:coop.role, inRoom:coop.inRoom,
-        waiting:coop.waiting, code:coop.code, wave:game.wave, diff:difficulty().id, msg:coop.msg, notice:startScreen.notice || "",
+        waiting:coop.waiting, code:coop.code, lag:coop.lagMs(), wave:game.wave, diff:difficulty().id, msg:coop.msg, notice:startScreen.notice || "",
         partner:!!coop.partner, partnerHits:partnerHits, just:mainScreen.just, parts:game.parts, partsGot:coop.partsGot, partnerParts:coop.partnerParts, enemies:enemies.length, extra:extra, blocked:arms.blockLog[0],
         vs:{ a:versus.active, ph:versus.phase, r:versus.round, hp:versus.hp, res:versus.result, w:versus.wins, l:versus.losses, d:versus.draws, dealt:versus.dealt, mx:VS_HP, ft:versus.fightTime, t:versus.t, src:vsSrc },
         story:page.number == 4 ? storyScreen.id : "", errors:errors.slice(0,5) }, "*");
@@ -157,6 +157,8 @@ window.addEventListener("message", function(ev){
     if(m.cmd == "pause"){ clearInterval(loop); setTimeout(function(){ loop = setInterval(tick, 16); }, m.ms); }
     //回線が一瞬途切れて、仲介サーバーとのつながりが切れたときの代わり：PeerJS と同じ "network" のエラーを出す
     if(m.cmd == "netError" && coop.peer) coop.peer._emit("error", { type:"network", message:"Lost connection to server." });
+    //回線が悪くなって相方へ届かないときの代わり：ms ミリ秒のあいだ何も送らない(生きている合図も)
+    if(m.cmd == "mute" && coop.conn){ var mc = coop.conn, ms0 = mc.send; mc.send = function(){}; setTimeout(function(){ mc.send = ms0; }, m.ms); }
 });
 </script>
 </body></html>

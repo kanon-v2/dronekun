@@ -68,6 +68,7 @@ function draw(now){
     ctx.fillRect(0, 0, CW, CH);
     screens[page.number].draw();
     sound.draw();
+    coop.drawLag();     //協力プレイ・対戦で、相方から届かない間は「通信が不安定です」
     fps.draw();
 
     //ポインタは一番手前

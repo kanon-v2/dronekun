@@ -19,7 +19,8 @@ const COOP_LIMIT  = 12000;  //1回に送る状態の大きさの上限(バイト
 const COOP_HP_MUL = 2;      //協力プレイでの敵の体力の倍率
 const COOP_ID_PREFIX = "dronekun-room-";  //PeerJSのIDの頭に付ける(ほかのアプリのIDとぶつからないように)
 const COOP_CODE_CHARS = "abcdefghjkmnpqrstuvwxyz23456789";  //部屋コードに使う文字(見間違えやすい i l o 0 1 は使わない)
-const COOP_TIMEOUT = 8000;  //相方から何も届かないまま、この時間(ミリ秒)たったら切断とみなす
+const COOP_TIMEOUT = 30000; //相方から何も届かないまま、この時間(ミリ秒)たったら切断とみなす(回線が数秒～十数秒悪くなっても続けられるよう長め)
+const COOP_LAG_SHOW = 2000; //相方から何も届かない時間がこれ(ミリ秒)を超えたら、画面に「通信が不安定です」と出す
 const COOP_NO_REPLY = 12000; //ゲストがつながってから、この時間(ミリ秒)ホストから何も届かなければ入り直しを案内する
 const COOP_KEEPALIVE = 1000;  //画面が止まっている(ウィンドウが隠れて描画が止まった)ときも、この間隔(ミリ秒)で生きている合図を送る
 const P2_COLOR    = "40,130,230";
@@ -956,6 +957,26 @@ var coop = {
     },
 
     //上部の協力プレイ表示(相方の耐久)
+    //相方から最後に届いてからの時間(ミリ秒)。協力プレイ・対戦中だけ(それ以外は0)
+    lagMs:function(){
+        if(!(this.active || versus.active) || !this.connOpen) return 0;
+        return Date.now() - this.lastRecv;
+    },
+    //通信が不安定な間は、画面の上に待っている秒数を出す(どの画面でも。draw.js から)
+    drawLag:function(){
+        var ms = this.lagMs();
+        if(ms < COOP_LAG_SHOW) return;
+        var text = "通信が不安定です…" + (this.mode == "vs" ? "相手" : "相方") + "を待っています（" + Math.floor(ms/1000) + "秒／" + COOP_TIMEOUT/1000 + "秒で切断）";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = "bold 15px sans-serif";
+        var w = ctx.measureText(text).width + 32;
+        ctx.fillStyle = "rgba(0,0,0,0.7)";
+        ctx.fillRect(CW/2 - w/2, 24, w, 30);
+        ctx.fillStyle = "#ffd040";
+        ctx.fillText(text, CW/2, 39);
+        ctx.fillStyle = "#000";
+    },
     drawHud:function(){
         if(!this.active) return;
         var P = this.partner;
