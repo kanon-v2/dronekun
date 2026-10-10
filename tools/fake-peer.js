@@ -13,7 +13,7 @@
 
     function Conn(peer, remoteId, cid){
         Emitter.call(this);
-        this.peer = peer; this.peerId = remoteId; this.cid = cid; this.open = false; this.closed = false;
+        this.owner = peer; this.peer = remoteId; this.peerId = remoteId; this.cid = cid; this.open = false; this.closed = false;    //peer は本物と同じく相手のID
     }
     Conn.prototype = Object.create(Emitter.prototype);
     Conn.prototype.send = function(d){

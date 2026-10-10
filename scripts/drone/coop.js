@@ -25,6 +25,11 @@ const COOP_NO_REPLY = 12000; //ゲストがつながってから、この時間(
 const COOP_KEEPALIVE = 1000;  //画面が止まっている(ウィンドウが隠れて描画が止まった)ときも、この間隔(ミリ秒)で生きている合図を送る
 const COOP_CHANNEL = "dronekun-";  //相方との通信のチャンネルの名前の頭(送り直さない設定にするチャンネルを見分ける)
 const COOP_BUFFER_MAX = 32000;    //送れずにたまっている量(バイト)がこれを超えたら、新しい状態を積まない(回線が悪いときに古い状態がたまって遅れないように)
+//つなぎ直し：回線が途切れると、前の経路が使えなくなって戻らないことがある(ルーターが割り当てる番号が変わるなど)。
+//ゲストは、ホストから届かない時間が COOP_RECONNECT_AFTER を超えたら、同じ部屋へ新しくつなぎ直す(届くまで COOP_RECONNECT_EVERY ごと)
+const COOP_RECONNECT_AFTER = 4000;  //(ミリ秒)
+const COOP_RECONNECT_EVERY = 5000;  //(ミリ秒)
+const COOP_SERVER_RETRY = 2000;     //仲介サーバーとのつながりが切れたら、この時間(ミリ秒)あとにつなぎ直す(つなぎ直しに要る)
 const P2_COLOR    = "40,130,230";
 
 var enemySeq = 0;           //敵の通し番号(ホストとゲストで同じ敵を指すため)
@@ -65,6 +70,10 @@ var coop = {
     guestQ:-1,          //ホスト：ゲストから最後に読んだ状態の番号(古い状態を読まないように)
     lastSend:0,         //最後に相方へ送った時刻(生きている合図を送るかどうかに使う)
     partnerBye:false,   //相方から、自分で抜ける合図が届いた
+    partnerId:null,     //相方の PeerJS の ID(つなぎ直してきたのが今の相方か見分ける)
+    pendingConn:null,   //つなぎ直しの新しいつながり(開いたら今のつながりと入れ替える)
+    reconnectAt:0,      //最後につなぎ直そうとした時刻
+    reconnects:0,       //つなぎ直した回数
     step:0,
     //ゲスト→ホスト(合計値)
     dmg:{},             //{e12:[ダメージ×10, EMP回数, 水回数]}
@@ -126,6 +135,8 @@ var coop = {
             self.msg = "";
         });
         peer.on("connection",function(c){
+            //始まった後に、今の相方がつなぎ直してきた(回線が途切れて前の経路が使えなくなった)：新しいほうに入れ替える
+            if((self.active || versus.active) && self.partnerId && c.peer == self.partnerId){ self.adoptConn(c); return; }
             //すでに相方がいる・もう始まっているときは断る(ふたりまで。途中からの参加はできない)
             if(self.conn || self.active || versus.active){ c.on("open",function(){ c.close(); }); return; }
             self.setupConn(c);
@@ -137,10 +148,17 @@ var coop = {
             if(e.type == "unavailable-id"){ self.closePeer(); self.inRoom = false; self.createRoom(); return; }
             self.fail("部屋を作れませんでした（" + self.errorText(e) + "）");
         });
-        peer.on("disconnected",function(){
-            //仲介サーバーとの接続が切れた(相方とのつながりは続くことがある)。待っている間だけつなぎ直す
-            if(self.peer == peer && self.waiting && !peer.destroyed) peer.reconnect();
-        });
+        peer.on("disconnected",function(){ self.serverLost(peer); });
+    },
+    //仲介サーバーとのつながりが切れた(相方とのつながりは続くことがある)。部屋にいる間は、少し待ってつなぎ直す
+    //(相方を待っている間と、回線が途切れたあとに相方とつなぎ直すのに要る。失敗するとまた切れた合図が来て、くり返す)
+    serverLost:function(_peer){
+        var self = this;
+        setTimeout(function(){
+            if(self.peer == _peer && self.inRoom && !_peer.destroyed && _peer.disconnected){
+                try{ _peer.reconnect(); }catch(e){}
+            }
+        }, COOP_SERVER_RETRY);
     },
 
     //部屋に入る：ホストのIDへつなぐ
@@ -166,11 +184,13 @@ var coop = {
             if(e.type == "peer-unavailable") self.fail("部屋「" + code.toUpperCase() + "」が見つかりませんでした。コードを確かめてください");
             else self.fail("つなげませんでした（" + self.errorText(e) + "）");
         });
+        peer.on("disconnected",function(){ self.serverLost(peer); });
     },
 
     setupConn:function(_c){
         var self = this;
         this.conn = _c;
+        this.partnerId = _c.peer;
         this.partnerBye = false;
         var onOpen = function(){
             if(self.conn != _c || self.connOpen) return;
@@ -196,6 +216,37 @@ var coop = {
             self.partnerLeft(self.partnerBye ? "bye" : "closed");
         });
         _c.on("error",function(){});
+    },
+
+    //つなぎ直しの新しいつながりが開いたら、今のつながりと入れ替える(ホスト・ゲストとも)
+    //前のつながりは閉じない(閉じると、まだ入れ替えていない相方の画面で「接続が切れた」になるため。部屋を出るときにまとめて閉じる)
+    adoptConn:function(_c){
+        var self = this;
+        this.pendingConn = _c;
+        var swap = function(){
+            if(self.pendingConn != _c) return;
+            self.pendingConn = null;
+            self.setupConn(_c);
+            self.connOpen = true;
+            self.lastRecv = Date.now();
+            self.reconnects++;
+        };
+        _c.on("open",swap);
+        if(_c.open) swap();
+        var drop = function(){ if(self.pendingConn == _c) self.pendingConn = null; };
+        _c.on("error",drop);
+        _c.on("close",drop);
+    },
+    //ゲスト：ホストから COOP_RECONNECT_AFTER の間届かなければ、同じ部屋へ新しくつなぎ直す(タイマーから呼ぶ)
+    tryReconnect:function(){
+        if(this.role != "guest" || !(this.active || versus.active) || !this.connOpen) return;
+        if(this.lagMs() < COOP_RECONNECT_AFTER || Date.now() - this.reconnectAt < COOP_RECONNECT_EVERY) return;
+        var peer = this.peer;
+        if(!peer || peer.destroyed) return;
+        this.reconnectAt = Date.now();
+        //仲介サーバーにつながっていないとホストを呼べないので、先にそちらをつなぎ直す(次の回にホストを呼ぶ)
+        if(peer.disconnected){ try{ peer.reconnect(); }catch(e){} return; }
+        try{ this.adoptConn(peer.connect(COOP_ID_PREFIX + this.code, { reliable:false, serialization:"json", label:COOP_CHANNEL + Date.now() })); }catch(e){}
     },
 
     errorText:function(_e){
@@ -233,6 +284,9 @@ var coop = {
         this.peer = null;
         this.connOpen = false;
         this.remote = null;
+        this.pendingConn = null;
+        this.partnerId = null;
+        this.reconnectAt = 0;
         if(c){ try{ c.close(); }catch(e){} }
         if(p){ try{ p.destroy(); }catch(e){} }
     },
@@ -977,7 +1031,7 @@ var coop = {
     drawLag:function(){
         var ms = this.lagMs();
         if(ms < COOP_LAG_SHOW) return;
-        var text = "通信が不安定です…" + (this.mode == "vs" ? "相手" : "相方") + "を待っています（" + Math.floor(ms/1000) + "秒／" + COOP_TIMEOUT/1000 + "秒で切断）";
+        var text = "通信が不安定です…" + (this.mode == "vs" ? "相手" : "相方") + (this.role == "guest" && ms >= COOP_RECONNECT_AFTER ? "とつなぎ直しています（" : "を待っています（") + Math.floor(ms/1000) + "秒／" + COOP_TIMEOUT/1000 + "秒で切断）";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.font = "bold 15px sans-serif";
@@ -1223,6 +1277,7 @@ var coopScreen = {
 //描画のループの中で送っている状態も止まる。そのままだと相方に切断とみなされるので、タイマーで合図だけ送る
 //(隠れたページのタイマーも1秒に1回は動く。止まっていた側は、戻ればホストの状態に追いつく)
 setInterval(function(){
+    coop.tryReconnect();     //ゲスト：届かなければつなぎ直す(画面が止まっていても動くよう、タイマーから)
     if(!coop.conn || !coop.connOpen || !(coop.active || versus.active)) return;
     if(Date.now() - coop.lastSend < COOP_KEEPALIVE) return;
     try{ coop.conn.send({ role:coop.role, ka:1 }); }catch(e){}

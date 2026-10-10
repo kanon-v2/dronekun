@@ -124,7 +124,7 @@ var loop = setInterval(tick, 16);
 //親ページへ状態を知らせる
 setInterval(function(){
     top.postMessage({ st:true, name:window.name, page:page.number, active:coop.active, role:coop.role, inRoom:coop.inRoom,
-        waiting:coop.waiting, code:coop.code, lag:coop.lagMs(), wave:game.wave, diff:difficulty().id, msg:coop.msg, notice:startScreen.notice || "",
+        waiting:coop.waiting, code:coop.code, lag:coop.lagMs(), rc:coop.reconnects, wave:game.wave, diff:difficulty().id, msg:coop.msg, notice:startScreen.notice || "",
         partner:!!coop.partner, partnerHits:partnerHits, just:mainScreen.just, parts:game.parts, partsGot:coop.partsGot, partnerParts:coop.partnerParts, enemies:enemies.length, extra:extra, blocked:arms.blockLog[0],
         vs:{ a:versus.active, ph:versus.phase, r:versus.round, hp:versus.hp, res:versus.result, w:versus.wins, l:versus.losses, d:versus.draws, dealt:versus.dealt, mx:VS_HP, ft:versus.fightTime, t:versus.t, src:vsSrc },
         story:page.number == 4 ? storyScreen.id : "", errors:errors.slice(0,5) }, "*");

@@ -167,6 +167,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
   - 状態は描画のループ(`requestAnimationFrame`)の中で送るので、ウィンドウが隠れる・覆われて描画が止まると送れない。そのため、タイマーで `COOP_KEEPALIVE` ごとに生きている合図(`ka`)だけ送り、切断とみなされないようにしている(`coop-test.html` で、ゲストの更新を12秒止めて確かめる)。
   - 切れたときの文は、理由で分ける(`partnerLeft`)：相方が自分から抜けた(抜ける前に `bye` を送る)「退出しました」、なにも届かない「通信が途絶えました」、合図なしに閉じた「接続が切れました」。
   - 相方とつながった後は、PeerJS のエラー(`peer.on("error")`)で部屋を閉じない(`ignorePeerError`)。回線が一瞬途切れると、仲介サーバーとのつながりが切れて `network` エラーが出るが、相方との通信は続いているため。以前はこれで切れていた(`coop-test.html` の `netError` で確かめる)。
+  - つなぎ直し：回線が途切れると、前の経路が使えなくなって戻らないことがある(ルーターが割り当てる番号が変わるなど。「通信が不安定です」が30秒続いて切れていた)。ゲストは、ホストから `COOP_RECONNECT_AFTER` の間届かなければ、同じ部屋へ新しくつなぎ直す(`tryReconnect`。届くまで `COOP_RECONNECT_EVERY` ごと。画面が止まっていても動くようタイマーから呼ぶ)。ホストは、今の相方(`partnerId`)からのつなぎ直しなら受け入れ、開いたら新しいほうに入れ替える(`adoptConn`)。前のつながりは閉じない(閉じると、まだ入れ替えていない側で「接続が切れた」になる)。つなぎ直しには仲介サーバーとのつながりが要るので、部屋にいる間は切れたら `COOP_SERVER_RETRY` あとにつなぎ直す(`serverLost`)。`coop-test.html` の `mute` で、ホストの今のつながりを止めて確かめる。偽の PeerJS の `conn.peer` は、本物と同じく相手の ID。
   - ゲストが抜けたら、ホストはひとりで続ける。ホストが抜けたら、ゲストはタイトルへ戻る。始まった後の途中参加はできない。
 - 通信部分(`createRoom`・`joinRoom`・`setupConn`・`update` の相方の読み取り・`send`)と、状態の作り方(`buildHost`/`buildGuest`/`readHost`/`readGuest`/`guestSync`)は分けてある。
 - 本物の通信の確認は、ヘッドレスEdgeを `--remote-debugging-port` で起動し、DevTools プロトコルで2つのウィンドウを操作して行った。ヘッドレスでは、裏に回ったタブの `requestAnimationFrame` が止まる。2つ目は `Target.createTarget`(`newWindow:true`)で別ウィンドウとして開く。
