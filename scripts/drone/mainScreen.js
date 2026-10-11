@@ -73,7 +73,7 @@ const JUST_GOOD = { slow:0.45, max:8, yaruki:10, guard:36 };   //JUST の見返�
 const JUST_COOP_SLOW  = 40;     //協力プレイで、敵と弾がゆっくりになる時間(ふたりの画面で同じ。ふつうの衝撃波は BLAST_SLOWMO)
 const JUST_COLOR      = "90,220,255";
 //ジャスト・カウンター：体当たりしてくる敵がぶつかる直前に衝撃波を出すとジャストになり、その敵を敵の群れへ弾き返す
-const COUNTER_TYPES   = ["dasher","mdrone","queen"];    //弾き返せる敵(突進・人間のドローン・女王蜂の突進)
+const COUNTER_TYPES   = ["dasher","mdrone","queen","kai"];    //弾き返せる敵(突進・人間のドローン・女王蜂とドローン君改の突進)
 const COUNTER_SPEED   = 11;     //弾き返した突進の速さ(突進そのものは5)
 const COUNTER_TURN    = 0.08;   //狙った敵へ曲がる強さ(1フレームのラジアン)
 const COUNTER_RANGE   = 700;    //狙う敵を探す距離(いなければ来た向きへ返す)
@@ -719,10 +719,10 @@ var mainScreen = {
         this.justTier = tier;
         return tier > 0;
     },
-    //ジャスト・カウンターで弾き返せる敵か(突進は飛び出している間だけ。女王蜂も突進している間だけ)
+    //ジャスト・カウンターで弾き返せる敵か(突進は飛び出している間だけ。女王蜂・ドローン君改も突進している間だけ)
     canCounter:function(_e){
         if(_e.dead || _e.countered || _e.rival || COUNTER_TYPES.indexOf(_e.type) < 0) return false;
-        if(_e.type == "queen") return _e.mode == "dash";
+        if(_e.type == "queen" || _e.type == "kai") return _e.mode == "dash";
         return !(_e.type == "dasher" && _e.tell != TELL.dash);
     },
     //構えている(衝撃波に耐える)突進か
@@ -1122,6 +1122,7 @@ var mainScreen = {
         //ゲストの攻撃はダメージをホストへ送るだけ(敵を動かしているのはホスト)
         if(coop.isGuest()){ coop.guestHit(_e,_dmg,_src); return; }
         if(_e.dead) return;
+        if(_e.boss && _e.harmless) return;     //倒れて復活している間のドローン君改(bosses.js の special.revive)
         bossDebug.dealt(_e,_dmg);
         _e.hp -= _dmg;
         _e.flash = 6;
@@ -1129,6 +1130,7 @@ var mainScreen = {
             sound.play("hit");
             return;
         }
+        if(special.revive(_e)) return;     //ドローン君改の第一形態は、倒れたところから第二形態で復活する
         sound.play("kill");
         //撃破：スコアとパーツを落とす
         _e.dead = true;
@@ -2042,7 +2044,14 @@ var mainScreen = {
             ctx.fillStyle = g;
             ctx.fillRect(-20,-20,CW + 40,CH + 40);
         }
-        if(!this.bossFreeze) return;
+        if(!this.bossFreeze){
+            //第一形態が倒れて復活する間は、暗闇の上にドローン君改を描く(special.revive)
+            for(var i=0; i<enemies.length; i++){
+                var e = enemies[i];
+                if(e.type == "kai" && (e.mode == "down" || e.mode == "revive")) this.drawEnemy(e);
+            }
+            return;
+        }
         var b = null;
         for(var i=0; i<enemies.length; i++) if(enemies[i].boss) b = enemies[i];
         if(!b || !b.look) return;
@@ -2367,6 +2376,7 @@ var mainScreen = {
     drawBossIntro:function(){
         if(this.bossIntro <= 0) return;
         var T = BOSS_TYPES[bossTypeFor(game.wave)];
+        for(var i=0; i<enemies.length; i++) if(enemies[i].type == "kai" && enemies[i].form == 2) T = KAI2;    //復活した第二形態
         var age = BOSS_INTRO_TIME - this.bossIntro;
         var inK = Math.min(1, age/18), outK = Math.min(1, this.bossIntro/24);
         var k = Math.min(inK, outK);

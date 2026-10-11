@@ -367,6 +367,66 @@ try{
           qFeint && qReaim && qJust && qLog.join() == "stagger1,stagger2,stagger3" && qPerfect && errors.length == qerr,
           "フェイント" + qFeint + " 構え直す" + qReaim + " ジャスト" + qJust + " 流れ" + qLog.join() + " 連続" + qPerfect + " 体力" + hp0 + "→" + qb.hp);
 
+    // ドローン君改の第二形態：第一形態(体力・攻撃は前のまま)を倒すと、倒れたところで止まり、体力が満ちて第二形態で復活する。
+    // 第二形態は回るレーザー・渦巻き弾・弾の雨・突進(ジャストで弾ける)を使い、倒すとWAVEクリア
+    setup(FINAL_WAVE, {}, [null,null,null], 1);
+    page.change(1); MouseIn = true;
+    for(var i=0; i<3000 && (mainScreen.state != "play" || mainScreen.bossFreeze); i++) mainScreen.update();
+    var k2err = errors.length;
+    var kb = enemies.filter(function(e){ return e.type == "kai"; })[0];
+    var k1Hp = kb ? kb.maxHp : 0;
+    var k1Same = kb && kb.form == 1 && k1Hp == Math.round(Math.round((60 + (FINAL_WAVE - BOSS_EVERY)*16)*difficulty().hp)*0.8);
+    enemies = [kb]; enemyShots = [];
+    kb.hp = 1; mainScreen.hitEnemy(kb, 5);
+    var kDown = !kb.dead && kb.mode == "down" && kb.harmless && enemies.indexOf(kb) >= 0;
+    mainScreen.hitEnemy(kb, 50);     //倒れている間は効かない
+    var kNoDmg = kb.hp == 0 && !kb.dead;
+    var kStates = {};
+    for(var i=0; i<KAI2_DOWN_T + KAI2_REVIVE_T + 60 && kb.form != 2; i++){     //止まる演出(hitStop)のぶん長めに
+        mainScreen.invincible = 10;
+        mainScreen.update();
+        kStates[kb.mode] = true;
+        if(i % 40 == 0) draw1();
+    }
+    var kRevived = kb.form == 2 && kb.mode == "idle" && !kb.harmless && kb.maxHp == Math.round(k1Hp*KAI2_HP_MUL) && kb.hp == kb.maxHp &&
+                   kb.phase == 4 && kb.look.tint == KAI2_TINT && kStates.revive && mainScreen.state == "play" && enemies.indexOf(kb) >= 0;
+    //第二形態の攻撃をひと通り(出力限界のフェーズ5で)
+    kb.hp = kb.maxHp*0.3;
+    var kAtt = [];
+    KAI_PATTERNS[5].forEach(function(p){
+        kb.mode = "idle"; kb.beams = 1;
+        var dx = drone.X - kb.x, dy = drone.Y - kb.y;
+        special.kaiAttack(kb, p, 5, Math.atan2(dy,dx));
+        for(var i=0; i<90; i++){ mainScreen.invincible = 10; mainScreen.update(); if(i == 30) draw1(); }
+        kAtt.push(p);
+    });
+    var kPh5 = kb.phase == 5;
+    //回るレーザー：本数ぶん等間隔に当たる
+    kb.mode = "laser"; kb.beams = 4; kb.angle = 0; kb.x = 400; kb.y = 300;
+    var kBeams = special.laserHit(kb, 500, 300) && special.laserHit(kb, 400, 400) && special.laserHit(kb, 300, 300) && !special.laserHit(kb, 470, 370);
+    //突進はジャストで弾ける(続けての突進を全部弾くと大ダメージ)
+    kb.mode = "dash"; kb.chain = 0; kb.dashes = 1; kb.parried = 0; kb.aimX = -1; kb.aimY = 0;
+    var kCan = mainScreen.canCounter(kb), kHp0 = kb.hp;
+    mainScreen.counter(kb);
+    var kParry = kCan && kb.mode == "stagger" && kb.count == KAI2_STAGGER && kHp0 - kb.hp >= KAI2_PARRY_DMG;
+    //第二形態を倒すと本当に倒れて、WAVEクリア
+    kb.mode = "idle"; kb.hp = 1; enemies = [kb]; mainScreen.hitEnemy(kb, 5);
+    for(var i=0; i<5; i++) mainScreen.update();
+    var kKill = kb.dead && mainScreen.state == "clear";
+    check("ドローン君改：第一形態を倒すと止まり、復活して第二形態に(攻撃・突進のカウンター・倒すとクリア)",
+          k1Same && kDown && kNoDmg && kRevived && kAtt.length == KAI_PATTERNS[5].length && kPh5 && kBeams && kParry && kKill && errors.length == k2err,
+          "第一形態" + k1Same + "(" + k1Hp + ") 停止" + kDown + " 無敵" + kNoDmg + " 復活" + kRevived + "(" + kb.maxHp + ") Lv5" + kPh5 + " レーザー" + kBeams + " カウンター" + kParry + " 撃破" + kKill);
+    //第二形態の絵(倒れている・復活・フェーズ4・5・回るレーザー・突進の構え)
+    var k2Drawn = 0, k2DErr = errors.length;
+    [["down",1.5,3],["revive",1.5,3],["idle",2,4],["laser",2,5],["aim",2,5]].forEach(function(c){
+        var ke = { type:"kai", boss:true, r:BOSS_TYPES.kai.r, x:300, y:200, vx:2, vy:1, t:0, mode:c[0], form:c[1], count:10, angle:1.2, phase:c[2],
+                   beams:c[0] == "laser" ? 4 : 1, circleT:0, strikes:[], mines:[], bladeA:0, fxT:20, aimX:1, aimY:0,
+                   flash:0, hp:5, maxHp:10, slow:0, wet:0, look:new DroneLook() };
+        ke.look.tint = KAI2_TINT;
+        for(var j=0; j<4; j++){ ke.t += 13; ke.flash = j % 2 ? 3 : 0; if(special.draw(ke, ke.flash ? "#fff" : null)) k2Drawn++; special.drawAttack(ke); mainScreen.drawEnemy(ke); }
+    });
+    check("ドローン君改の第二形態を描ける(停止・復活・Lv.4/5・回るレーザー・突進の構え)", k2Drawn == 20 && errors.length == k2DErr, k2Drawn + "コマ");
+
     // かすりコンボ：かするとコンボが増えて威力が上がり、時間切れ・被弾で途切れる
     setup(2, { gun:1 }, ["gun",null,null], 1);
     page.change(1); MouseIn = true;

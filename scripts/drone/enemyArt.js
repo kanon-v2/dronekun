@@ -451,13 +451,15 @@ var enemyArt = {
     //------------------------------------------------------------ ドローン君改(ボス)
     //本体は選んだスキンのドローン君の絵のまま、上(プロペラ・棒)と下(胴体)に切り分けて、上を遅れてしならせる。
     //まわりに改造部品(左右の副砲・背中の装甲の輪・胴体の下のケーブル・胸の鼓動の光)を足し、別々に動かす。
-    //使う値は t・vx・mode・count・angle・phase・circleT・strikes(協力プレイのゲストにも届く)と、狙う相手(nearestPlayer)だけ。
+    //使う値は t・vx・mode・count・angle・phase・form・circleT・strikes(協力プレイのゲストにも届く)と、狙う相手(nearestPlayer)だけ。
+    //第二形態(form 2)は光と装甲の色が紫になる(KAI2_GLOW)。
     kai:function(_e,_body){
         var look = _e.look;
         if(!look) return;
         var C = ENEMY_COLOR, self = this;
         var k = KAI_SCALE, S = DRONE_SIZE*k;
-        var ph = _e.phase || 1;
+        var ph = Math.min(_e.phase || 1, 4);     //第二形態(フェーズ4・5)は部品の数をLv.4で止める
+        var f2 = _e.form == 2;
         var t = _e.t*(1 + (ph - 1)*KAI_PH_TEMPO);
         var b = t*KAI_SWAY;
         var cnt = Math.max(0, _e.count || 0);
@@ -476,7 +478,7 @@ var enemyArt = {
         var shake = aimK*0.6 + (firing ? 1.3 : 0) + zap*0.5;
         var jit = function(_i){ return hit*Math.sin(_e.t*2.7 + _i*1.9)*2.5 + shake*Math.sin(_e.t*2.1 + _i*2.3)*1.3; };
         var hull = _body || "#2a1517";
-        var redRgb = "255,50,50";
+        var redRgb = f2 ? KAI2_GLOW : "255,50,50";     //光の色(第二形態は紫)
 
         //---- 背中の装甲の輪：出力が上がるほど板が増え、速く回る。板は波のように1枚ずつ外へふくらむ
         var nSeg = 2 + ph*2;
@@ -489,9 +491,9 @@ var enemyArt = {
             var R = 46 + Math.sin(b*2 - i*Math.PI*2/nSeg)*2.5 + dragon*8 + laserK*3;
             ctx.strokeStyle = C.ink; ctx.lineWidth = 7;
             ctx.beginPath(); ctx.arc(0,0,R,a0,a0 + w); ctx.stroke();
-            ctx.strokeStyle = _body || "#7a1018"; ctx.lineWidth = 4;
+            ctx.strokeStyle = _body || (f2 ? "#5a1478" : "#7a1018"); ctx.lineWidth = 4;
             ctx.beginPath(); ctx.arc(0,0,R,a0,a0 + w); ctx.stroke();
-            ctx.strokeStyle = _body ? C.light : "#c0303a"; ctx.lineWidth = 1;
+            ctx.strokeStyle = _body ? C.light : (f2 ? "#a050d0" : "#c0303a"); ctx.lineWidth = 1;
             ctx.beginPath(); ctx.arc(0,0,R - 1.2,a0 + 0.05,a0 + w*0.6); ctx.stroke();
         }
         ctx.restore();

@@ -13,7 +13,7 @@
 const COOP_TYPES  = ["bug","dasher","shooter","tank","spinner","bomber","kin","mdrone","heli","panzer","goldbug","carrier","queen","fortress","kai"];
 const COOP_SHOTS  = ["normal","small","big","water","missile","dragon"];
 const COOP_PICKS  = ["part","yaruki","capsule"];
-const COOP_MODES  = ["enter","idle","aim","dash","spiral","triple","laserAim","laser","feint","stagger"];
+const COOP_MODES  = ["enter","idle","aim","dash","spiral","triple","laserAim","laser","feint","stagger","down","revive"];
 const COOP_STATES = ["start","play","clear","over"];
 const COOP_LIMIT  = 12000;  //1回に送る状態の大きさの上限(バイト)。超えるときはゲストから遠いものから削る
 const COOP_HP_MUL = 2;      //協力プレイでの敵の体力の倍率
@@ -528,7 +528,8 @@ var coop = {
         if(_e.boss){
             var aimA = Math.atan2(_e.aimY || 0,_e.aimX || 1);
             _s.b = [_e.id, COOP_MODES.indexOf(_e.mode), r((_e.angle || 0)*100), _e.count || 0, _e.phase || 0,
-                    r((_e.bladeA || 0)*100), _e.circleT || 0, r(aimA*100), _e.fake ? 1 : 0];   //最後は女王蜂のフェイントの印(合図を出さない)
+                    r((_e.bladeA || 0)*100), _e.circleT || 0, r(aimA*100), _e.fake ? 1 : 0,     //女王蜂のフェイントの印(合図を出さない)
+                    r((_e.form || 1)*2), _e.beams || 1];     //ドローン君改の形態(2倍。3は復活の途中)・レーザーの本数
             if(_e.mines){ _s.bm = []; for(var i=0; i<_e.mines.length; i++) _s.bm.push(r(_e.mines[i].x), r(_e.mines[i].y), _e.mines[i].t); }
             if(_e.strikes){ _s.bk = []; for(var i=0; i<_e.strikes.length; i++) _s.bk.push(r(_e.strikes[i].x), r(_e.strikes[i].y), _e.strikes[i].t); }
         }
@@ -895,6 +896,8 @@ var coop = {
                 b.bladeA = S.b[5]/100; b.circleT = S.b[6];
                 b.aimX = Math.cos(S.b[7]/100); b.aimY = Math.sin(S.b[7]/100);
                 b.fake = !!S.b[8];
+                b.form = (S.b[9] || 2)/2; b.beams = S.b[10] || 1;
+                b.harmless = b.mode == "down" || b.mode == "revive";    //倒れて復活している間のドローン君改
                 if(b.type == "kai"){
                     b.mines = []; b.strikes = [];
                     var bm = S.bm || [], bk = S.bk || [];
@@ -941,6 +944,8 @@ var coop = {
     guestCollide:function(){
         this.lastSyncGap = (this.lastSyncGap || 0) + 1;
         var M = mainScreen;
+        //ドローン君改が倒れて復活する見た目と音(ホストと同じく、届いた mode で決まる)
+        for(var i=0; i<enemies.length; i++) if(enemies[i].type == "kai" && enemies[i].look) special.kaiFx(enemies[i]);
         if(M.down) return;
         for(var i=0; i<enemies.length; i++){
             var e = enemies[i];
@@ -951,14 +956,11 @@ var coop = {
                 M.hitEnemy(e,1);
             }
             if(!e.boss) continue;
-            //レーザー
-            if(e.mode == "laser"){
-                var cx = Math.cos(e.angle), cy = Math.sin(e.angle), rx = drone.X - e.x, ry = drone.Y - e.y;
-                if(rx*cx + ry*cy > 0 && Math.abs(rx*cy - ry*cx) < 11 + HIT_CORE && M.canBeHit()) M.damage();
-            }
-            if(e.type == "kai"){
+            //レーザー(ドローン君改の第二形態は何本も)
+            if(e.mode == "laser" && special.laserHit(e,drone.X,drone.Y) && M.canBeHit()) M.damage();
+            if(e.type == "kai" && !e.harmless){
                 //ブレード
-                var nB = e.phase >= 3 ? 4 : 3;
+                var nB = special.kaiBlades(e);
                 for(var k=0; k<nB; k++){
                     var a = e.bladeA + k*Math.PI*2/nB;
                     if(Math.hypot(drone.X - (e.x + Math.cos(a)*64), drone.Y - (e.y + Math.sin(a)*64)) < 12 + HIT_CORE && M.canBeHit()) M.damage();

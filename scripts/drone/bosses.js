@@ -40,6 +40,33 @@ const KAI_PATTERNS = {
 };
 const KAI_REST = [0,150,130,110];   //攻撃と攻撃の間(フェーズ1～3)
 
+//ドローン君改の第二形態：第一形態(フェーズ1～3)を倒すと、倒れたところから復活して第二形態(フェーズ4・5)になる
+const KAI2 = { name:"ドローン君改・暴走", en:"DRONE-KUN KAI  OVERDRIVE", title:"止まらない心臓" };    //登場の名前・異名
+const KAI2_HP_MUL    = 1.3;         //第二形態の体力(第一形態の体力に掛ける)
+const KAI2_RAGE_HP   = 0.5;         //体力がこの割合を切るとフェーズ5(出力限界)
+const KAI2_DOWN_T    = 100;         //倒れてから復活が始まるまで(フレーム)
+const KAI2_REVIVE_T  = 200;         //復活の長さ(体力が満ちていく。最後の KAI_BOOT_TIME は始動音)
+const KAI2_BEATS     = [6,52,90];   //復活の鼓動(復活の始まりからのフレーム)
+const KAI2_TINT      = "125,20,150";    //第二形態の色(第一形態は赤 "190,20,30")
+const KAI2_GLOW      = "190,60,255";    //第二形態の光の色
+const KAI2_GUN_T     = 40;          //いつも撃ってくる弾の間隔(第一形態は50)
+const KAI2_BLADES    = [0,3,3,4,4,5];   //フェーズごとのブレードの数
+const KAI2_BEAMS     = [3,4];       //回るレーザーの本数(フェーズ4・5)
+const KAI2_SPIRAL_T  = 100;         //渦巻き弾を撃つ長さ(フレーム)
+const KAI2_RAIN_T    = 110;         //弾の雨を降らせる長さ(フレーム)
+const KAI2_DASH_AIM  = [26,50];     //突進の構えの長さ(この間でばらつく。最後の KAI2_CUE で向きが固まる)
+const KAI2_CUE       = 18;          //飛び出す直前の合図の長さ
+const KAI2_DASH_SPEED = 10;         //突進の速さ(px/フレーム)
+const KAI2_DASH_T    = 34;          //突進の長さ(フレーム。画面の端でも止まる)
+const KAI2_CHAIN     = [2,3];       //続けて突進する回数(フェーズ4・5)
+const KAI2_STAGGER   = 30;          //突進を弾かれてよろける時間
+const KAI2_PARRY_DMG = 6;           //突進を弾いたときのダメージ
+const KAI2_PERFECT_DMG = 20;        //続けての突進を全部弾いたときに足すダメージ
+const KAI2_BREAK     = 130;         //続けての突進を全部弾いたとき、止まる時間
+KAI_PATTERNS[4] = ["spiral","dash","missile","cross","tesla","dragon"];
+KAI_PATTERNS[5] = ["cross","dash","rain","dragon","spiral","tesla","mines","dash","missile"];
+KAI_REST.push(95,75);
+
 function isBossWave(_w){
     return _w % BOSS_EVERY == 0;
 }
@@ -100,6 +127,10 @@ function makeBoss(_type){
         b.strikes = [];     //落雷の予告
         b.waterT = 0;       //水鉄砲を撃っている残り時間
         b.circleT = 0;      //五芒星の陣を出している残り時間
+        b.form = 1;         //1：第一形態 2：第二形態(倒れると復活して2になる)
+        b.beams = 1;        //レーザーの本数(第二形態の回るレーザーで増える)
+        b.spiralT = 0;      //渦巻き弾を撃っている残り時間(第二形態)
+        b.rainT = 0;        //弾の雨を降らせている残り時間(第二形態)
     }
     return b;
 }
@@ -335,18 +366,21 @@ var special = {
     },
     //突進をジャスト衝撃波で弾かれた(mainScreen.counter から。動かすのはホストとひとり用だけ)
     //連続突進を全部弾くと、大きなダメージを受けて長く目を回す
+    //ドローン君改(第二形態)の突進も同じように弾ける(値は KAI2_*)
     parry:function(_e){
-        if(_e.type != "queen" || _e.mode != "dash") return;
+        if((_e.type != "queen" && _e.type != "kai") || _e.mode != "dash") return;
+        var kai = _e.type == "kai";
         _e.parried = (_e.parried || 0) + 1;
         var perfect = _e.chain == 0 && _e.dashes > 1 && _e.parried >= _e.dashes;
         _e.mode = "stagger";
-        _e.count = perfect ? QUEEN_BREAK : QUEEN_STAGGER;
+        _e.count = perfect ? (kai ? KAI2_BREAK : QUEEN_BREAK) : (kai ? KAI2_STAGGER : QUEEN_STAGGER);
         _e.vx = -_e.aimX*7; _e.vy = -_e.aimY*7;
         _e.flash = 10;
         fx.flare(_e.x, _e.y, 50, JUST_COLOR, 14);
         fx.sparks(_e.x, _e.y, 16, JUST_COLOR, 8, 3);
         popup(_e.x, _e.y - _e.r - 10, perfect ? "連続カウンター！" : _e.dashes > 1 ? _e.parried + "/" + _e.dashes : "カウンター！", "rgb(30,150,200)");
-        mainScreen.hitEnemy(_e, QUEEN_PARRY_DMG + (perfect ? QUEEN_PERFECT_DMG : 0), "counter");
+        mainScreen.hitEnemy(_e, kai ? KAI2_PARRY_DMG + (perfect ? KAI2_PERFECT_DMG : 0)
+                                    : QUEEN_PARRY_DMG + (perfect ? QUEEN_PERFECT_DMG : 0), "counter");
         if(perfect){
             fx.flare(_e.x, _e.y, 120, JUST_COLOR, 24);
             fx.ring(_e.x, _e.y, 150, JUST_COLOR, 28, 8);
@@ -420,31 +454,41 @@ var special = {
     //------------------------------------------------------------ ドローン君改
     kai:function(_e,_dx,_dy,_d){
         if(!this.bossCommon(_e)) return;
+        this.kaiFx(_e);
+        //倒れている・復活している間は攻撃しない(第二形態へ)
+        if(_e.mode == "down" || _e.mode == "revive"){ this.kaiRevive(_e); return; }
         var play = mainScreen.state == "play";
         var toDrone = Math.atan2(_dy,_dx);
+        var f2 = _e.form == 2;
 
-        //体力でフェーズが上がる(66%・33%)
-        var ph = _e.hp > _e.maxHp*0.66 ? 1 : (_e.hp > _e.maxHp*0.33 ? 2 : 3);
+        //体力でフェーズが上がる(第一形態は66%・33%で1→3、第二形態は KAI2_RAGE_HP で4→5)
+        var ph = f2 ? (_e.hp > _e.maxHp*KAI2_RAGE_HP ? 4 : 5)
+                    : (_e.hp > _e.maxHp*0.66 ? 1 : (_e.hp > _e.maxHp*0.33 ? 2 : 3));
         if(ph != _e.phase){
             _e.phase = ph;
             _e.timer = 40;
             if(_e.mode == "laserAim" || _e.mode == "laser") _e.mode = "idle";
-            popup(_e.x,_e.y - 50,"ドローン君改　出力上昇 Lv." + ph,"#c33",true);
+            popup(_e.x,_e.y - 50,ph >= 5 ? "ドローン君改　出力限界突破" : "ドローン君改　出力上昇 Lv." + ph,f2 ? "#a3c" : "#c33",true);
             fx.shake(12);
             sound.play("warning");
         }
 
-        //ドローン君から一定の距離を保って周りを回る(追いかけ方はドローン君と同じなめらかさ)
-        _e.orbit += 0.006*ph;
-        var tx = Math.max(60, Math.min(CW - 60, aimAt.X + Math.cos(_e.orbit)*230));
-        var ty = Math.max(100, Math.min(CH - 60, aimAt.Y + Math.sin(_e.orbit)*170));
-        _e.vx = (tx - _e.x)/28;
-        _e.vy = (ty - _e.y)/28;
+        //突進(第二形態)：構え → 突進 → (弾かれると)よろける。その間は回らない
+        if(_e.mode == "aim" || _e.mode == "dash" || _e.mode == "stagger"){
+            this.kaiDash(_e,_dx,_dy,_d);
+        }else{
+            //ドローン君から一定の距離を保って周りを回る(追いかけ方はドローン君と同じなめらかさ)
+            _e.orbit += 0.006*Math.min(ph,4);
+            var tx = Math.max(60, Math.min(CW - 60, aimAt.X + Math.cos(_e.orbit)*(f2 ? 210 : 230)));
+            var ty = Math.max(100, Math.min(CH - 60, aimAt.Y + Math.sin(_e.orbit)*(f2 ? 155 : 170)));
+            _e.vx = (tx - _e.x)/28;
+            _e.vy = (ty - _e.y)/28;
+        }
         _e.look.update(dirFromVel(_e.vx,_e.vy), _e.vx);
 
         //ブレード：いつも周りを回っていて、触れると被弾
-        _e.bladeA += 0.05 + ph*0.015;
-        var nB = ph >= 3 ? 4 : 3;
+        _e.bladeA += 0.05 + Math.min(ph,4)*0.015;
+        var nB = this.kaiBlades(_e);
         for(var k=0; k<nB; k++){
             var a = _e.bladeA + k*Math.PI*2/nB;
             var bx = _e.x + Math.cos(a)*64, by = _e.y + Math.sin(a)*64;
@@ -453,9 +497,9 @@ var special = {
 
         //実弾：いつも撃ってくる(フェーズが上がるほど扇が広い)
         if(--_e.gunT <= 0 && play){
-            fireFan(_e.x,_e.y,toDrone,ph == 1 ? 1 : (ph == 2 ? 3 : 5),0.18,3.1*danmaku(),"normal");
+            fireFan(_e.x,_e.y,toDrone,[0,1,3,5,3,5][ph],0.18,(f2 ? 3.4 : 3.1)*danmaku(),"normal");
             sound.play("shot");
-            _e.gunT = 50;
+            _e.gunT = f2 ? KAI2_GUN_T : 50;
         }
 
         //水鉄砲(撃っている間は細かい水をまき続ける)
@@ -464,23 +508,43 @@ var special = {
             if(_e.waterT % 2 == 0) fireShot(_e.x,_e.y,toDrone + (Math.random()-0.5)*0.5,3.4 + Math.random(),"water");
             if(_e.waterT % 6 == 0) sound.play("water");
         }
+        //渦巻き弾(第二形態)：回りながら2方向へ渦を出す
+        if(_e.spiralT > 0){
+            _e.spiralT--;
+            _e.spin += 0.19;
+            if(_e.spiralT % 5 == 0){
+                fireRing(_e.x,_e.y,ph >= 5 ? 4 : 3,2.4*Math.min(1.3,danmaku()),_e.spin,"small");
+                if(_e.spiralT % 15 == 0) fireRing(_e.x,_e.y,ph >= 5 ? 4 : 3,1.6,-_e.spin*0.8,"big");
+                sound.play("bossShot");
+            }
+        }
+        //弾の雨(第二形態)：画面の上から弾が降る。通り道がわかるよう、ゆっくりめ
+        if(_e.rainT > 0){
+            _e.rainT--;
+            if(_e.rainT % 7 == 0){
+                for(var i=0; i<2; i++){
+                    fireShot(30 + Math.random()*(CW - 60), -6, Math.PI/2 + (Math.random() - 0.5)*0.3, 2 + Math.random()*0.8, i ? "small" : "normal");
+                }
+            }
+        }
         if(_e.circleT > 0) _e.circleT--;
         this.kaiMines(_e);
         this.kaiStrikes(_e);
 
-        //レーザー(要塞と同じく予告線→なぎ払い)
+        if(_e.mode == "aim" || _e.mode == "dash" || _e.mode == "stagger") return;
+        //レーザー(要塞と同じく予告線→なぎ払い。第二形態は何本も出して回す)
         if(_e.mode == "laserAim"){
             _e.angle = turnTo(_e.angle,toDrone,0.04);
-            if(--_e.count <= 0){ _e.mode = "laser"; _e.count = 40; sound.play("beam"); }
+            if(--_e.count <= 0){ _e.mode = "laser"; _e.count = _e.beams > 1 ? 70 : 40; sound.play("beam"); }
             return;
         }
         if(_e.mode == "laser"){
-            _e.angle = turnTo(_e.angle,toDrone,0.011);
+            //1本のときは狙いを追い、何本もあるときは一方へ回り続ける
+            if(_e.beams > 1) _e.angle += _e.spinDir*(ph >= 5 ? 0.017 : 0.013);
+            else _e.angle = turnTo(_e.angle,toDrone,0.011);
             //当たり判定は自分のドローン君(相方は相方の画面で判定する)
-            var cx = Math.cos(_e.angle), cy = Math.sin(_e.angle);
-            var lx = drone.X - _e.x, ly = drone.Y - _e.y;
-            if(lx*cx + ly*cy > 0 && Math.abs(lx*cy - ly*cx) < 11 + HIT_CORE && mainScreen.canBeHit()) mainScreen.damage();
-            if(--_e.count <= 0){ _e.mode = "idle"; _e.timer = KAI_REST[ph]; }
+            if(this.laserHit(_e,drone.X,drone.Y) && mainScreen.canBeHit()) mainScreen.damage();
+            if(--_e.count <= 0){ _e.mode = "idle"; _e.beams = 1; _e.timer = KAI_REST[ph]; }
             return;
         }
 
@@ -491,12 +555,198 @@ var special = {
             _e.timer = KAI_REST[ph];
         }
     },
+    //ブレードの数(協力プレイのゲストも同じ数え方)
+    kaiBlades:function(_e){
+        return KAI2_BLADES[_e.phase || 1] || 3;
+    },
+    //(_x,_y)がレーザーに当たっているか(第二形態は何本も等間隔に出る)
+    laserHit:function(_e,_x,_y){
+        var n = _e.beams || 1, rx = _x - _e.x, ry = _y - _e.y;
+        for(var i=0; i<n; i++){
+            var a = _e.angle + i*Math.PI*2/n, cx = Math.cos(a), cy = Math.sin(a);
+            if(rx*cx + ry*cy > 0 && Math.abs(rx*cy - ry*cx) < 11 + HIT_CORE) return true;
+        }
+        return false;
+    },
+
+    //第二形態の突進：狙う → 合図(KAI2_CUE)で向きが固まる → 突進。何回か続ける。ジャスト衝撃波で弾き返せる(special.parry)
+    kaiDash:function(_e,_dx,_dy,_d){
+        switch(_e.mode){
+            case "aim":
+                _e.vx *= 0.8; _e.vy *= 0.8;
+                if(_e.count > KAI2_CUE){ _e.aimX = _dx/_d; _e.aimY = _dy/_d; }
+                if(_e.count == KAI2_CUE) sound.play("tell");
+                if(--_e.count <= 0){ _e.mode = "dash"; _e.count = KAI2_DASH_T; sound.play("dash"); }
+                break;
+            case "dash":
+                _e.vx = _e.aimX*KAI2_DASH_SPEED;
+                _e.vy = _e.aimY*KAI2_DASH_SPEED;
+                //通った跡に赤紫の火花
+                if(_e.t % 2 == 0) effects.push({ x:_e.x, y:_e.y, vx:-_e.vx*0.1, vy:-_e.vy*0.1, life:16, maxLife:16, size:4, glow:KAI2_GLOW });
+                if(--_e.count <= 0 || _e.x < _e.r || _e.x > CW - _e.r || _e.y < 90 || _e.y > CH - _e.r){
+                    _e.x = Math.max(_e.r, Math.min(_e.x, CW - _e.r));
+                    _e.y = Math.max(90, Math.min(_e.y, CH - _e.r));
+                    _e.vx = 0; _e.vy = 0;
+                    //止まるたびに弾をばらまく
+                    this.ring(_e.x,_e.y,_e.phase >= 5 ? 12 : 8,2.2,Math.random(),"small");
+                    this.kaiDashNext(_e);
+                }
+                break;
+            case "stagger":
+                _e.vx *= 0.9; _e.vy *= 0.9;
+                if(--_e.count <= 0) this.kaiDashNext(_e);
+                break;
+        }
+    },
+    kaiDashNext:function(_e){
+        if(_e.chain > 0){
+            _e.chain--;
+            _e.mode = "aim";
+            _e.count = randIn(KAI2_DASH_AIM) + KAI2_CUE;
+            return;
+        }
+        _e.mode = "idle";
+        _e.timer = KAI_REST[_e.phase];
+    },
+
+    //倒されたボスが復活するならtrue(mainScreen.hitEnemy から。体力が0になったときに呼ばれる。動かすのはホストとひとり用だけ)
+    //ドローン君改の第一形態は、倒れたところで止まり(down)、体力が満ちて(revive)第二形態になる
+    revive:function(_e){
+        if(_e.type != "kai" || _e.form != 1) return false;
+        _e.form = 1.5;          //復活の途中(もう一度は倒れない)
+        _e.hp = 0;
+        _e.mode = "down";
+        _e.count = KAI2_DOWN_T;
+        _e.harmless = true;     //倒れている間は体当たりされない
+        _e.baseHp = _e.maxHp;
+        _e.vx *= 0.3; _e.vy = 1.5;
+        _e.waterT = _e.spiralT = _e.rainT = _e.circleT = 0;
+        _e.mines = []; _e.strikes = [];
+        _e.beams = 1;
+        enemyShots = [];
+        //手下の虫は一緒に止まる(報酬なし)
+        for(var i=0; i<enemies.length; i++) if(enemies[i].minion) enemies[i].dead = true;
+        return true;
+    },
+    //倒れている → 復活する(ホストとひとり用)
+    kaiRevive:function(_e){
+        _e.look.update(0, 0);
+        if(_e.mode == "down"){
+            //倒れたところから少し落ちて止まる
+            _e.vx *= 0.92;
+            _e.vy = Math.max(0, _e.vy - 0.03);
+            if(_e.y > CH - 70) _e.vy = 0;
+            if(--_e.count <= 0){
+                _e.mode = "revive";
+                _e.count = KAI2_REVIVE_T;
+                _e.maxHp = Math.round(_e.baseHp*KAI2_HP_MUL);
+            }
+            return;
+        }
+        //体力が満ちていき、少し浮き上がる
+        _e.vx = 0;
+        _e.vy = _e.y > 140 ? -0.35 : 0;
+        var k = 1 - _e.count/KAI2_REVIVE_T;
+        _e.hp = Math.max(1, Math.round(_e.maxHp*k*k));
+        if(--_e.count <= 0){
+            _e.form = 2;
+            _e.hp = _e.maxHp;
+            _e.phase = 4;
+            _e.mode = "idle";
+            _e.harmless = false;
+            _e.timer = 70;
+            _e.gunT = 60;
+            _e.cycle = 0;
+        }
+    },
+    //倒れる・復活の見た目と音(ホストは kai、協力プレイのゲストは guestCollide から毎フレーム呼ぶ。届いた mode だけで決まる)
+    kaiFx:function(_e){
+        var M = mainScreen;
+        if(_e.mode != _e.fxMode){
+            var from = _e.fxMode;
+            _e.fxMode = _e.mode;
+            _e.fxT = 0;
+            if(_e.mode == "down") this.kaiDownFx(_e);
+            if(from == "revive") this.kaiAwakeFx(_e);
+        }
+        _e.fxT++;
+        var t = _e.fxT;
+        if(_e.mode == "down"){
+            //火花と煙が上がる。後ろは少し暗くなっていく
+            if(t % 5 == 0) fx.sparks(_e.x + (Math.random()-0.5)*30, _e.y + (Math.random()-0.5)*30, 4, "255,150,90", 4, 2);
+            if(t % 9 == 0){
+                effects.push({ smoke:true, x:_e.x + (Math.random()-0.5)*20, y:_e.y, vx:(Math.random()-0.5)*0.6, vy:-0.8,
+                               R0:6, R1:22, life:40, maxLife:40, color:"60,50,55" });
+            }
+            M.kaiDark = Math.max(M.kaiDark, Math.min(1, t/60)*KAI_DARK_OUT*0.75);
+            return;
+        }
+        if(_e.mode == "revive"){
+            M.kaiDark = Math.max(M.kaiDark, KAI_DARK_OUT*0.75);
+            if(KAI2_BEATS.indexOf(t) >= 0) M.beat(t > KAI2_BEATS[0]);
+            //最後は始動音とリレー。光が吸い込まれるように集まり、色が赤から紫へ変わる
+            var A = KAI2_REVIVE_T - KAI_BOOT_TIME;
+            if(t == A) sound.play("kaiBoot");
+            var k = t <= A ? 0 : Math.min(1, (t - A)/KAI_BOOT_TIME);
+            var q = Math.round(k*8)/8;
+            _e.look.tint = mixRgb("190,20,30", KAI2_TINT, q);
+            if(k > 0){
+                M.shake = Math.max(M.shake, 1 + 3*k);
+                if(t % 3 == 0){
+                    var a = Math.random()*Math.PI*2, R = 150 + Math.random()*60, sp = 6 + 8*k;
+                    effects.push({ x:_e.x + Math.cos(a)*R, y:_e.y + Math.sin(a)*R, vx:-Math.cos(a)*sp, vy:-Math.sin(a)*sp,
+                                   life:22, maxLife:22, size:2.5 + 2*k, glow:Math.random() < 0.5 ? KAI2_GLOW : "255,60,60" });
+                }
+                if(KAI_RELAY_FRAMES.indexOf(t - A) >= 0){
+                    fx.flare(_e.x, _e.y, 50 + 40*k, KAI2_GLOW, 8);
+                    fx.ring(_e.x, _e.y, 55 + 30*k, KAI2_GLOW, 9, 2);
+                    M.shake = Math.max(M.shake, 3 + 5*k);
+                }
+            }
+            return;
+        }
+        if(_e.form == 2) _e.look.tint = KAI2_TINT;
+    },
+    //第一形態が倒れた瞬間：撃破のような大爆発。曲が止まり「停止」の文字
+    kaiDownFx:function(_e){
+        var M = mainScreen;
+        for(var i=0; i<4; i++){
+            burst(_e.x + (Math.random()-0.5)*_e.r*2, _e.y + (Math.random()-0.5)*_e.r*2, 14, i % 2 ? "#e84" : "#333");
+        }
+        for(var i=0; i<3; i++) killBlast(_e.x + (Math.random()-0.5)*_e.r*2, _e.y + (Math.random()-0.5)*_e.r*2, _e.r);
+        fx.ring(_e.x, _e.y, 220, "230,120,40", 30, 8);
+        fx.shake(26);
+        M.hitStop = Math.max(M.hitStop, 10);
+        popup(_e.x, _e.y - _e.r - 16, "ドローン君改　機能停止…", "#c33");
+        sound.stopMusic();
+        sound.play("bossDown");
+    },
+    //復活した瞬間：紫の閃光と衝撃波。暗闇が晴れ、第二形態の名前を出す(曲も変わる)
+    kaiAwakeFx:function(_e){
+        var M = mainScreen;
+        sound.play("kaiIgnite");
+        sound.music(null);
+        sound.music("kai2");
+        _e.look.tint = KAI2_TINT;
+        battleBg.ripple(_e.x, _e.y, 50, 10, 90, KAI2_GLOW);
+        fx.flare(_e.x, _e.y, 240, KAI2_GLOW, 26);
+        fx.ring(_e.x, _e.y, 320, KAI2_GLOW, 30, 10);
+        fx.ring(_e.x, _e.y, 200, "255,90,80", 24, 6);
+        fx.sparks(_e.x, _e.y, 44, KAI2_GLOW, 11, 4);
+        fx.shake(26);
+        M.flashT = FLASH_TIME;
+        M.hitStop = 6;
+        M.zoomT = ZOOM_TIME; M.zoomX = _e.x; M.zoomY = _e.y;
+        M.kaiDark = KAI_DARK_OUT;
+        M.bossIntro = BOSS_INTRO_TIME;
+        M.guard = Math.max(M.guard, 60);
+    },
 
     kaiAttack:function(_e,_p,_ph,_toDrone){
         switch(_p){
             case "missile":
                 //左右に打ち出してから追いかけてくるミサイル
-                var n = _ph >= 3 ? 4 : 2;
+                var n = _ph >= 5 ? 6 : (_ph >= 3 ? 4 : 2);
                 for(var i=0; i<n; i++){
                     var a = _toDrone + (i % 2 ? 1 : -1)*(1.3 + 0.25*Math.floor(i/2));
                     enemyShots.push({ x:_e.x, y:_e.y, vx:Math.cos(a)*2.5, vy:Math.sin(a)*2.5, r:5, kind:"missile",
@@ -529,15 +779,16 @@ var special = {
                 break;
             case "mines":
                 //自分の周りに地雷をまく。近づくと弾をまき散らして爆発
-                for(var i=0; i<3; i++){
+                for(var i=0; i<(_ph >= 5 ? 5 : 3); i++){
                     _e.mines.push({ x:_e.x + (Math.random()-0.5)*120, y:_e.y + (Math.random()-0.5)*120, t:0 });
                 }
                 sound.play("mine");
                 break;
             case "tesla":
-                //ドローン君の周りに落雷の予告を3つ。少しして雷が落ちる
-                for(var i=0; i<3; i++){
-                    var ox = i == 0 ? 0 : (Math.random()-0.5)*160, oy = i == 0 ? 0 : (Math.random()-0.5)*160;
+                //ドローン君の周りに落雷の予告を3つ(第二形態は5つを広く)。少しして雷が落ちる
+                var n = _ph >= 4 ? 5 : 3, sp = _ph >= 4 ? 240 : 160;
+                for(var i=0; i<n; i++){
+                    var ox = i == 0 ? 0 : (Math.random()-0.5)*sp, oy = i == 0 ? 0 : (Math.random()-0.5)*sp;
                     _e.strikes.push({ x:aimAt.X + ox, y:aimAt.Y + oy, t:50 });
                 }
                 sound.play("beamCharge");
@@ -548,14 +799,39 @@ var special = {
             case "dragon":
                 //黒い五龍：五芒星の陣から出て、しばらくドローン君を追いかける
                 _e.circleT = 40;
-                for(var i=0; i<5; i++){
-                    var a = -Math.PI/2 + i*Math.PI*2/5;
+                var n = _ph >= 5 ? 6 : 5;
+                for(var i=0; i<n; i++){
+                    var a = -Math.PI/2 + i*Math.PI*2/n;
                     enemyShots.push({ x:_e.x + Math.cos(a)*40, y:_e.y + Math.sin(a)*40, vx:Math.cos(a)*3, vy:Math.sin(a)*3,
                                       r:9, kind:"dragon", homing:true, turn:0.035, speed:3.8, life:200, trail:[],
                                       color:"150,20,30", grazed:false });
                 }
                 fx.flare(_e.x,_e.y,60,"190,20,30",20);
                 sound.play("dragon");
+                break;
+            //---- ここから第二形態だけ
+            case "cross":
+                //回るレーザー：何本も等間隔に出して、予告のあと一方へ回す
+                _e.mode = "laserAim";
+                _e.count = 60;
+                _e.beams = KAI2_BEAMS[_ph >= 5 ? 1 : 0];
+                _e.spinDir = Math.random() < 0.5 ? 1 : -1;
+                _e.angle = _toDrone + Math.PI/_e.beams;     //狙いの間から始める(すぐには当たらない)
+                sound.play("beamCharge");
+                break;
+            case "spiral":
+                _e.spiralT = KAI2_SPIRAL_T;
+                break;
+            case "rain":
+                _e.rainT = KAI2_RAIN_T;
+                sound.play("warning");
+                break;
+            case "dash":
+                _e.chain = KAI2_CHAIN[_ph >= 5 ? 1 : 0] - 1;
+                _e.dashes = _e.chain + 1;   //この突進の回数(全部弾いたか数えるため)
+                _e.parried = 0;
+                _e.mode = "aim";
+                _e.count = randIn(KAI2_DASH_AIM) + KAI2_CUE;
                 break;
         }
     },
@@ -658,14 +934,26 @@ var special = {
                 return true;
 
             case "kai":
-                //ドローン君改：赤く光る2倍の大きさのドローン君
-                var g = ctx.createRadialGradient(0,0,0,0,0,60);
-                g.addColorStop(0,"rgba(200,20,30," + (0.25 + 0.1*Math.sin(_e.t*0.1)) + ")");
-                g.addColorStop(1,"rgba(200,20,30,0)");
-                ctx.fillStyle = g;
-                ctx.beginPath(); ctx.arc(0,0,60,0,Math.PI*2); ctx.fill();
+                //ドローン君改：赤く光る2倍の大きさのドローン君(第二形態は紫に光る)
+                var down = _e.mode == "down";
+                var glow = _e.form == 2 ? "150,40,220" : "200,20,30";
+                if(!down){
+                    var gR = _e.form == 2 ? 75 : 60;
+                    var g = ctx.createRadialGradient(0,0,0,0,0,gR);
+                    g.addColorStop(0,"rgba(" + glow + "," + (0.25 + 0.1*Math.sin(_e.t*0.1)) + ")");
+                    g.addColorStop(1,"rgba(" + glow + ",0)");
+                    ctx.fillStyle = g;
+                    ctx.beginPath(); ctx.arc(0,0,gR,0,Math.PI*2); ctx.fill();
+                }
+                //倒れている間は傾いて、ときどき明滅する
+                ctx.save();
+                if(down){
+                    ctx.rotate(Math.min(1, (_e.fxT || 0)/30)*0.45);
+                    if(Math.random() < 0.15) ctx.globalAlpha = 0.6;
+                }
                 //本体と改造部品(enemyArt.js)
                 enemyArt.draw(_e,_body);
+                ctx.restore();
                 return true;
 
             case "fortress":
@@ -678,9 +966,10 @@ var special = {
 
     //ボスの攻撃予告・レーザー(translateしていない状態で呼ばれる)
     drawAttack:function(_e){
-        if(_e.type == "queen" && _e.mode == "aim"){
-            //狙っている間は薄く、本物の突進の合図(QUEEN_CUE)で濃くなる(フェイントは薄いまま)
-            var cue = !_e.fake && _e.count <= QUEEN_CUE ? 1 - _e.count/QUEEN_CUE : 0;
+        if((_e.type == "queen" || _e.type == "kai") && _e.mode == "aim"){
+            //狙っている間は薄く、本物の突進の合図(QUEEN_CUE。ドローン君改は KAI2_CUE)で濃くなる(フェイントは薄いまま)
+            var C = _e.type == "kai" ? KAI2_CUE : QUEEN_CUE;
+            var cue = !_e.fake && _e.count <= C ? 1 - _e.count/C : 0;
             ctx.strokeStyle = "rgba(220,40,40," + (0.25 + 0.6*cue) + ")";
             ctx.lineWidth = _e.r*1.2;
             ctx.globalAlpha = 0.25;
@@ -690,20 +979,25 @@ var special = {
         }
         if(_e.type == "kai") this.drawKaiParts(_e);
         if((_e.type == "fortress" || _e.type == "kai") && (_e.mode == "laserAim" || _e.mode == "laser")){
-            var ex = _e.x + Math.cos(_e.angle)*1200, ey = _e.y + Math.sin(_e.angle)*1200;
-            if(_e.mode == "laserAim"){
-                ctx.strokeStyle = "rgba(220,40,40,0.6)";
-                ctx.setLineDash([8,6]);
-                ctx.beginPath(); ctx.moveTo(_e.x,_e.y); ctx.lineTo(ex,ey); ctx.stroke();
-                ctx.setLineDash([]);
-            }else{
-                ctx.strokeStyle = "rgba(230,40,40,0.85)";
-                ctx.lineWidth = 22 + Math.sin(_e.t*0.8)*4;
-                ctx.beginPath(); ctx.moveTo(_e.x,_e.y); ctx.lineTo(ex,ey); ctx.stroke();
-                ctx.strokeStyle = "rgba(255,255,255,0.9)";
-                ctx.lineWidth = 8;
-                ctx.stroke();
-                ctx.lineWidth = 1;
+            //ドローン君改の第二形態は何本も等間隔に出る(_e.beams)
+            var n = _e.beams || 1, purple = _e.form == 2;
+            for(var i=0; i<n; i++){
+                var a = _e.angle + i*Math.PI*2/n;
+                var ex = _e.x + Math.cos(a)*1200, ey = _e.y + Math.sin(a)*1200;
+                if(_e.mode == "laserAim"){
+                    ctx.strokeStyle = purple ? "rgba(170,50,230,0.6)" : "rgba(220,40,40,0.6)";
+                    ctx.setLineDash([8,6]);
+                    ctx.beginPath(); ctx.moveTo(_e.x,_e.y); ctx.lineTo(ex,ey); ctx.stroke();
+                    ctx.setLineDash([]);
+                }else{
+                    ctx.strokeStyle = purple ? "rgba(160,40,230,0.85)" : "rgba(230,40,40,0.85)";
+                    ctx.lineWidth = 22 + Math.sin(_e.t*0.8)*4;
+                    ctx.beginPath(); ctx.moveTo(_e.x,_e.y); ctx.lineTo(ex,ey); ctx.stroke();
+                    ctx.strokeStyle = "rgba(255,255,255,0.9)";
+                    ctx.lineWidth = 8;
+                    ctx.stroke();
+                    ctx.lineWidth = 1;
+                }
             }
         }
     },
@@ -747,14 +1041,15 @@ var special = {
             ctx.stroke();
             ctx.lineWidth = 1;
         }
-        //ブレード(赤黒い刃が回る)
-        var nB = _e.phase >= 3 ? 4 : 3;
+        //ブレード(赤黒い刃が回る。倒れている間は出さない)
+        if(_e.mode == "down" || _e.mode == "revive") return;
+        var nB = this.kaiBlades(_e);
         for(var k=0; k<nB; k++){
             var a = _e.bladeA + k*Math.PI*2/nB;
             ctx.save();
             ctx.translate(_e.x + Math.cos(a)*64, _e.y + Math.sin(a)*64);
             ctx.rotate(a + _e.bladeA*3);
-            ctx.fillStyle = "#7a1018";
+            ctx.fillStyle = _e.form == 2 ? "#5a1478" : "#7a1018";
             ctx.beginPath();
             ctx.moveTo(14,0); ctx.lineTo(0,5); ctx.lineTo(-14,0); ctx.lineTo(0,-5);
             ctx.closePath(); ctx.fill();
@@ -771,17 +1066,26 @@ var special = {
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.font = "bold 14px sans-serif";
-        ctx.fillStyle = b.enraged ? "#c33" : "#000";
-        ctx.fillText("BOSS　" + b.name + (b.enraged ? "（怒り）" : ""),CW/2,y - 12);
+        //ドローン君改は、倒れて復活するところから第二形態の名前になる
+        var f2 = b.type == "kai" && b.form > 1 && b.mode != "down";
+        ctx.fillStyle = b.enraged ? "#c33" : (f2 ? "#62138a" : "#000");
+        ctx.fillText("BOSS　" + (f2 ? KAI2.name : b.name) + (b.enraged ? "（怒り）" : ""),CW/2,y - 12);
         ctx.fillStyle = "#ddd";
         ctx.fillRect(x,y,w,10);
-        ctx.fillStyle = "#c33";
+        ctx.fillStyle = f2 ? "#8a2ac0" : "#c33";
         ctx.fillRect(x,y,w*Math.max(0,b.hp)/b.maxHp,10);
         ctx.strokeStyle = "#000";
         ctx.strokeRect(x + 0.5,y + 0.5,w - 1,9);
         ctx.fillStyle = "#000";
     }
 };
+
+//"r,g,b" の色_aから_bへ_kだけ近づけた色("r,g,b")
+function mixRgb(_a,_b,_k){
+    var a = _a.split(","), b = _b.split(","), o = [];
+    for(var i=0; i<3; i++) o.push(Math.round(+a[i] + (b[i] - a[i])*_k));
+    return o.join(",");
+}
 
 //角度_aを目標_toへ最大_stepだけ近づける
 function turnTo(_a,_to,_step){

@@ -97,6 +97,25 @@ const TRACKS = {
             69,0,73,0,76,0,79,81
         ]
     },
+    //ドローン君改の第二形態：Cm - Cm - A♭ - B♭ - Cm - Cm - G - G(ボス戦の曲を低く・さらに速く、刻みを細かく)
+    kai2:{
+        bpm:168,
+        prog:[[36,"m"],[36,"m"],[44,"M"],[46,"M"],[36,"m"],[36,"m"],[43,"M"],[43,"M"]],
+        bass:"xxxxxxxxxxxxxxxx", bassType:"sawtooth", bassVol:0.14, bassOctUp:true,
+        arp:"xxxxxxxxxxxxxxxx", arpOct:24, arpType:"square", arpVol:0.02,
+        pad:0.012,
+        kick:"x.xx..x.x.xx..x.", snare:"....x.......x.xx", hat:"xxxxxxxxxxxxxxxx",
+        lead:[
+            72,0,72,75,0,79,0,75,
+            72,0,70,0,67,0,70,72,
+            68,0,72,0,75,0,72,68,
+            70,0,74,0,77,0,74,70,
+            79,0,77,75,0,74,0,72,
+            75,0,74,72,0,70,0,67,
+            71,0,74,0,79,0,74,71,
+            67,0,71,0,74,0,77,79
+        ]
+    },
     //人間との戦い(WAVE16～)：Em - Em - C - D - Em - Em - B - B(戦闘曲のメロディを低く暗く)
     revolt:{
         bpm:146,
