@@ -113,18 +113,21 @@ mainScreen.counter = function(_e){ if(coop.role == "host" && inEvents && !_e.cou
 //対戦で与えたダメージの内訳(装備ごと。バランス調整用)
 var vsSrc = {}, vsHit0 = versus.hit;
 versus.hit = function(_e,_d,_src){ if(versus.live()) vsSrc[_src] = Math.round(((vsSrc[_src] || 0) + _d*(VS_DAMAGE_MUL[_src] || 1))*10)/10; return vsHit0.apply(this, arguments); };
+var pendingPw = 0;
 function tick(){
     try{
-        for(var i=0; i<4; i++){ if(auto) autoPlay(); step(); }
+        for(var i=0; i<4; i++){ if(pendingPw && page.number == 2){ coop.playWave = pendingPw; pendingPw = 0; } if(auto) autoPlay(); step(); }
         if(++ticks % 4 == 0){ ctx.fillStyle = "white"; ctx.fillRect(0,0,CW,CH); screens[page.number].draw(); }
     }catch(e){ errors.push(String(e)); }
 }
+//協力プレイ用の記録(能力・パーツ・装備・進み具合)は毎回空から(テスト用のプロフィールに前の回の分が残るため)
+try{ localStorage.removeItem(save.COOP_META_KEY); }catch(e){}
 var loop = setInterval(tick, 16);
 
 //親ページへ状態を知らせる
 setInterval(function(){
     top.postMessage({ st:true, name:window.name, page:page.number, active:coop.active, role:coop.role, inRoom:coop.inRoom,
-        waiting:coop.waiting, code:coop.code, lag:coop.lagMs(), rc:coop.reconnects, wave:game.wave, diff:difficulty().id, msg:coop.msg, notice:startScreen.notice || "",
+        waiting:coop.waiting, code:coop.code, lag:coop.lagMs(), rc:coop.reconnects, pw:coop.playWave, pr:game.pendingReward || 0, wave:game.wave, diff:difficulty().id, msg:coop.msg, notice:startScreen.notice || "",
         partner:!!coop.partner, partnerHits:partnerHits, just:mainScreen.just, parts:game.parts, partsGot:coop.partsGot, partnerParts:coop.partnerParts, enemies:enemies.length, extra:extra, blocked:arms.blockLog[0],
         vs:{ a:versus.active, ph:versus.phase, r:versus.round, hp:versus.hp, res:versus.result, w:versus.wins, l:versus.losses, d:versus.draws, dealt:versus.dealt, mx:VS_HP, ft:versus.fightTime, t:versus.t, src:vsSrc },
         story:page.number == 4 ? storyScreen.id : "", errors:errors.slice(0,5) }, "*");
@@ -157,6 +160,10 @@ window.addEventListener("message", function(ev){
     if(m.cmd == "pause"){ clearInterval(loop); setTimeout(function(){ loop = setInterval(tick, 16); }, m.ms); }
     //回線が一瞬途切れて、仲介サーバーとのつながりが切れたときの代わり：PeerJS と同じ "network" のエラーを出す
     if(m.cmd == "netError" && coop.peer) coop.peer._emit("error", { type:"network", message:"Lost connection to server." });
+    //出撃先：ホストが次に出撃するWAVEを選ぶ。強化画面で選ぶのと同じく、次に強化画面に入ったときに選ぶ(クリアすると選び直しになるため)
+    if(m.cmd == "replay") pendingPw = m.w;
+    //今のWAVEをすぐ終わらせる(敵を消して、もう出さない)
+    if(m.cmd == "winWave" && page.number == 1){ enemies = []; enemyShots = []; mainScreen.toSpawn = 0; }
     //回線が悪くなって相方へ届かないときの代わり：ms ミリ秒のあいだ何も送らない(生きている合図も)
     if(m.cmd == "mute" && coop.conn){ var mc = coop.conn, ms0 = mc.send; mc.send = function(){}; setTimeout(function(){ mc.send = ms0; }, m.ms); }
 });

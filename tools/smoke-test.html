@@ -193,7 +193,7 @@ try{
     check("ジャストの段階(ぎりぎりはPERFECT、少し早いとJUSTで見返りが小さい)。やる気が足りないと衝撃波は出ない", pPerfect && pGood && pLow && errors.length == perr,
           "PERFECT" + pPerfect + " JUST" + pGood + " 足りない" + pLow + " やる気" + mainScreen.yaruki);
 
-    // 周回：能力はレベル20まで。倒れてもパーツ・能力は残り、同じ難易度でWAVE1から出撃し直す(2周目からは強化画面から)
+    // 周回：能力はレベル20まで。倒れてもパーツ・能力・装備は残り、同じ難易度でいちばん先のWAVEから出撃し直す(2周目からは強化画面から)
     var curveOk = STATS.every(function(s){ return s.values.length == MAX_LEVEL; }) && UPGRADE_COST.length == MAX_LEVEL
                && STATS[0].values[0] > STATS[0].values[MAX_LEVEL - 1] && STATS[2].values[MAX_LEVEL - 1] > STATS[2].values[0]
                && UPGRADE_COST.every(function(c, i){ return i < 2 || c >= UPGRADE_COST[i - 1]; });
@@ -203,25 +203,44 @@ try{
     page.change(3); draw1();
     var overKeeps = !save.exists() && JSON.parse(localStorage.getItem("dronekun_meta")).parts == 40;
     MouseX = retryButton.X + 10; MouseY = retryButton.Y + 10; Click = 1; gameoverScreen.update(); Click = 0;
-    var rerun = page.number == 2 && game.wave == 1 && game.diff == 3 && game.level.armor == 6 && game.parts == 40 && game.owned.gun == 1 && !game.owned.missile && game.runParts == 0;
+    var rerun = page.number == 2 && game.wave == 4 && game.diff == 3 && game.level.armor == 6 && game.parts == 40 && game.owned.gun == 2 && game.runParts == 0;
+    // 出撃先：ひとり用は、難易度ごとにクリア済みのWAVEの次まで選べる(先は押せない)。低い難易度は WAVE1 から
+    function clickUp(_r){ MouseX = _r.X + _r.width/2; MouseY = _r.Y + _r.height/2; Click = 1; upgradeScreen.update(); Click = 0; }
+    upgradeScreen.state = "main"; game.pendingReward = 0;
+    clickUp(sortieButton); var opened = upgradeScreen.sortieOpen; draw1();
+    clickUp(sortieWaveRects[6]); var noFar = game.wave == 4;
+    clickUp(sortieWaveRects[1]); var picked = game.wave == 2 && JSON.parse(localStorage.getItem("dronekun_save")).wave == 2;
+    clickUp(sortieDiffRects[0]); var lowDiff = game.diff == 0 && game.wave == 1;
+    clickUp(sortieDiffRects[3]); clickUp(sortieWaveRects[3]); clickUp(sortieCloseButton);
+    var sortieOk = opened && noFar && picked && lowDiff && game.diff == 3 && game.wave == 4 && !upgradeScreen.sortieOpen && page.number == 2;
+    var metaReach = JSON.parse(localStorage.getItem("dronekun_meta")).reach;
     game.reset(); page.change(0);
-    var metaBack = game.level.armor == 6 && game.parts == 40 && game.seen.prologue;
-    check("周回：能力はレベル" + MAX_LEVEL + "まで。倒れてもパーツと能力は残り、同じ難易度でWAVE1から強化画面へ。タイトルで読み直す",
+    var metaBack = game.level.armor == 6 && game.parts == 40 && game.seen.prologue && game.reachOf(3) == 4 && game.reachOf(1) == 1 && game.kept.owned.gun == 2;
+    check("周回：能力はレベル" + MAX_LEVEL + "まで。倒れてもパーツ・能力・装備は残り、同じ難易度でいちばん先のWAVEから強化画面へ。タイトルで読み直す",
           curveOk && runSaved && overKeeps && rerun && metaBack, [curveOk,runSaved,overKeeps,rerun,metaBack].join(""));
-    // 協力プレイで集めたパーツは、ひとり用の持っているパーツに足す(協力プレイの能力・パーツ0からの状態は書かない)
+    check("出撃先(ひとり用)：難易度ごとに、クリア済みのWAVEの次まで選べる", sortieOk && metaReach[3] == 4,
+          [opened,noFar,picked,lowDiff].join("") + " WAVE" + game.wave + " 覚えた進み具合" + JSON.stringify(metaReach));
+    // 協力プレイは、ひとり用とは別に、能力・パーツ・装備・難易度ごとの進み具合を残す(ひとり用は変えない)
     save.clearAll(); game.reset(); game.level.armor = 9; game.parts = 50; save.writeMeta();
     game.reset();
-    coop.active = true; coop.unbanked = 0;
-    game.gainParts(7); game.level.armor = 1;
+    var cd0 = coop.diff;
+    coop.active = true; coop.diff = 2;
+    save.loadMeta(); var coopFresh = game.parts == 0 && game.level.armor == 1;
+    game.gainParts(7); game.level.armor = 3; game.owned = { gun:2, missile:1 }; game.slots = ["gun","missile",null]; game.slotCount = 2; game.wave = 5;
     save.write();                               //強化画面に入ったとき(協力プレイ)
-    var bank1 = JSON.parse(localStorage.getItem("dronekun_meta"));
+    var c1 = JSON.parse(localStorage.getItem("dronekun_coop"));
     game.gainParts(3);
     coop.leave();                               //戦闘の途中で抜けた
-    var bank2 = JSON.parse(localStorage.getItem("dronekun_meta"));
+    var c2 = JSON.parse(localStorage.getItem("dronekun_coop")), solo = JSON.parse(localStorage.getItem("dronekun_meta"));
+    //次の協力プレイ(ホスト)：前の装備・能力・パーツで、その難易度のいちばん先のWAVEへ出撃する
+    coop.mode = "coop"; coop.role = "host"; coop.startGame();
+    var coopNext = game.owned.missile == 1 && game.slots[1] == "missile" && game.level.armor == 3 && game.parts == 10 && coop.playWave == 5 && coop.battleWave() == 5;
+    coop.leave(); coop.diff = cd0;
     game.reset(); page.change(0);
-    check("協力プレイで集めたパーツは、ひとり用のパーツに足す(能力はひとり用のまま)",
-          bank1.parts == 57 && bank2.parts == 60 && bank2.level.armor == 9 && game.parts == 60 && game.level.armor == 9 && !coop.active && !save.exists(),
-          "強化画面で" + bank1.parts + " 抜けて" + bank2.parts + " 頑丈さ" + bank2.level.armor);
+    check("協力プレイは、ひとり用とは別に能力・パーツ・装備・進み具合を残す(ひとり用は変えない)",
+          coopFresh && c1.parts == 7 && c2.parts == 10 && c2.level.armor == 3 && c2.kept.owned.missile == 1 && c2.reach[2] == 5 && coopNext
+          && solo.parts == 50 && solo.level.armor == 9 && game.parts == 50 && game.level.armor == 9 && !coop.active && !save.exists(),
+          [coopFresh,coopNext].join("") + " 協力プレイ：パーツ" + c1.parts + "→" + c2.parts + " 頑丈さ" + c2.level.armor + " 進み具合" + JSON.stringify(c2.reach) + " ひとり用：パーツ" + solo.parts + " 頑丈さ" + solo.level.armor);
 
     // 前の作り(能力はレベル5まで)のセーブ：パーツ・能力を周をまたいで残すデータに移す(能力は近い強さのレベルに)
     save.clearAll();

@@ -365,19 +365,22 @@ var game = {
     shop:null,              //ショップの品ぞろえ { wave:そろえたWAVE, items:[装備のid], sold:[売り切れか] }
     buffs:{},               //ショップで買ったバフの数 {power:1, ...}
     diff:DEFAULT_DIFF,      //この周の難易度(DIFFICULTIES の番号)
+    reach:{},               //難易度ごとの、出撃できるいちばん先のWAVE {0:5, ...}(周をまたいで残る)
+    kept:null,              //前の周の最後の装備 { owned, slots, slotCount }(周をまたいで残る。次の周はこの装備から)
     //すべてをはじめに戻す(周をまたいで残るパーツ・能力・見たストーリーも消える)
     reset:function(){
         this.seen = {};
         this.parts = 0;
+        this.reach = {};
+        this.kept = null;
         for(var i=0; i<STATS.length; i++) this.level[STATS[i].key] = 1;
         this.newRun(DEFAULT_DIFF);
     },
-    //新しい周を始める：WAVE1・初期装備に戻す。パーツ・能力・見たストーリーは残す(装備・ショップのバフは毎回はじめから)
+    //新しい周を始める：WAVE1・初期装備に戻す。パーツ・能力・見たストーリーは残す(startRun・協力プレイの startGame で前の装備・進み具合から始める。ショップのバフは毎回はじめから)
     //パーツを手に入れる(この周で集めた数も数える。ゲームオーバー画面に出す)
     gainParts:function(_n){
         this.parts += _n;
         this.runParts += _n;
-        if(typeof coop != "undefined" && coop.active) coop.unbanked += _n;    //協力プレイで集めた分は、ひとり用のパーツに足す(save.bankParts)
     },
     runParts:0,             //この周で集めたパーツ
     newRun:function(_diff){
@@ -391,6 +394,28 @@ var game = {
         this.slots = ["gun",null,null];
         this.slotCount = 1;
         this.pendingReward = 0;
+    },
+    //今の難易度の番号(協力プレイはホストが選んだ coop.diff)
+    diffIndex:function(){
+        return typeof coop != "undefined" && coop.active ? coop.diff : this.diff;
+    },
+    //出撃できるいちばん先のWAVE(クリア済みのWAVEの次まで。協力プレイは協力プレイの記録)
+    reachOf:function(_d){
+        return Math.max(1, Math.min(FINAL_WAVE, this.reach[_d] || 1));
+    },
+    //進み具合と今の装備を、周をまたいで残す分に覚える(書くのは save.writeMeta。協力プレイは協力プレイの記録へ)
+    keepProgress:function(){
+        var d = this.diffIndex();
+        this.reach[d] = Math.max(this.reach[d] || 1, Math.min(FINAL_WAVE, this.wave));
+        this.kept = JSON.parse(JSON.stringify({ owned:this.owned, slots:this.slots, slotCount:this.slotCount }));
+    },
+    //前の周の最後の装備から始める
+    useKept:function(){
+        if(!this.kept || !this.kept.owned) return;
+        var k = JSON.parse(JSON.stringify(this.kept));
+        this.owned = k.owned;
+        this.slots = k.slots || ["gun",null,null];
+        this.slotCount = k.slotCount || 1;
     },
     //能力の現在値
     stat:function(_key){
@@ -416,7 +441,11 @@ game.reset();
 //------------------------------------------------------------------------------
 var save = {
     KEY:"dronekun_save",        //この周の進行状況(倒れる・クリアすると消える)
-    META_KEY:"dronekun_meta",   //周をまたいで残るもの(パーツ・能力・見たストーリー)
+    META_KEY:"dronekun_meta",   //周をまたいで残るもの(パーツ・能力・見たストーリー・難易度ごとの進み具合・最後の装備)
+    COOP_META_KEY:"dronekun_coop",  //協力プレイ用の、周をまたいで残るもの(中身は META_KEY と同じ。ひとり用とは別に育てる)
+    metaKey:function(){
+        return typeof coop != "undefined" && coop.active ? this.COOP_META_KEY : this.META_KEY;
+    },
     BEST_KEY:"dronekun_best",
     //今の進行状況を文字列にする(セーブと、協力プレイのコンティニューに使う)
     data:function(){
@@ -427,35 +456,27 @@ var save = {
         });
     },
     metaData:function(){
-        return JSON.stringify({ v:2, parts:game.parts, level:game.level, seen:game.seen });
+        return JSON.stringify({ v:2, parts:game.parts, level:game.level, seen:game.seen, reach:game.reach, kept:game.kept });
     },
     //この周の進行状況と、周をまたいで残るものを書く
     write:function(){
-        //協力プレイはその場かぎり(ひとり用のセーブは上書きしない)。コンティニュー用にメモリにだけ覚えておく
+        //協力プレイは、この周の進行状況はコンティニュー用にメモリにだけ覚え(ひとり用のセーブは上書きしない)、
+        //周をまたいで残るものは協力プレイ用に書く
         if(typeof coop != "undefined" && coop.active){
             coop.checkpoint = this.data();
-            this.bankParts();
+            game.keepProgress();
+            this.writeMeta();
             return;
         }
         try{
             localStorage.setItem(this.KEY, this.data());
         }catch(e){}
+        game.keepProgress();
         this.writeMeta();
     },
-    //協力プレイで集めたパーツを、ひとり用の持っているパーツに足して書く(協力プレイはレベル1・パーツ0から始め、能力は残さない)
-    bankParts:function(){
-        if(typeof coop == "undefined" || !coop.unbanked) return;
-        var m = null;
-        try{ m = JSON.parse(localStorage.getItem(this.META_KEY)); }catch(e){}
-        m = m || { v:2, parts:0, level:{}, seen:{} };
-        m.parts = (Number(m.parts) || 0) + coop.unbanked;
-        coop.unbanked = 0;
-        try{ localStorage.setItem(this.META_KEY, JSON.stringify(m)); }catch(e){}
-    },
-    //周をまたいで残るものだけを書く(倒れたとき・クリアしたとき。この周で拾ったパーツも残す)
+    //周をまたいで残るものだけを書く(倒れたとき・クリアしたとき。この周で拾ったパーツも残す。協力プレイは協力プレイ用に)
     writeMeta:function(){
-        if(typeof coop != "undefined" && coop.active) return;
-        try{ localStorage.setItem(this.META_KEY, this.metaData()); }catch(e){}
+        try{ localStorage.setItem(this.metaKey(), this.metaData()); }catch(e){}
     },
     exists:function(){
         try{ return localStorage.getItem(this.KEY) != null; }catch(e){ return false; }
@@ -468,16 +489,19 @@ var save = {
             return true;
         }catch(e){ return false; }
     },
-    //周をまたいで残るものを読み込む(なければ、前の作りのセーブから作る)
+    //周をまたいで残るものを読み込む(なければ、前の作りのセーブから作る。協力プレイは協力プレイ用を読む)
     loadMeta:function(){
         var m = null;
-        try{ m = JSON.parse(localStorage.getItem(this.META_KEY)); }catch(e){}
+        try{ m = JSON.parse(localStorage.getItem(this.metaKey())); }catch(e){}
         if(m){
             game.parts = Number(m.parts) || 0;
             for(var k in game.level) game.level[k] = Math.max(1, Math.min(MAX_LEVEL, (m.level && m.level[k]) || 1));
             game.seen = m.seen || {};
+            game.reach = m.reach || {};
+            game.kept = m.kept || null;
             return;
         }
+        if(this.metaKey() != this.META_KEY) return;     //協力プレイ用ははじめてなら空から(レベル1・パーツ0)
         //前の作り(能力はレベル5まで、パーツはこの周のもの)のセーブ：パーツ・見たストーリーを引き継ぎ、能力は近い強さのレベルに直す
         var old = null;
         try{ old = localStorage.getItem(this.KEY); }catch(e){}
@@ -502,7 +526,10 @@ var save = {
         try{
             var d = JSON.parse(_s);
             if(!d) return false;
+            var reach = game.reach, kept = game.kept;  //周をまたいで残る進み具合・装備はそのまま(デバッグのあとに戻すときも消さない)
             game.reset();
+            game.reach = reach;
+            game.kept = kept;
             game.wave = d.wave;
             game.parts = d.parts;
             game.score = d.score;
@@ -537,6 +564,7 @@ var save = {
     clearAll:function(){
         this.clear();
         try{ localStorage.removeItem(this.META_KEY); }catch(e){}
+        try{ localStorage.removeItem(this.COOP_META_KEY); }catch(e){}
     },
     getBest:function(){
         try{ return Number(localStorage.getItem(this.BEST_KEY)) || 0; }catch(e){ return 0; }

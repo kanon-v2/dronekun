@@ -66,6 +66,20 @@ drone_around.look = new DroneLook();
 var Icon = new drawRect(GS*5 , GS*3 , GS*8 , GS*8)
 var nextButton = new drawRect(GS*22 , GS*14.4 , GS*14 , GS*2.4);
 var toTitleButton = new drawRect(GS*5 , GS*15 , GS*8 , GS*1.6);
+//出撃先(WAVE・難易度)。詰んだときに、クリア済みのWAVEや低い難易度でパーツ・報酬を稼げるように
+//選べるのは難易度ごとに game.reachOf まで。ひとり用は自分で選ぶ(game.diff・wave)。協力プレイはホストが窓で選び、ゲストには選んだものを出す(coop.js の playWave・diff)
+var sortieButton = new drawRect(GS*12.3 , GS*14.4 , GS*4.8 , GS*2.4);
+const SORTIE_COLS = 10;         //WAVEのボタンを1段に並べる数
+const SORTIE_TOP = 150;         //WAVEのボタンの1段目の上の端
+var sortieWaveRects = [];
+for(var i=0; i<FINAL_WAVE; i++){
+    sortieWaveRects.push(new drawRect(CW/2 + (i%SORTIE_COLS - (SORTIE_COLS - 1)/2)*62 , SORTIE_TOP + Math.floor(i/SORTIE_COLS)*48 , 56 , 40));
+}
+var sortieDiffRects = [];
+for(var i=0; i<DIFFICULTIES.length; i++){
+    sortieDiffRects.push(new drawRect(CW/2 + (i - (DIFFICULTIES.length - 1)/2)*150 , 300 , 140 , 40));
+}
+var sortieCloseButton = new drawRect(CW/2 , 372 , 200 , 44);
 
 //タブ
 var tabStats = new drawRect(365 , 72 , 130 , 32);
@@ -139,6 +153,7 @@ var upgradeScreen = {
         this.msgTime = 0;
         this.resetConfirm = 0;
         this.resetMsgTime = 0;
+        this.sortieOpen = false;
         this.stockShop();
         if(game.pendingReward){
             this.makeOffers();
@@ -317,6 +332,16 @@ var upgradeScreen = {
             }
             return;
         }
+        //出撃先を選ぶ窓(協力プレイのホスト)。開いている間は、ほかの操作をしない
+        if(this.sortieOpen){
+            this.updateSortie();
+            return;
+        }
+        if(this.canPickSortie() && sortieButton.clicked()){
+            this.sortieOpen = true;
+            sound.play("click");
+            return;
+        }
 
         if(tabStats.clicked() && this.tab != "stats"){ this.tab = "stats"; sound.play("click"); }
         if(tabEquip.clicked() && this.tab != "equip"){ this.tab = "equip"; sound.play("click"); this.resetConfirm = 0; }
@@ -449,7 +474,7 @@ var upgradeScreen = {
             nextButton.text("相方を待っています…（押すと取り消し）");
             ctx.fillStyle = "#000";
         }else{
-            nextButton.button("WAVE " + game.wave + " へ出撃" + (coop.active ? "（準備完了）" : ""));
+            nextButton.button("WAVE " + this.sortieWave() + " へ出撃" + (coop.active ? "（準備完了）" : ""));
         }
         if(coop.active){
             ctx.font = "12px sans-serif";
@@ -463,6 +488,123 @@ var upgradeScreen = {
         }
         ctx.font = "14px sans-serif";
         toTitleButton.button(coop.active ? "協力プレイをやめる" : "タイトルへ（保存済み）");
+        this.drawSortieButton();
+        if(this.sortieOpen) this.drawSortie();
+    },
+
+    //----------------------------------------------------------------- 出撃先
+    //その難易度でクリア済みのWAVE(の次)までから選び、そこから進む(game.reachOf)。協力プレイは協力プレイの記録で、ホストが選ぶ(coop.playWave・diff)
+    sortieOpen:false,
+    canPickSortie:function(){
+        return !coop.active || coop.role == "host";
+    },
+    sortieWave:function(){
+        return coop.active ? coop.battleWave() : game.wave;
+    },
+    sortieDiff:function(){
+        return coop.active ? coop.diff : game.diff;
+    },
+    //選べるいちばん先のWAVE
+    sortieMax:function(){
+        return game.reachOf(game.diffIndex());
+    },
+    updateSortie:function(){
+        for(var i=0; i<this.sortieMax(); i++){
+            if(sortieWaveRects[i].clicked()){
+                if(coop.active) coop.playWave = i + 1;
+                else{ game.wave = i + 1; save.write(); }
+                sound.play("click");
+                return;
+            }
+        }
+        for(var i=0; i<DIFFICULTIES.length; i++){
+            if(sortieDiffRects[i].clicked()){
+                if(coop.active){ coop.playWave = Math.min(this.sortieWave(), game.reachOf(i)); coop.diff = i; }
+                else{ game.diff = i; game.wave = Math.min(game.wave, game.reachOf(i)); save.write(); }
+                sound.play("click");
+                return;
+            }
+        }
+        if(sortieCloseButton.clicked()){
+            this.sortieOpen = false;
+            sound.play("click");
+        }
+    },
+    //出撃ボタンの左：いまの出撃先(ひとり用・ホストは押すと窓が開く。ゲストはホストが選んだものを見るだけ)
+    drawSortieButton:function(){
+        var b = sortieButton, host = this.canPickSortie(), d = difficulty();
+        if(host && b.contains(MouseX,MouseY) && !this.sortieOpen) b.fill("#eee");
+        ctx.strokeStyle = "#000";
+        b.stroke();
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        var cx = b.X + b.width/2;
+        ctx.font = "12px sans-serif";
+        ctx.fillStyle = "#555";
+        ctx.fillText(host ? "出撃先（押して変える）" : "出撃先（ホストが選ぶ）", cx, b.Y + 14);
+        ctx.font = "bold 15px sans-serif";
+        ctx.fillStyle = "#000";
+        var w = this.sortieWave();
+        ctx.fillText("WAVE " + w, cx, b.Y + 36);
+        ctx.font = "bold 14px sans-serif";
+        ctx.fillStyle = d.color;
+        ctx.fillText(d.name, cx, b.Y + 57);
+        ctx.fillStyle = "#000";
+    },
+    //出撃先を選ぶ窓：クリア済みのWAVE(の次まで)と難易度
+    drawSortie:function(){
+        ctx.fillStyle = "rgba(0,0,0,0.45)";
+        ctx.fillRect(0, 0, CW, CH);
+        var bx = 140, by = 70, bw = CW - 280, bh = 370;
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(bx, by, bw, bh);
+        ctx.strokeStyle = "#000";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(bx, by, bw, bh);
+        ctx.lineWidth = 1;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "#000";
+        ctx.font = "bold 22px serif";
+        ctx.fillText("出撃先を選ぶ", CW/2, by + 26);
+        ctx.font = "13px sans-serif";
+        ctx.fillStyle = "#555";
+        ctx.fillText("難易度ごとに、クリア済みのWAVEの次まで選べます。装備と能力はそのままで、選んだWAVEから進みます", CW/2, by + 56);
+        //WAVE(その難易度で出撃できるところまで。それより先は押せない)
+        var cur = this.sortieWave(), max = this.sortieMax();
+        for(var i=0; i<FINAL_WAVE; i++){
+            var r = sortieWaveRects[i], w = i + 1, label = w + (isBossWave(w) ? "★" : "");
+            ctx.font = "bold 15px sans-serif";
+            if(w > max){
+                r.button(label, false);
+            }else if(w == cur){
+                r.fill("#333");
+                ctx.fillStyle = "#fff";
+                r.text(label);
+                ctx.fillStyle = "#000";
+            }else{
+                r.button(label);
+            }
+        }
+        //難易度(選んでいるものは難易度の色で塗る)
+        ctx.font = "13px sans-serif";
+        ctx.fillStyle = "#555";
+        ctx.fillText("難易度（敵の強さと、もらえるパーツが変わります）", CW/2, sortieDiffRects[0].Y - 12);
+        ctx.font = "bold 15px sans-serif";
+        for(var i=0; i<DIFFICULTIES.length; i++){
+            var r = sortieDiffRects[i], d = DIFFICULTIES[i];
+            if(this.sortieDiff() == i){
+                r.fill(d.color);
+                ctx.fillStyle = "#fff";
+                r.text(d.name);
+                ctx.fillStyle = "#000";
+            }else{
+                r.button(d.name);
+            }
+        }
+        ctx.font = "bold 16px sans-serif";
+        sortieCloseButton.button("決める");
+        ctx.fillStyle = "#000";
     },
 
     drawTab:function(_rect,_label,_selected){

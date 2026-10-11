@@ -528,6 +528,7 @@ var mainScreen = {
                     if(bossDebug.active){ bossDebug.finish("clear"); return; }
                     var cleared = game.wave;
                     game.wave++;
+                    coop.playWave = 0;      //協力プレイ：次は進み具合のWAVEへ(ホストが選んだ出撃先はクリアで終わり。coop.js)
                     //報酬を選ぶ回数(補給機のカプセル・ボス撃破の分が上乗せされている)
                     game.pendingReward = (game.pendingReward || 0) + 1;
                     //最終WAVEならエンディング、それ以外はストーリーがあれば見てから強化画面へ

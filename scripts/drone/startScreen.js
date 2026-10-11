@@ -90,9 +90,14 @@ var startScreen = {
     },
     //新しい周を始める(_d：難易度の番号)。パーツ・能力・見たストーリーは残す。この周の進み具合は消す
     //はじめてならプロローグからWAVE1へ。2周目からは強化画面(集めたパーツで能力を上げてから出撃)
+    //2周目からは、前の周の最後の装備で、その難易度のいちばん先のWAVEから(強化画面の「出撃先」でクリア済みのWAVEを選び直せる)
     startRun:function(_d){
         save.clear();
         game.newRun(_d);
+        if(game.seen.prologue){
+            game.useKept();
+            game.wave = game.reachOf(_d);
+        }
         if(!game.seen.prologue){
             storyScreen.start("prologue",function(){ page.change(1); });
         }else{
@@ -141,7 +146,7 @@ var startScreen = {
         ctx.fillText("難易度を選ぶ", px + 26, py + 25);
         ctx.font = "12px " + TITLE_UI_FONT;
         ctx.fillStyle = "#6a6f6c";
-        ctx.fillText("倒れてもパーツと能力は残ります。WAVE1から出撃します", px + 26, py + 54);
+        ctx.fillText("倒れてもパーツ・能力・装備は残ります。強化画面でクリア済みのWAVEを選んで出撃できます", px + 26, py + 54);
         for(var i=0; i<diffCards.length; i++){
             var c = diffCards[i], d = DIFFICULTIES[i], on = this.diffHover == i;
             ctx.fillStyle = on ? "#f0f0ec" : "#fff";
@@ -163,6 +168,11 @@ var startScreen = {
             ctx.font = "bold 13px " + TITLE_UI_FONT;
             ctx.fillStyle = d.color;
             ctx.fillText("パーツ ×" + d.parts, c.X + c.width - 16, c.Y + 22);
+            if(game.reachOf(i) > 1){
+                ctx.font = "12px " + TITLE_UI_FONT;
+                ctx.fillStyle = "#6a6f6c";
+                ctx.fillText("WAVE " + game.reachOf(i) + " から", c.X + c.width - 16, c.Y + 46);
+            }
         }
         var on = this.diffHover == diffCards.length;
         diffClose.fill(on ? TITLE_INK : "#fff");

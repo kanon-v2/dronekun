@@ -198,6 +198,22 @@ var steps = [
         });
     },
     function(next){
+        //出撃先：ホストが強化画面で WAVE1(クリア済み)を選ぶと、次の出撃はふたりとも WAVE1 になる
+        cmd("host", { cmd:"replay", w:1 });
+        cmd("host", { cmd:"winWave" });
+        waitFor(function(){ return both(function(s){ return s.page == 1 && s.wave == 1 && s.pw == 1; }); }, 30000, function(ok){
+            check("出撃先：ホストが選んだクリア済みのWAVEへ、ふたりとも出撃する", ok, desc() + " 出撃先 " + st.host.pw + "/" + st.guest.pw);
+            var pr0 = { host:st.host.pr, guest:st.guest.pr };
+            setTimeout(function(){ cmd("host", { cmd:"winWave" }); }, 1500);
+            //クリアすると、ふたりとも報酬を1回もらって、選んだWAVEの次へ進む(ひとり用と同じ)
+            waitFor(function(){ return both(function(s){ return s.wave == 2 && s.pw == 0; }); }, 30000, function(ok2){
+                var got = st.host.pr == pr0.host + 1 && st.guest.pr == pr0.guest + 1;
+                check("出撃先：クリアすると報酬をもらって、選んだWAVEの次へ進む", ok2 && got, desc() + " 報酬 " + pr0.host + "→" + st.host.pr + "/" + pr0.guest + "→" + st.guest.pr);
+                next();
+            });
+        });
+    },
+    function(next){
         cmd("guest", { cmd:"leave" });
         waitFor(function(){ return !st.host.partner && st.host.active && st.host.msg.indexOf("退出") >= 0; }, 12000, function(ok){
             check("ゲストが抜けるとホストはひとりで続ける", ok, st.host.msg + " partner=" + st.host.partner); next();

@@ -74,6 +74,8 @@ var coop = {
     pendingConn:null,   //つなぎ直しの新しいつながり(開いたら今のつながりと入れ替える)
     reconnectAt:0,      //最後につなぎ直そうとした時刻
     reconnects:0,       //つなぎ直した回数
+    //出撃先：ホストが強化画面で、クリア済みのWAVE(の次まで)と難易度を選べる(詰んだときにパーツ・報酬を稼げるように)
+    playWave:0,         //次に出撃するWAVE(0は今の進み具合のWAVE)。ホストが出撃先の窓で選び、ゲストはホストから届いた値に合わせる
     step:0,
     //ゲスト→ホスト(合計値)
     dmg:{},             //{e12:[ダメージ×10, EMP回数, 水回数]}
@@ -84,7 +86,6 @@ var coop = {
     partnerParts:0,     //相方が拾ったパーツのうち、自分にも足した数
     //コンティニュー(ふたりとも撃墜されたら、そのWAVEの強化画面からやり直す)
     checkpoint:null,    //強化画面で最後に覚えた進行状況(save.write が入れる)
-    unbanked:0,         //協力プレイで集めて、まだひとり用のパーツに足していない数(save.bankParts)
     wantContinue:false, //自分がコンティニューを押した
     hostCn:false,       //ゲスト：ホストがコンティニューを押した
     //ホスト側で反映済みの値
@@ -270,7 +271,7 @@ var coop = {
 
     //つなげなかった：部屋を閉じて、部屋選びの画面にメッセージを出す
     fail:function(_m){
-        if(this.active) save.bankParts();     //協力プレイで集めたパーツを、ひとり用のパーツに足す(戦闘の途中で抜けても、そこまでの分を)
+        if(this.active){ game.keepProgress(); save.writeMeta(); }     //協力プレイ用の能力・パーツ・装備・進み具合を書く(戦闘の途中で抜けても、そこまでの分を)
         this.closePeer();
         this.inRoom = false;
         this.waiting = false;
@@ -300,22 +301,23 @@ var coop = {
             versus.start(this.role == "host");
             return;
         }
-        //前の作りのセーブが残っていれば、先に周をまたいで残るデータへ移しておく(協力プレイで集めたパーツを足す先)
-        game.reset();
-        save.loadMeta();
-        this.unbanked = 0;
+        //協力プレイ用の能力・パーツ・前の装備・進み具合から始める(ひとり用とは別に残す。save.metaKey)
         this.active = true;
         this.waiting = false;
         game.reset();
+        save.loadMeta();
+        game.useKept();
         enemySeq = 0;
         pickupSeq = 0;
         this.resetExchange();
+        if(this.role == "host") this.playWave = game.reachOf(this.diff);    //はじめは、その難易度のいちばん先のWAVEへ(ゲストにはホストから届く)
         this.localReady = false;
         this.msg = "";
         storyScreen.start("prologue",function(){ page.change(2); });
     },
 
     resetExchange:function(){
+        this.playWave = 0;
         this.dmg = {}; this.got = []; this.blast = [0,0,0];
         this.partsGot = 0; this.partnerParts = 0;
         this.checkpoint = null; this.wantContinue = false; this.hostCn = false;
@@ -364,7 +366,7 @@ var coop = {
         //相方に、自分から抜けることを知らせてから閉じる(相方の画面で「退出しました」と出す)
         //(送り直さない通信なので、落ちても届くよう何回か送る)
         if(this.conn && this.connOpen){ for(var i=0; i<3; i++){ try{ this.conn.send({ role:this.role, bye:1 }); }catch(e){} } }
-        if(this.active) save.bankParts();     //協力プレイで集めたパーツを、ひとり用のパーツに足す(戦闘の途中で抜けても、そこまでの分を)
+        if(this.active){ game.keepProgress(); save.writeMeta(); }     //協力プレイ用の能力・パーツ・装備・進み具合を書く(戦闘の途中で抜けても、そこまでの分を)
         this.closePeer();
         this.checkpoint = null; this.wantContinue = false; this.hostCn = false;
         this.partsGot = 0; this.partnerParts = 0;
@@ -375,6 +377,7 @@ var coop = {
         this.waiting = false;
         this.partner = null;
         this.localReady = false;
+        this.playWave = 0;
     },
 
     say:function(_m){ this.msg = _m; this.msgTime = 240; },
@@ -423,6 +426,7 @@ var coop = {
             //両方の準備ができたら出撃
             if(page.number == 2 && this.localReady && (!this.partner || this.partner.rd == game.wave)){
                 this.localReady = false;
+                this.beginBattle();
                 page.change(1);
             }
             //コンティニュー：ふたりとも押したら(相方がいなければすぐ)やり直す。ゲストはこちらが強化画面へ戻ったのを見てついてくる
@@ -464,7 +468,7 @@ var coop = {
 
     //------------------------------------------------------------ ホスト→ゲスト
     buildHost:function(){
-        var s = { q:++this.sendQ, ph:this.phase(), w:game.wave, sc:game.score, ev:this.events, rd:this.localReady ? game.wave : 0, pc:this.partsGot, cn:this.wantContinue ? 1 : 0, d:this.diff };
+        var s = { q:++this.sendQ, ph:this.phase(), w:game.wave, sc:game.score, ev:this.events, rd:this.localReady ? game.wave : 0, pc:this.partsGot, cn:this.wantContinue ? 1 : 0, d:this.diff, pw:this.playWave };
         if(!this.active) return s;
         var M = mainScreen;
         var r = Math.round;
@@ -630,6 +634,7 @@ var coop = {
         this.snap = _s;
         this.framesSinceSnap = 0;
         if(DIFFICULTIES[_s.d]) this.diff = _s.d;   //難易度はホストに合わせる
+        if(_s.pw != null) this.playWave = _s.pw;   //次に出撃するWAVEもホストに合わせる
         if(!this.active){
             //ホストの応答が来たらゲーム開始
             this.startGame();
@@ -663,8 +668,9 @@ var coop = {
             return;
         }
         if(_s.ph == "o" && page.number == 1){ page.change(3); return; }
-        if(_s.ph == "b" && _s.w == game.wave && page.number == 2 && this.localReady){
+        if(_s.ph == "b" && _s.w == this.battleWave() && page.number == 2 && this.localReady){
             this.localReady = false;
+            this.beginBattle();
             page.change(1);
         }
     },
@@ -728,9 +734,24 @@ var coop = {
     continueGame:function(){
         this.wantContinue = false;
         this.localReady = false;
+        this.playWave = 0;     //倒れたWAVEから(覚えておいた状態は出撃したWAVE。beginBattle)
         if(this.checkpoint) save.restore(this.checkpoint);
         goUpgrade();
     },
+    //------------------------------------------------------------ 出撃先
+    //次に出撃するWAVE(ホストが選んだWAVE。選んでいなければ今の進み具合)
+    battleWave:function(){
+        return this.playWave > 0 ? this.playWave : game.wave;
+    },
+    //出撃する直前(ふたりとも)：選んだWAVEへ移り、そこから進む。倒れたときのコンティニューもそのWAVEから
+    //(playWave はクリアするまで残す。ゲストがホストの出撃に気付くときに、同じWAVEかを確かめるため)
+    beginBattle:function(){
+        var w = this.battleWave();
+        if(w == game.wave) return;
+        game.wave = w;
+        this.checkpoint = save.data();
+    },
+
     //相方がコンティニューを押しているか(ゲームオーバー画面の表示用)
     partnerWantsContinue:function(){
         if(this.role == "host") return !!(this.partner && this.partner.cn);
