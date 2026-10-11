@@ -18,10 +18,11 @@ const TITLE_SHADOWS = 5;        //遠くを横切る小さなドローン君の�
 //------------------------------------------------------------------------------
 //  メニューのボタン(右側に縦に並べる)
 //------------------------------------------------------------------------------
-var startButton    = new drawRect(TITLE_MENU_X, 160, 300, 46);
-var continueButton = new drawRect(TITLE_MENU_X, 214, 300, 46);
-var coopButton     = new drawRect(TITLE_MENU_X, 300, 300, 46);
-var versusButton   = new drawRect(TITLE_MENU_X, 354, 300, 46);
+var startButton    = new drawRect(TITLE_MENU_X, 150, 300, 46);
+var continueButton = new drawRect(TITLE_MENU_X, 204, 300, 46);
+var waveButton     = new drawRect(TITLE_MENU_X, 258, 300, 46);
+var coopButton     = new drawRect(TITLE_MENU_X, 344, 300, 46);
+var versusButton   = new drawRect(TITLE_MENU_X, 398, 300, 46);
 
 //難易度を選ぶ窓(「出撃」で開く。DIFFICULTIES は common.js)
 const DIFF_W = 470;
@@ -30,6 +31,16 @@ const DIFF_ROW = 74;
 var diffCards = [];
 for(var i=0; i<DIFFICULTIES.length; i++) diffCards.push(new drawRect(CW/2, DIFF_Y + 76 + i*DIFF_ROW, DIFF_W - 60, 64));
 var diffClose = new drawRect(CW/2, DIFF_Y + 76 + DIFFICULTIES.length*DIFF_ROW + 4, 160, 38);
+
+//始めるWAVEを選ぶ窓(「始めるWAVEを選択」で開く)：難易度と、その難易度で出撃できるWAVE(game.reachOf)まで
+const WSEL_W = 680;
+const WSEL_Y = 56;
+var wselDiffs = [];
+for(var i=0; i<DIFFICULTIES.length; i++) wselDiffs.push(new drawRect(CW/2 + (i - (DIFFICULTIES.length - 1)/2)*150, WSEL_Y + 98, 140, 40));
+var wselWaves = [];
+for(var i=0; i<FINAL_WAVE; i++) wselWaves.push(new drawRect(CW/2 + (i%10 - 4.5)*62, WSEL_Y + 186 + Math.floor(i/10)*48, 56, 40));
+var wselStart = new drawRect(CW/2 - 95, WSEL_Y + 300, 170, 42);
+var wselClose = new drawRect(CW/2 + 95, WSEL_Y + 300, 170, 42);
 
 //右上の設定ボタンと、設定の窓(ドローン君の見た目・戦闘画面の方眼を選ぶ)
 var settingsButton = new drawRect(CW - 78, 18, 104, 34);
@@ -67,6 +78,10 @@ var startScreen = {
     settings:false, //設定の窓を開いているか
     diffSel:false,  //難易度を選ぶ窓を開いているか
     diffHover:-1,
+    waveSel:false,  //始めるWAVEを選ぶ窓を開いているか
+    wselDiff:0,     //その窓で選んでいる難易度とWAVE
+    wselWave:1,
+    wselHover:-1,
     setHover:-1,    //設定の窓でマウスが乗っているもの(0,1:見た目 2〜6:方眼 7:閉じる)
     enter:function(){
         //周をまたいで残るもの(パーツ・能力・見たストーリー)を読み直す(協力プレイ・対戦・デバッグのあとも元に戻るように)
@@ -80,10 +95,11 @@ var startScreen = {
         this.hover = -1;
         this.settings = false;
         this.diffSel = false;
+        this.waveSel = false;
     },
     //タッチで、ボタンの上を触ったか(タイトル画面では、ボタン以外はドラッグでドローン君を動かす。common.js)
     touchUI:function(_x,_y){
-        if(this.settings || this.diffSel) return true;     //窓を開いている間は、どこを触ってもタップ
+        if(this.settings || this.diffSel || this.waveSel) return true;     //窓を開いている間は、どこを触ってもタップ
         var list = this.items();
         for(var i=0; i<list.length; i++) if(list[i][0].contains(_x,_y)) return true;
         return settingsButton.contains(_x,_y) || (debugUrl() && debugButton.contains(_x,_y));
@@ -91,12 +107,13 @@ var startScreen = {
     //新しい周を始める(_d：難易度の番号)。パーツ・能力・見たストーリーは残す。この周の進み具合は消す
     //はじめてならプロローグからWAVE1へ。2周目からは強化画面(集めたパーツで能力を上げてから出撃)
     //2周目からは、前の周の最後の装備で、その難易度のいちばん先のWAVEから(強化画面の「出撃先」でクリア済みのWAVEを選び直せる)
-    startRun:function(_d){
+    //_wave：始めるWAVE(省くと、その難易度のいちばん先のWAVE。「始めるWAVEを選択」で選んだとき)
+    startRun:function(_d,_wave){
         save.clear();
         game.newRun(_d);
         if(game.seen.prologue){
             game.useKept();
-            game.wave = game.reachOf(_d);
+            game.wave = Math.max(1, Math.min(_wave || FINAL_WAVE, game.reachOf(_d)));
         }
         if(!game.seen.prologue){
             storyScreen.start("prologue",function(){ page.change(1); });
@@ -183,11 +200,103 @@ var startScreen = {
         ctx.fillStyle = on ? "#fff" : TITLE_INK;
         ctx.fillText("やめる", CW/2, diffClose.Y + diffClose.height/2 + 1);
     },
+    //始めるWAVEを選ぶ窓。難易度を変えると、WAVEはその難易度で出撃できるところまでに縮める
+    updateWaveSel:function(){
+        var h = -1, max = game.reachOf(this.wselDiff);
+        for(var i=0; i<wselDiffs.length; i++) if(wselDiffs[i].contains(MouseX,MouseY)) h = i;
+        for(var i=0; i<max; i++) if(wselWaves[i].contains(MouseX,MouseY)) h = 10 + i;
+        if(wselStart.contains(MouseX,MouseY)) h = 40;
+        if(wselClose.contains(MouseX,MouseY)) h = 41;
+        if(h != this.wselHover && h >= 0) sound.play("hover");
+        this.wselHover = h;
+        for(var i=0; i<wselDiffs.length; i++){
+            if(wselDiffs[i].clicked()){
+                sound.play("click");
+                this.wselDiff = i;
+                this.wselWave = game.reachOf(i);
+                return;
+            }
+        }
+        for(var i=0; i<max; i++){
+            if(wselWaves[i].clicked()){
+                sound.play("click");
+                this.wselWave = i + 1;
+                return;
+            }
+        }
+        if(wselStart.clicked()){
+            sound.play("click");
+            this.waveSel = false;
+            this.startRun(this.wselDiff, this.wselWave);
+            return;
+        }
+        if(wselClose.clicked()){
+            sound.play("click");
+            this.waveSel = false;
+            this.hover = -1;
+        }
+    },
+    //タイトルの窓のボタン(選んでいるものは _fill で塗る。押せないものは薄く)
+    drawWselButton:function(_r,_label,_fill,_on,_ok){
+        ctx.fillStyle = _fill || (_on && _ok ? "#f0f0ec" : "#fff");
+        ctx.fillRect(_r.X, _r.Y, _r.width, _r.height);
+        ctx.strokeStyle = !_ok ? "#dfe1dd" : (_fill || _on ? TITLE_INK : "#c9ccc7");
+        ctx.lineWidth = 2;
+        ctx.strokeRect(_r.X + 1, _r.Y + 1, _r.width - 2, _r.height - 2);
+        ctx.lineWidth = 1;
+        ctx.textAlign = "center";
+        ctx.fillStyle = _fill ? "#fff" : (_ok ? TITLE_INK : "#c2c5c0");
+        ctx.fillText(_label, _r.X + _r.width/2, _r.Y + _r.height/2 + 1);
+    },
+    drawWaveSel:function(){
+        ctx.fillStyle = "rgba(247,247,244,0.85)";
+        ctx.fillRect(0,0,CW,CH);
+        var px = CW/2 - WSEL_W/2, py = WSEL_Y, ph = wselStart.Y + wselStart.height + 18 - py;
+        ctx.fillStyle = "rgba(0,0,0,0.12)";
+        ctx.fillRect(px + 6, py + 6, WSEL_W, ph);
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(px, py, WSEL_W, ph);
+        ctx.strokeStyle = TITLE_INK;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(px + 1, py + 1, WSEL_W - 2, ph - 2);
+        ctx.lineWidth = 1;
+        ctx.fillStyle = TITLE_ACCENT;
+        ctx.fillRect(px + 2, py + 2, 5, 44);
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.font = "bold 20px " + TITLE_UI_FONT;
+        ctx.fillStyle = TITLE_INK;
+        ctx.fillText("始めるWAVEを選ぶ", px + 26, py + 25);
+        ctx.font = "12px " + TITLE_UI_FONT;
+        ctx.fillStyle = "#6a6f6c";
+        ctx.fillText("難易度ごとに、クリア済みのWAVEの次まで選べます。能力・装備は前の周のまま出撃します", px + 26, py + 54);
+        //難易度
+        ctx.font = "bold 15px " + TITLE_UI_FONT;
+        for(var i=0; i<wselDiffs.length; i++){
+            var d = DIFFICULTIES[i];
+            this.drawWselButton(wselDiffs[i], d.name, this.wselDiff == i ? d.color : null, this.wselHover == i, true);
+        }
+        //WAVE(★はボス)
+        var max = game.reachOf(this.wselDiff);
+        ctx.textAlign = "left";
+        ctx.font = "12px " + TITLE_UI_FONT;
+        ctx.fillStyle = "#6a6f6c";
+        ctx.fillText("WAVE（" + DIFFICULTIES[this.wselDiff].name + "は WAVE " + max + " まで）", wselWaves[0].X, wselWaves[0].Y - 16);
+        ctx.font = "bold 15px " + TITLE_UI_FONT;
+        for(var i=0; i<FINAL_WAVE; i++){
+            var w = i + 1;
+            this.drawWselButton(wselWaves[i], w + (isBossWave(w) ? "★" : ""), this.wselWave == w ? TITLE_INK : null, this.wselHover == 10 + i, w <= max);
+        }
+        //出撃・やめる
+        this.drawWselButton(wselStart, "WAVE " + this.wselWave + " から出撃", this.wselHover == 40 ? TITLE_INK : null, this.wselHover == 40, true);
+        this.drawWselButton(wselClose, "やめる", this.wselHover == 41 ? TITLE_INK : null, this.wselHover == 41, true);
+    },
     //メニューの一覧([ボタン, 文字, 押せるか])
     items:function(){
         return [
             [startButton, "出撃", true],
             [continueButton, "つづきから", this.hasSave],
+            [waveButton, "始めるWAVEを選択", true],
             [coopButton, "協力プレイ", true],
             [versusButton, "対戦", true]
         ];
@@ -206,6 +315,10 @@ var startScreen = {
         }
         if(this.diffSel){
             this.updateDiff();
+            return;
+        }
+        if(this.waveSel){
+            this.updateWaveSel();
             return;
         }
         //デバッグのメニューを開く(URL に #debug を付けたときだけボタンが出る。スマホ用。bossDebug.js)
@@ -236,6 +349,15 @@ var startScreen = {
             sound.play("click");
             this.diffSel = true;
             this.diffHover = -1;
+            return;
+        }
+        //始めるWAVEを選択：難易度とWAVEを選ぶ窓を開く(選んで「出撃」で新しい周が始まる)
+        if(waveButton.clicked()){
+            sound.play("click");
+            this.waveSel = true;
+            this.wselDiff = game.diff;
+            this.wselWave = game.reachOf(this.wselDiff);
+            this.wselHover = -1;
             return;
         }
         //つづきから：セーブを読み込んで強化画面へ(見ていないストーリーがあれば先に)
@@ -294,7 +416,7 @@ var startScreen = {
             ctx.textBaseline = "middle";
             ctx.font = "bold 13px " + TITLE_UI_FONT;
             ctx.fillStyle = TITLE_ACCENT;
-            ctx.fillText(this.notice, TITLE_MENU_X, 422);
+            ctx.fillText(this.notice, TITLE_MENU_X, 466);
         }
 
         //遊び方(左下に小さく)
@@ -313,6 +435,7 @@ var startScreen = {
         if(bossDebug.menu) bossDebug.drawMenu();
         if(this.settings) this.drawSettings();
         if(this.diffSel) this.drawDiff();
+        if(this.waveSel) this.drawWaveSel();
     },
 
     drawBackground:function(){
@@ -459,7 +582,7 @@ var startScreen = {
             ctx.textAlign = "right";
             ctx.font = "11px " + TITLE_UI_FONT;
             ctx.fillStyle = on ? "rgba(255,255,255,0.7)" : "#8a8f8b";
-            var sub = ["難易度を選んでWAVE1から", ok ? "この周を再開" : "出撃中の周なし", "ストーリーをふたりで", "1対1"][i];
+            var sub = ["難易度を選んで出撃", ok ? "この周を再開" : "出撃中の周なし", "", "ストーリーをふたりで", "1対1"][i];
             ctx.fillText(sub, b.X + b.width - 14, b.Y + b.height/2 + 1);
             ctx.restore();
             ctx.restore();

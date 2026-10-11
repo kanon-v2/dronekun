@@ -220,6 +220,16 @@ try{
           curveOk && runSaved && overKeeps && rerun && metaBack, [curveOk,runSaved,overKeeps,rerun,metaBack].join(""));
     check("出撃先(ひとり用)：難易度ごとに、クリア済みのWAVEの次まで選べる", sortieOk && metaReach[3] == 4,
           [opened,noFar,picked,lowDiff].join("") + " WAVE" + game.wave + " 覚えた進み具合" + JSON.stringify(metaReach));
+    // タイトルの「始めるWAVEを選択」：難易度とWAVE(出撃できるところまで)を選んで出撃する
+    page.change(0); startScreen.t = 100;
+    clickAt(waveButton); var wOpen = startScreen.waveSel; draw1();
+    clickAt(wselDiffs[3]); var wDiff = startScreen.wselDiff == 3 && startScreen.wselWave == 4;
+    clickAt(wselWaves[6]); var wNoFar = startScreen.wselWave == 4;
+    clickAt(wselWaves[1]); clickAt(wselStart);
+    var wStart = page.number == 2 && game.diff == 3 && game.wave == 2 && game.owned.gun == 2 && !startScreen.waveSel;
+    check("タイトルの「始めるWAVEを選択」で、難易度ごとにクリア済みのWAVEから出撃する", wOpen && wDiff && wNoFar && wStart,
+          [wOpen,wDiff,wNoFar,wStart].join("") + " WAVE" + game.wave + " 難易度" + game.diff);
+    game.reset(); page.change(0);
     // 協力プレイは、ひとり用とは別に、能力・パーツ・装備・難易度ごとの進み具合を残す(ひとり用は変えない)
     save.clearAll(); game.reset(); game.level.armor = 9; game.parts = 50; save.writeMeta();
     game.reset();
