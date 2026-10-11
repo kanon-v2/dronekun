@@ -42,6 +42,9 @@ const FORT_SPIRAL   = 90;       //渦巻き弾の長さ(フレーム。bosses.js
 const FORT_AIM_LEN  = 70;       //レーザーの予告の長さ(フレーム。bosses.js と同じ)
 const FORT_SHOT_GAP = 20;       //3方向弾の間隔(フレーム。bosses.js と同じ)
 
+//天蓋母艦(ボス)：動きの値は bosses.js の CANOPY_*
+const CANOPY_ART_RAGE = 1.6;    //怒ったときに、ランプの波・コアの花びらが速くなる倍率
+
 //ドローン君改(ボス)：本体はスキンどおりのドローン君の絵を上下に切り分けてずらし、まわりの改造部品を別々に動かす
 const KAI_SCALE     = 2;        //本体の絵の倍率(前と同じ)
 const KAI_SPLIT     = -0.075;   //絵を切り分ける高さ(絵の大きさに対する割合。中心から上へ。プロペラ・棒と胴体の境目)
@@ -599,6 +602,248 @@ var enemyArt = {
                 ctx.stroke();
             }
         }
+    },
+
+    //------------------------------------------------------------ 天蓋母艦(ボス)
+    //画面の上を端から端まで覆う船体。まんなかにコア(目)、下のふちに弾の雨の口・ハッチ・砲台の付け根。
+    //ランプの列がコアから外へ波のように光り、大きさを感じさせる。動かない代わりに、船体の部品が攻撃ごとに動く。
+    //使う値は t・mode・count・angle・enraged・broken・flash(協力プレイのゲストにも届く)だけ。
+    //崩れ落ちる演出(mode "wreck")でも同じ絵を使う。
+    canopy:function(_e,_body){
+        var C = ENEMY_COLOR, self = this, r = _e.r;
+        var mode = _e.mode, cnt = Math.max(0, _e.count || 0), t = _e.t;
+        var wreck = mode == "wreck";
+        var tempo = _e.enraged ? CANOPY_ART_RAGE : 1;
+        var hull = _e.enraged ? "#352a2c" : C.body;
+        var plate = _e.enraged ? "#4a3a3b" : C.mid;
+        var seamRgb = _e.enraged ? "255,70,40" : "255,140,40";
+        var W = CW/2 + 40;      //船体の半分の幅(画面の端より少し外まで)
+        var edge = function(_dx){ return canopyEdge(_dx,0); };
+        //攻撃ごとの動き(0～1)
+        var rainK = mode == "rain" ? Math.min(1, Math.min(CANOPY_RAIN_T - cnt, cnt)/15) : 0;
+        var aimK = mode == "laserAim" ? 1 - cnt/CANOPY_AIM_T : 0;
+        var firing = mode == "laser";
+        var hatchK = mode == "summon" ? Math.min(1, Math.min(CANOPY_SUMMON_T - cnt, cnt)/12) : 0;
+        var waveK = mode == "wave" ? Math.max(0, 1 - ((CANOPY_WAVE_T - cnt) % CANOPY_WAVE_GAP)/8) : 0;
+        var hit = _body ? 1 : 0;
+        //撃っている間・被弾で船体ごと小さく震える
+        var shake = (firing ? 1.2 : aimK*0.6) + hit*1.5;
+        ctx.save();
+        if(shake > 0) ctx.translate(Math.sin(t*2.3)*shake, Math.cos(t*1.9)*shake*0.6);
+
+        //---- 船体：画面の上から、下のふちまで
+        ctx.beginPath();
+        ctx.moveTo(-W,-460); ctx.lineTo(W,-460);
+        for(var x=W; x>=-W; x-=20) ctx.lineTo(x, edge(x));
+        ctx.closePath();
+        self.fillInk(hull, 2.2);
+
+        //---- 装甲の継ぎ目：下のふちに沿った線を2本(上側にハイライト)
+        for(var k=1; k<=2; k++){
+            var off = k*30;
+            ctx.beginPath();
+            for(var x=-W; x<=W; x+=20){
+                var y = edge(x) - off - Math.max(0, 1 - Math.abs(x)/150)*k*8;
+                if(x == -W) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+            }
+            ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.stroke();
+            ctx.save(); ctx.translate(0,2);
+            ctx.strokeStyle = C.light; ctx.lineWidth = 1; ctx.stroke();
+            ctx.restore();
+        }
+        //---- 縦の骨組み(下の帯を区切る)。光が左上から当たるので左側だけ明るい線
+        for(var x=-440; x<=440; x+=80){
+            if(Math.abs(x) < 90) continue;
+            var y1 = edge(x);
+            ctx.strokeStyle = C.ink; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(x, y1 - 60); ctx.lineTo(x, y1 - 2); ctx.stroke();
+            ctx.strokeStyle = C.light; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(x + 2, y1 - 58); ctx.lineTo(x + 2, y1 - 4); ctx.stroke();
+        }
+
+        //---- 肩の装甲：コアの左右に大きな板を重ねる(弾の波で少し持ち上がる)
+        for(var s=-1; s<=1; s+=2){
+            var lift = waveK*3;
+            ctx.beginPath();
+            ctx.moveTo(s*58, -34 - lift); ctx.lineTo(s*230, -18 - lift); ctx.lineTo(s*250, 8);
+            ctx.lineTo(s*150, 30); ctx.lineTo(s*62, 40);
+            ctx.closePath();
+            self.fillInk(_body || plate, 1.8);
+            ctx.strokeStyle = C.shine; ctx.lineWidth = 1.2;
+            ctx.beginPath(); ctx.moveTo(s*66, -29 - lift); ctx.lineTo(s*222, -14 - lift); ctx.stroke();
+            //板のびょう
+            ctx.fillStyle = C.ink;
+            for(var i=0; i<4; i++) ctx.fillRect(s*(90 + i*40) - 2.5, -14 + i*3 - lift, 5, 5);
+        }
+
+        //---- ランプの列：コアから外へ光の波が流れる(怒ると速く赤く)
+        for(var x=-460; x<=460; x+=36){
+            if(Math.abs(x) < 70) continue;
+            var ly = edge(x) - 45 - Math.max(0, 1 - Math.abs(x)/150)*8;
+            var on = wreck ? 0 : Math.max(0, Math.sin(t*0.09*tempo - Math.abs(x)*0.018));
+            if(on > 0.6) self.halo(x, ly, 7, _e.enraged ? "255,60,50" : "255,120,60", on);
+            ctx.fillStyle = on > 0.6 ? C.red : C.redDark;
+            ctx.fillRect(x - 3, ly - 2, 6, 4);
+        }
+
+        //---- 弾の雨の口：下のふちに並ぶ。弾の雨の間は熱く光る
+        for(var v=0; v<CANOPY_VENTS; v++){
+            var vx = special.canopyVent(v) - CW/2, vy = edge(vx);
+            if(Math.abs(vx) < 60) continue;
+            if(rainK > 0) self.halo(vx, vy + 2, 14, seamRgb, rainK*(0.6 + 0.4*Math.sin(t*0.5 + v)));
+            self.roundRect(vx - 10, vy - 7, 20, 9, 2);
+            self.fillInk(rainK > 0.5 ? "#7a3a18" : C.ink, 1.2);
+            ctx.fillStyle = rainK > 0 ? "rgba(255,190,90," + rainK + ")" : C.mid;
+            ctx.fillRect(vx - 7, vy - 4, 14, 2);
+        }
+
+        //---- ハッチ(左右)：手下を出すときに左右へ開き、中の赤い光が見える
+        for(var s=-1; s<=1; s+=2){
+            var hx = s*CANOPY_HATCH, hy = edge(hx);
+            ctx.fillStyle = C.ink;
+            ctx.fillRect(hx - 26, hy - 14, 52, 14);
+            if(hatchK > 0){
+                self.halo(hx, hy - 4, 26, "255,60,50", hatchK);
+                ctx.fillStyle = "rgba(229,48,43," + hatchK + ")";
+                ctx.fillRect(hx - 20, hy - 10, 40, 8);
+            }
+            var o = hatchK*22;
+            for(var d=-1; d<=1; d+=2){
+                ctx.beginPath();
+                ctx.rect(hx + d*(o + 1) + (d < 0 ? -24 : 0), hy - 13, 24, 12);
+                self.fillInk(plate, 1.2);
+            }
+            ctx.strokeStyle = C.light; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(hx - 22 - o, hy - 11); ctx.lineTo(hx - 3 - o, hy - 11); ctx.stroke();
+        }
+
+        //---- 砲台の付け根：壊されたものは裂けた穴になり、火の粉と煙が出る
+        for(var i=0; i<CANOPY_PODS.length; i++){
+            var px = CANOPY_PODS[i] - CW/2, py = edge(px);
+            if((_e.broken || 0) & (1 << i)){
+                ctx.beginPath();
+                ctx.moveTo(px - 26, py - 2);
+                for(var j=0; j<=8; j++) ctx.lineTo(px - 24 + j*6, py - 8 - ((j*7) % 5)*3 + (j % 2)*4);
+                ctx.lineTo(px + 26, py - 2);
+                ctx.closePath();
+                self.fillInk("#170f0d", 1.6);
+                self.halo(px, py - 6, 16, "255,120,40", 0.5 + 0.3*Math.sin(t*0.3 + i));
+                for(var j=0; j<3; j++){
+                    var ph = ((t*0.012 + j/3 + i*0.37) % 1);
+                    ctx.fillStyle = "rgba(90,85,80," + (0.35*(1 - ph)) + ")";
+                    self.circle(px + Math.sin(ph*6 + j)*6, py - 8 - ph*50, 5 + ph*12); ctx.fill();
+                }
+            }else{
+                ctx.beginPath();
+                ctx.moveTo(px - 24, py - 14); ctx.lineTo(px + 24, py - 14);
+                ctx.lineTo(px + 16, py + 2); ctx.lineTo(px - 16, py + 2);
+                ctx.closePath();
+                self.fillInk(plate, 1.4);
+                ctx.strokeStyle = C.light; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(px - 20, py - 11); ctx.lineTo(px + 18, py - 11); ctx.stroke();
+            }
+        }
+
+        //---- 怒り・崩れ落ちる：装甲に赤いひびが走る
+        if(_e.enraged){
+            ctx.strokeStyle = "rgba(" + seamRgb + "," + (0.55 + 0.25*Math.sin(t*0.15)) + ")";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            var cracks = [[-300,-10,-270,20,-285,40],[180,-20,210,10,195,32],[-120,30,-96,48,-110,60],[380,0,350,22,362,36]];
+            for(var i=0; i<cracks.length; i++){
+                var c = cracks[i];
+                ctx.moveTo(c[0],c[1]); ctx.lineTo(c[2],c[3]); ctx.lineTo(c[4],c[5]);
+            }
+            ctx.stroke();
+        }
+
+        //---- コアのまわりの装甲の花びら(10枚)：ゆっくり回り、レーザーで開いて中の光が見える
+        var open = Math.max(aimK*0.7, firing ? 1 : 0, waveK*0.4);
+        if(open > 0 || _e.enraged) self.halo(0,0,r + 10,"255,60,60",Math.max(open, _e.enraged ? 0.3 : 0));
+        self.circle(0,0,r*0.9);
+        ctx.fillStyle = C.ink; ctx.fill();
+        ctx.save();
+        ctx.rotate(t*0.004*tempo);
+        for(var i=0; i<10; i++){
+            var a = i*Math.PI/5, half = Math.PI/10 - 0.05;
+            var out = (Math.sin(t*0.05*tempo - i*0.63) + 1)*1.2 + open*8 + hit*Math.sin(t*2.3 + i*1.7)*2;
+            var r0 = r*0.62 + out*0.4, r1 = r + 4 + out;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(a - half)*r0, Math.sin(a - half)*r0);
+            ctx.lineTo(Math.cos(a - half)*r1, Math.sin(a - half)*r1);
+            ctx.lineTo(Math.cos(a + half)*r1, Math.sin(a + half)*r1);
+            ctx.lineTo(Math.cos(a + half)*r0, Math.sin(a + half)*r0);
+            ctx.closePath();
+            self.fillInk(_body || hull, 1.6);
+        }
+        ctx.restore();
+
+        //---- コア：大きな目。狙う向きを見る。ときどきまぶた(シャッター)が閉じる。崩れ落ちるときは消える
+        var ang = _e.angle == null ? Math.PI/2 : _e.angle;
+        var eyeR = r*0.55 + aimK*3 + (firing ? 3 : 0);
+        self.circle(0,0,eyeR + 3);
+        ctx.fillStyle = C.ink; ctx.fill();
+        var cyc = (t + 37) % 260;
+        var lid = (mode == "idle" && cyc < 12) ? 1 - Math.abs(cyc - 6)/6 : 0;
+        ctx.save();
+        ctx.scale(1, 1 - lid*0.9);
+        if(!wreck && (aimK > 0 || firing)) self.halo(0,0,eyeR + 14,"255,60,60",firing ? 1 : aimK);
+        self.circle(0,0,eyeR);
+        ctx.fillStyle = _body || (wreck ? C.redDark : C.red); ctx.fill();
+        //瞳：狙う向きへ寄る(縦長のすじ)
+        var look = eyeR*0.35;
+        ctx.save();
+        ctx.translate(Math.cos(ang)*look, Math.sin(ang)*look);
+        ctx.scale(firing ? 0.6 : 1, 1);
+        ctx.beginPath(); ctx.ellipse(0,0,eyeR*0.22,eyeR*0.6,0,0,Math.PI*2);
+        ctx.fillStyle = _body ? C.light : "#3a0c0b"; ctx.fill();
+        ctx.restore();
+        ctx.restore();
+        if(lid < 0.5 && !wreck){
+            ctx.fillStyle = C.glint;
+            self.circle(-eyeR*0.38, -eyeR*0.4, eyeR*0.2); ctx.fill();
+        }
+
+        ctx.restore();
+    },
+
+    //天蓋母艦の砲台：船体の下にぶら下がる丸い砲台。着地のあと船体から降りてくる。
+    //撃つ前に目が光り、撃つと砲身が引っこむ。使う値は t・face・timer・slot・flash
+    pod:function(_e,_body){
+        var C = ENEMY_COLOR, self = this, r = _e.r;
+        var k = Math.min(1, _e.t/CANOPY_POD_DEPLOY);
+        var drop = (1 - k*k*(3 - 2*k))*34;
+        var timer = _e.timer || 0;
+        var every = CANOPY_POD_EVERY[_e.enraged ? 1 : 0];
+        var recoil = timer > every ? 0 : Math.max(0, 1 - (every - timer)/8);
+        var charge = timer < 25 ? 1 - timer/25 : 0;
+        var face = _e.face == null ? Math.PI/2 : _e.face;
+        ctx.save();
+        ctx.translate(Math.sin(_e.t*0.05 + (_e.slot || 0))*1.2, -drop);
+        //吊り下げの柱(船体の中へ)
+        ctx.fillStyle = C.ink;
+        ctx.fillRect(-7, -r - 18, 14, 22);
+        ctx.fillStyle = C.mid;
+        ctx.fillRect(-4, -r - 18, 4, 20);
+        //砲身：狙う向きへ。撃つと反動で引っこむ
+        ctx.save();
+        ctx.rotate(face);
+        self.roundRect(4 - recoil*8, -6, r + 14, 12, 3);
+        self.fillInk(_body || "#232527", 1.5);
+        ctx.strokeStyle = C.light; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(8 - recoil*8, -3); ctx.lineTo(r + 12 - recoil*8, -3); ctx.stroke();
+        if(recoil > 0.3) self.halo(r + 22, 0, 10, "255,140,40", recoil);
+        ctx.restore();
+        //丸い胴体と装甲の帯
+        self.circle(0,0,r);
+        self.fillInk(_body || C.body, 1.8);
+        ctx.beginPath(); ctx.arc(0,0,r - 5,Math.PI*0.15,Math.PI*0.85);
+        ctx.strokeStyle = C.ink; ctx.lineWidth = 3; ctx.stroke();
+        self.shineArc(0,0,r - 4,1.4);
+        //目：撃つ前に光が強まる
+        if(charge > 0) self.halo(0, -2, 10 + charge*8, "255,60,60", charge);
+        self.eye(0, -2, 5 + charge*1.5, true);
+        ctx.restore();
     },
 
     //------------------------------------------------------------ 虫：羽ばたく機械の虫

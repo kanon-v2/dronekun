@@ -498,6 +498,40 @@ try{
     for(var i=0; i<40; i++) mainScreen.update();
     check("ボスの登場：演出中は止まり、着地すると動き出す", stillOk && landed && drone.X != dx0, "停止" + stillOk + " 着地" + landed);
 
+    // 天蓋母艦(WAVE15)：画面の上を覆って動かない。砲台4つ・ドローン君は船体の下まで・攻撃をひととおり・砲台を壊すとコアにダメージ・倒すと崩れ落ちる
+    setup(15, { gun:3 }, ["gun",null,null], 6);
+    page.change(1); MouseIn = true; MouseX = 480; MouseY = 40;
+    var cvErr = errors.length;
+    fz = 0; while(!mainScreen.bossFreeze && fz < 400){ mainScreen.update(); fz++; }
+    fz = 0; while(mainScreen.bossFreeze && fz < 400){ mainScreen.update(); fz++; if(fz % 20 == 0) draw1(); }
+    var cv = enemies.filter(function(e){ return e.type == "canopy"; })[0];
+    var cvPods = enemies.filter(function(e){ return e.pod; });
+    check("天蓋母艦：WAVE15のボスで、降りきると砲台が4つ出る", bossTypeFor(15) == "canopy" && bossTypeFor(5) == "queen" && cv && cv.y == CANOPY_Y && cvPods.length == 4,
+          (cv ? "y" + cv.y : "なし") + " 砲台" + cvPods.length);
+    var cvModes = {}, cvTop = 999, cvX = [];
+    for(var i=0; i<60*24; i++){
+        mainScreen.hp = 99; MouseY = i % 120 < 60 ? 20 : 400;
+        mainScreen.update(); if(i % 15 == 0) draw1();
+        if(cv.dead) break;
+        cvModes[cv.mode] = true; cvTop = Math.min(cvTop, drone.Y); cvX.push(cv.x + "," + cv.y);
+        cv.hp = cv.maxHp;
+        for(var k=0; k<cvPods.length; k++) cvPods[k].hp = cvPods[k].maxHp;
+    }
+    var still = cvX.every(function(p){ return p == cvX[0]; });
+    check("天蓋母艦：動かずに、弾の雨・レーザー・弾の波・手下をひととおり使う。ドローン君は船体の下まで", still && cvModes.rain && cvModes.laser && cvModes.wave && cvModes.summon
+          && cvTop >= CANOPY_FLOOR && errors.length == cvErr, Object.keys(cvModes).join(",") + " 一番上" + Math.round(cvTop) + (still ? "" : " 動いた"));
+    var cvHp = cv.hp;
+    mainScreen.hitEnemy(cvPods[1], 99999, "gun");
+    check("天蓋母艦：砲台を壊すとコアにダメージが入り、付け根が壊れた跡になる", cvPods[1].dead && cv.broken == 2 && Math.abs(cvHp - cv.hp - cv.maxHp*CANOPY_POD_DMG) < 0.01,
+          "印" + cv.broken + " 減った体力" + Math.round(cvHp - cv.hp));
+    var cvPack = { e:[] }; coop.packEnemy(cv, cvPack); coop.packEnemy(cvPods[2], cvPack);
+    check("天蓋母艦：協力プレイで種類・攻撃・壊された砲台・砲台の番号を送れる", COOP_TYPES[cvPack.e[1]] == "canopy" && COOP_TYPES[cvPack.e[9]] == "pod" && cvPack.b[11] == 2
+          && (cvPack.e[14] & 3) == 2 && ["rain","wave","summon"].every(function(m){ return COOP_MODES.indexOf(m) >= 0; }), JSON.stringify(cvPack.b));
+    mainScreen.hitEnemy(cv, 99999, "gun");
+    var cvWreck = !!mainScreen.wreck && enemies.every(function(e){ return !e.pod || e.dead; });
+    for(var i=0; i<CANOPY_WRECK_T + 10; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
+    check("天蓋母艦：倒すと砲台も壊れ、船体が崩れ落ちて消える", cvWreck && !mainScreen.wreck && special.ceiling() == 0 && errors.length == cvErr, "崩れ" + cvWreck);
+
     // 3. 全シナジー
     SYNERGIES.forEach(function(s){
         setup(7, {}, [s.a, s.b, null], 5); game.owned[s.a] = 3; game.owned[s.b] = 3;

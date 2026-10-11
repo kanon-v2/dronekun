@@ -10,10 +10,10 @@
 //  ・被弾の判定は、それぞれが自分のドローン君について行う
 //  ・強化・装備・パーツはそれぞれ別。敵の体力は2倍
 //------------------------------------------------------------------------------
-const COOP_TYPES  = ["bug","dasher","shooter","tank","spinner","bomber","kin","mdrone","heli","panzer","goldbug","carrier","queen","fortress","kai"];
+const COOP_TYPES  = ["bug","dasher","shooter","tank","spinner","bomber","kin","mdrone","heli","panzer","goldbug","carrier","queen","fortress","kai","canopy","pod"];
 const COOP_SHOTS  = ["normal","small","big","water","missile","dragon"];
 const COOP_PICKS  = ["part","yaruki","capsule"];
-const COOP_MODES  = ["enter","idle","aim","dash","spiral","triple","laserAim","laser","feint","stagger","down","revive"];
+const COOP_MODES  = ["enter","idle","aim","dash","spiral","triple","laserAim","laser","feint","stagger","down","revive","rain","wave","summon"];
 const COOP_STATES = ["start","play","clear","over"];
 const COOP_LIMIT  = 12000;  //1回に送る状態の大きさの上限(バイト)。超えるときはゲストから遠いものから削る
 const COOP_HP_MUL = 2;      //協力プレイでの敵の体力の倍率
@@ -521,6 +521,7 @@ var coop = {
             case "kin":     p2 = _e.tintIdx || 0; break;
             case "heli":    p1 = r((_e.face || 0)*100); break;
             case "panzer":  p1 = r((_e.turret || 0)*100); break;
+            case "pod":     p1 = r((_e.face || 0)*100); p2 = _e.slot + Math.max(0, Math.min(999, r(_e.timer)))*4; break;  //天蓋母艦の砲台：番号・撃つまでの残り
         }
         var flags = (_e.flash > 0 ? 1 : 0) | (_e.slow > 0 ? 2 : 0) | (_e.wet > 0 ? 4 : 0) | (_e.enraged ? 8 : 0)
                   | (_e.frozen > 0 ? 16 : 0) | (_e.burn > 0 ? 32 : 0) | (_e.countered ? 64 : 0);
@@ -529,7 +530,8 @@ var coop = {
             var aimA = Math.atan2(_e.aimY || 0,_e.aimX || 1);
             _s.b = [_e.id, COOP_MODES.indexOf(_e.mode), r((_e.angle || 0)*100), _e.count || 0, _e.phase || 0,
                     r((_e.bladeA || 0)*100), _e.circleT || 0, r(aimA*100), _e.fake ? 1 : 0,     //女王蜂のフェイントの印(合図を出さない)
-                    r((_e.form || 1)*2), _e.beams || 1];     //ドローン君改の形態(2倍。3は復活の途中)・レーザーの本数
+                    r((_e.form || 1)*2), _e.beams || 1,      //ドローン君改の形態(2倍。3は復活の途中)・レーザーの本数
+                    _e.broken || 0];                        //天蓋母艦の壊された砲台の印
             if(_e.mines){ _s.bm = []; for(var i=0; i<_e.mines.length; i++) _s.bm.push(r(_e.mines[i].x), r(_e.mines[i].y), _e.mines[i].t); }
             if(_e.strikes){ _s.bk = []; for(var i=0; i<_e.strikes.length; i++) _s.bk.push(r(_e.strikes[i].x), r(_e.strikes[i].y), _e.strikes[i].t); }
         }
@@ -852,7 +854,7 @@ var coop = {
             var e = map[id];
             var x = S.e[i+2], y = S.e[i+3];
             if(!e){
-                var T = ENEMY_TYPES[type] || RARE_TYPES[type] || BOSS_TYPES[type] || { r:12 };
+                var T = ENEMY_TYPES[type] || RARE_TYPES[type] || BOSS_TYPES[type] || BOSS_PARTS[type] || { r:12 };
                 e = { id:id, type:type, r:T.r, x:x, y:y, vx:0, vy:0, t:0, flash:0, dead:false, hp:100, maxHp:100,
                       slow:0, wet:0, bladeCd:0, timer:0, harmless:type == "kin",
                       boss:!!BOSS_TYPES[type], rare:!!RARE_TYPES[type], name:(RARE_TYPES[type] || BOSS_TYPES[type] || {}).name };
@@ -880,6 +882,7 @@ var coop = {
                 case "kin":     e.look.tint = KIN_COLORS[p2] || KIN_COLORS[0]; break;
                 case "heli":    e.face = p1; break;
                 case "panzer":  e.turret = p1; break;
+                case "pod":     e.face = p1; e.slot = p2 & 3; e.timer = p2 >> 2; e.pod = true; break;
             }
             next.push(e);
             seen[id] = true;
@@ -897,6 +900,7 @@ var coop = {
                 b.aimX = Math.cos(S.b[7]/100); b.aimY = Math.sin(S.b[7]/100);
                 b.fake = !!S.b[8];
                 b.form = (S.b[9] || 2)/2; b.beams = S.b[10] || 1;
+                b.broken = S.b[11] || 0;
                 b.harmless = b.mode == "down" || b.mode == "revive";    //倒れて復活している間のドローン君改
                 if(b.type == "kai"){
                     b.mines = []; b.strikes = [];
@@ -911,6 +915,7 @@ var coop = {
             var e = enemies[i];
             if(seen[e.id]) continue;
             e.dead = true;
+            if(e.type == "canopy") special.canopyWreck(e);     //天蓋母艦の船体が崩れ落ちる
             if(Math.hypot(e.x - drone.X, e.y - drone.Y) < 350){
                 killBlast(e.x,e.y,e.r,e.type == "goldbug" ? "255,215,0" : null);
                 sound.play("kill");

@@ -29,8 +29,50 @@ const BOSS_TYPES = {
     //en・title：登場のときに出す英語名と異名
     queen:    { name:"女王蜂",   r:34, en:"QUEEN BEE",       title:"群れを統べる女王" },   //弾の輪・手下を呼ぶ・突進
     fortress: { name:"移動要塞", r:40, en:"MOBILE FORTRESS", title:"動く鉄壁" },           //渦巻き弾・3方向弾・なぎ払いレーザー
-    kai:      { name:"ドローン君改", r:28, en:"DRONE-KUN KAI", title:"もうひとりのドローン君" } //最終ボス：ドローン君と同じ武器をたくさん使う
+    kai:      { name:"ドローン君改", r:28, en:"DRONE-KUN KAI", title:"もうひとりのドローン君" }, //最終ボス：ドローン君と同じ武器をたくさん使う
+    canopy:   { name:"天蓋母艦", r:44, en:"SKY CANOPY", title:"空を覆いつくす影" }    //WAVE15：画面の上を覆って動かない。弾の雨・レーザー・弾の波・手下
 };
+
+//天蓋母艦(WAVE15のボス)：画面の上を端から端まで覆い、動かない。当たり判定はまんなかのコア(r)。
+//船体の下に壊せる砲台(pod。別の敵)がぶら下がり、壊すとコアにもダメージが入る。ドローン君は船体の下までしか上がれない
+const CANOPY_Y        = 110;        //コアの高さ(動かない)
+const CANOPY_FLOOR    = 200;        //ドローン君の中心が上がれるいちばん上(船体の下のふちより少し下)
+const CANOPY_EDGE     = [[0,66],[70,60],[130,46],[200,40],[270,30],[350,34],[430,24],[520,26]];  //船体の下のふち(コアからの横のずれ, コアからの下のずれ。左右対称)
+const CANOPY_PODS     = [110,290,670,850];  //砲台のx(左から。0と3は外側)
+const CANOPY_POD_DY   = 46;         //砲台の高さ(コアからの下のずれ)
+const CANOPY_POD_R    = 20;
+const CANOPY_HP_MUL  = 0.8;        //コアの体力(ほかのボスと同じ式の値に掛ける。砲台も壊すので少なめ)
+const CANOPY_POD_HP   = 0.12;       //砲台の体力(ほかのボスと同じ式の値に掛ける)
+const CANOPY_POD_DMG  = 0.06;       //砲台を壊すとコアに入るダメージ(コアの体力に掛ける)
+const CANOPY_POD_EVERY = [150,105]; //砲台が撃つ間隔(フレーム。ふだん・怒り)
+const CANOPY_POD_DEPLOY = 40;       //着地のあと、砲台が船体から降りてくる時間(この間は撃たない)
+const CANOPY_POD_NEAR  = 110;      //ドローン君がこれより近いと撃たない(真下で撃たれるとよけようがないので)
+const CANOPY_PATTERNS = ["rain","laserAim","wave","summon"];   //コアの攻撃の順番
+const CANOPY_REST     = [80,50];    //攻撃と攻撃の間(ふだん・怒り)
+const CANOPY_RAIN_T   = 130;        //弾の雨の長さ(フレーム)
+const CANOPY_RAIN_EVERY = [9,7];    //弾の雨を落とす間隔(ふだん・怒り)
+const CANOPY_VENTS    = 12;         //弾の雨を落とす口の数(船体の下に等間隔)
+const CANOPY_RAIN_GAP = [95,75];    //弾の雨のすき間の半分の幅(左右へゆっくり動く。ふだん・怒り)
+const CANOPY_WAVE_T   = 100;        //弾の波の長さ(フレーム。CANOPY_WAVE_GAP ごとに撃つ)
+const CANOPY_WAVE_GAP = 25;
+const CANOPY_AIM_T    = 70;         //レーザーの予告の長さ
+const CANOPY_LASER_T  = [70,95];    //レーザーの長さ(ふだん・怒り)
+const CANOPY_SWEEP    = [0.006,0.009];  //レーザーがドローン君を追う速さ(ラジアン/フレーム。ふだん・怒り)
+const CANOPY_MINIONS  = [3,4];      //ハッチから出す手下の数(ふだん・怒り)
+const CANOPY_HATCH    = 175;        //手下を出すハッチの位置(コアから左右へ)
+const CANOPY_SUMMON_T = 60;         //ハッチが開いている長さ(まんなかで手下が出る)
+const CANOPY_WRECK_T  = 150;        //倒れて船体が崩れ落ちる長さ(最後の40フレームで消える)
+//船体の下のふちの高さ(コアからの横のずれ_dx → 画面のy。_cyはコアのy)
+function canopyEdge(_dx,_cy){
+    var x = Math.abs(_dx), E = CANOPY_EDGE;
+    for(var i=1; i<E.length; i++){
+        if(x <= E[i][0]){
+            var k = (x - E[i-1][0])/(E[i][0] - E[i-1][0]);
+            return _cy + E[i-1][1] + (E[i][1] - E[i-1][1])*k;
+        }
+    }
+    return _cy + E[E.length-1][1];
+}
 
 //ドローン君改の攻撃の順番(体力が減るほど種類が増える)
 const KAI_PATTERNS = {
@@ -73,6 +115,7 @@ function isBossWave(_w){
 //女王蜂と移動要塞が交互に出る
 function bossTypeFor(_w){
     if(_w >= FINAL_WAVE) return "kai";
+    if(_w == REVEAL_WAVE) return "canopy";
     return (_w / BOSS_EVERY) % 2 == 1 ? "queen" : "fortress";
 }
 
@@ -132,8 +175,28 @@ function makeBoss(_type){
         b.spiralT = 0;      //渦巻き弾を撃っている残り時間(第二形態)
         b.rainT = 0;        //弾の雨を降らせている残り時間(第二形態)
     }
+    if(_type == "canopy"){
+        //天蓋母艦：画面の上の外から降りてくる(登場の演出は mainScreen.bossEntrance)
+        b.y = CANOPY_Y - 260;
+        b.broken = 0;       //壊された砲台の印(1<<番号。協力プレイのゲストの絵にも使う)
+        b.hp = b.maxHp = Math.round(hp*CANOPY_HP_MUL);
+        b.podHp = Math.max(1, Math.round(hp*CANOPY_POD_HP));
+    }
     return b;
 }
+//天蓋母艦の砲台(船体の下にぶら下がる。動かない)
+function makeCanopyPod(_boss,_slot){
+    var hp = _boss.podHp;
+    return {
+        id:++enemySeq,
+        type:"pod", pod:true, slot:_slot, owner:_boss.id, name:"砲台", r:CANOPY_POD_R, hp:hp, maxHp:hp,
+        score:300, parts:3, x:CANOPY_PODS[_slot], y:_boss.y + CANOPY_POD_DY, vx:0, vy:0, flash:0, t:0, dead:false,
+        slow:0, bladeCd:0, face:Math.PI/2,
+        timer:CANOPY_POD_DEPLOY + 30 + _slot*Math.round(CANOPY_POD_EVERY[0]/4)    //撃つ時期を砲台ごとにずらす
+    };
+}
+//ボスの部品(協力プレイのゲストが種類から大きさを知るため)
+const BOSS_PARTS = { pod:{ name:"砲台", r:CANOPY_POD_R } };
 
 //------------------------------------------------------------------------------
 //  動き(mainScreen.updateEnemiesから呼ばれる)
@@ -147,6 +210,8 @@ var special = {
             case "queen":    this.queen(_e,_dx,_dy,_d); return true;
             case "fortress": this.fortress(_e,_dx,_dy,_d); return true;
             case "kai":      this.kai(_e,_dx,_dy,_d); return true;
+            case "canopy":   this.canopy(_e,_dx,_dy,_d); return true;
+            case "pod":      this.pod(_e,_dx,_dy,_d); return true;
         }
         return false;
     },
@@ -200,7 +265,7 @@ var special = {
         if(_e.mode == "enter"){
             _e.vx = 0;
             _e.vy = 1.5;
-            if(_e.y >= 160){ _e.mode = "idle"; _e.vy = 0; this.bossLanded(_e); }
+            if(_e.y >= this.landY(_e)){ _e.mode = "idle"; _e.vy = 0; this.bossLanded(_e); }
             return false;
         }
         if(!_e.enraged && _e.hp < _e.maxHp/2 && _e.type != "kai"){
@@ -212,11 +277,26 @@ var special = {
         return true;
     },
 
+    //ボスが降りてきて止まる高さ(天蓋母艦はコアの高さ)
+    landY:function(_e){
+        return _e.type == "canopy" ? CANOPY_Y : 160;
+    },
+    //ドローン君が上がれるいちばん上(天蓋母艦が降りきってからは船体の下まで。いなければ0)
+    ceiling:function(){
+        for(var i=0; i<enemies.length; i++){
+            var e = enemies[i];
+            if(e.type == "canopy" && !e.dead && e.mode != "enter") return CANOPY_FLOOR;
+        }
+        return 0;
+    },
+
     //ボスが降りきった：着地の衝撃(衝撃波・土煙・閃光・大きな揺れ)。協力プレイのゲストは coop.guestSync から
     bossLanded:function(_e){
         //ドローン君改は着地ではなく、始動して開幕する(mainScreen.kaiIgnite)
         if(_e.type == "kai"){ mainScreen.kaiIgnite(_e); return; }
         var x = _e.x, y = _e.y + _e.r*0.6;
+        //天蓋母艦：船体の下のふち全体で土煙が上がり、砲台が降りてくる
+        if(_e.type == "canopy"){ y = canopyEdge(0,_e.y); this.canopyLanded(_e); }
         fx.ring(x,y,260,"255,210,140",28,10);
         fx.ring(x,y,170,"200,190,180",20,6);
         fx.flare(x,y,_e.r*3,"255,240,210",14);
@@ -872,6 +952,158 @@ var special = {
         }
     },
 
+    //------------------------------------------------------------ 天蓋母艦
+    //動かない。コアは 弾の雨 → レーザー → 弾の波 → 手下 の順に攻撃し、砲台はそれぞれ狙って撃つ
+    canopy:function(_e,_dx,_dy,_d){
+        if(!this.bossCommon(_e)) return;
+        _e.vx = 0; _e.vy = 0;
+        _e.x = CW/2; _e.y = CANOPY_Y;
+        var rage = _e.enraged ? 1 : 0;
+        var play = mainScreen.state == "play";
+        var down = this.downward(Math.atan2(_dy,_dx), 0.12);
+        switch(_e.mode){
+            case "idle":
+                _e.angle = turnTo(_e.angle,down,0.05);
+                if(--_e.timer <= 0 && play){
+                    _e.mode = CANOPY_PATTERNS[_e.pat++ % CANOPY_PATTERNS.length];
+                    _e.count = { rain:CANOPY_RAIN_T, laserAim:CANOPY_AIM_T, wave:CANOPY_WAVE_T, summon:CANOPY_SUMMON_T }[_e.mode];
+                    if(_e.mode == "laserAim") sound.play("beamCharge");
+                    if(_e.mode == "rain") sound.play("rumble");
+                }
+                break;
+            case "rain":
+                //弾の雨：船体の下の口から、すき間を残して降らせる。すき間は左右へゆっくり動く
+                _e.angle = turnTo(_e.angle,Math.PI/2,0.05);
+                var every = CANOPY_RAIN_EVERY[rage];
+                if(_e.count % every == 0 && _e.count < CANOPY_RAIN_T - 20){
+                    var gapX = this.rainGap(_e);
+                    var row = Math.floor(_e.count/every) % 2;
+                    for(var v=0; v<CANOPY_VENTS; v++){
+                        if(v % 2 != row) continue;
+                        var vx = this.canopyVent(v);
+                        if(Math.abs(vx - gapX) < CANOPY_RAIN_GAP[rage]) continue;
+                        fireShot(vx, canopyEdge(vx - _e.x,_e.y), Math.PI/2 + (Math.random() - 0.5)*0.16, 2.1*Math.min(1.3,danmaku()), "small");
+                    }
+                    if(row == 0) sound.play("enemyShot");
+                }
+                if(--_e.count <= 0) this.canopyRest(_e);
+                break;
+            case "laserAim":
+                //予告線を出しながらドローン君を狙う
+                _e.angle = turnTo(_e.angle,down,0.04);
+                if(--_e.count <= 0){
+                    _e.mode = "laser";
+                    _e.count = CANOPY_LASER_T[rage];
+                    sound.play("beam");
+                }
+                break;
+            case "laser":
+                //撃ちながらゆっくりなぎ払う
+                _e.angle = turnTo(_e.angle,down,CANOPY_SWEEP[rage]);
+                if(this.laserHit(_e,drone.X,drone.Y) && mainScreen.canBeHit()) mainScreen.damage();
+                if(--_e.count <= 0) this.canopyRest(_e);
+                break;
+            case "wave":
+                //弾の波：コアから下へ、大きな弾を扇に広げて何度も(1回ごとに少しずらす)
+                _e.angle = turnTo(_e.angle,Math.PI/2,0.05);
+                if(_e.count % CANOPY_WAVE_GAP == 0){
+                    var odd = (_e.count/CANOPY_WAVE_GAP) % 2;
+                    fireFan(_e.x, _e.y + _e.r, Math.PI/2 + (odd ? 0.07 : -0.07), _e.enraged ? 15 : 11, 0.16,
+                            1.7*Math.min(1.3,danmaku()), "big");
+                    sound.play("bossShot");
+                }
+                if(--_e.count <= 0) this.canopyRest(_e);
+                break;
+            case "summon":
+                //ハッチが開いて、手下の虫を落とす(生きている手下は MINION_MAX まで)
+                if(_e.count == Math.round(CANOPY_SUMMON_T/2)){
+                    var alive = enemies.filter(function(m){ return m.minion && !m.dead; }).length;
+                    var n = Math.min(CANOPY_MINIONS[rage], MINION_MAX - alive);
+                    for(var i=0; i<n; i++){
+                        var s = i % 2 ? 1 : -1;
+                        var m = makeEnemy("bug");
+                        m.x = _e.x + s*(CANOPY_HATCH + (Math.random() - 0.5)*30);
+                        m.y = canopyEdge(s*CANOPY_HATCH,_e.y) - 6 - Math.floor(i/2)*14;     //船体の中から出てくる
+                        m.vx = s*0.8; m.vy = 2;
+                        m.parts = 0;
+                        m.score = 5;
+                        m.minion = true;
+                        enemies.push(m);
+                    }
+                    if(n > 0) sound.play("summon");
+                }
+                if(--_e.count <= 0) this.canopyRest(_e);
+                break;
+        }
+    },
+    canopyRest:function(_e){
+        _e.mode = "idle";
+        _e.timer = CANOPY_REST[_e.enraged ? 1 : 0];
+    },
+    //向き_aを、下向きの半分(真横から_marginだけ下)に収める(船体の中へは撃たない)
+    downward:function(_a,_margin){
+        if(_a < -Math.PI/2) _a = Math.PI;
+        else if(_a < 0) _a = 0;
+        return Math.max(Math.PI*_margin, Math.min(Math.PI*(1 - _margin), _a));
+    },
+    //弾の雨を落とす口のx(_i番目)
+    canopyVent:function(_i){
+        return (_i + 0.5)*CW/CANOPY_VENTS;
+    },
+    //弾の雨のすき間のまんなかのx(攻撃ごとに始まりの位置が変わる)
+    rainGap:function(_e){
+        return CW/2 + Math.sin((CANOPY_RAIN_T - _e.count)*0.022 + _e.pat)*(CW/2 - 140);
+    },
+    //降りきった：船体の下のふちに沿って土煙。砲台を出す(動かすのはホストとひとり用だけ。ゲストには敵として届く)
+    canopyLanded:function(_e){
+        for(var i=0; i<16; i++){
+            var x = (i + 0.5)*CW/16, y = canopyEdge(x - _e.x,_e.y);
+            var life = 40 + Math.random()*30;
+            effects.push({ smoke:true, x:x, y:y, vx:(Math.random() - 0.5)*3, vy:1 + Math.random()*1.5,
+                           R0:10, R1:30 + Math.random()*20, life:life, maxLife:life, color:"120,110,100" });
+        }
+        if(drone.Y < CANOPY_FLOOR) drone.Y = drone.preY = CANOPY_FLOOR;
+        if(coop.isGuest()) return;
+        for(var i=0; i<CANOPY_PODS.length; i++) enemies.push(makeCanopyPod(_e,i));
+    },
+    //砲台：ドローン君を狙い、決まった間隔で扇に撃つ。体のまわりの装備で押されても元の場所へ戻る
+    pod:function(_e,_dx,_dy,_d){
+        _e.x = CANOPY_PODS[_e.slot];
+        _e.y = CANOPY_Y + CANOPY_POD_DY;
+        _e.vx = 0; _e.vy = 0;
+        var boss = this.canopyOf();
+        var rage = boss && boss.enraged ? 1 : 0;
+        _e.enraged = !!rage;     //怒ると速く撃つ(絵の反動の長さにも使う)
+        _e.face = this.downward(Math.atan2(_dy,_dx), 0.1);
+        if(--_e.timer <= 0){
+            //目の前では撃たない(よけようがないので。離れるまで待つ)
+            if(mainScreen.state == "play" && _d > CANOPY_POD_NEAR){
+                _e.timer = CANOPY_POD_EVERY[rage];
+                fireFan(_e.x + Math.cos(_e.face)*(_e.r + 6), _e.y + Math.sin(_e.face)*(_e.r + 6), _e.face,
+                        rage ? 5 : 3, 0.22, 2.7*Math.min(1.3,danmaku()), "normal");
+                sound.play("enemyShot");
+            }else _e.timer = 20;
+        }
+    },
+    //画面にいる天蓋母艦
+    canopyOf:function(){
+        for(var i=0; i<enemies.length; i++){
+            if(enemies[i].type == "canopy" && !enemies[i].dead) return enemies[i];
+        }
+        return null;
+    },
+    //天蓋母艦が倒れた：船体が崩れ落ちる(協力プレイのゲストは coop.guestSync から)
+    canopyWreck:function(_e){
+        mainScreen.wreck = { type:"canopy", x:_e.x, y:_e.y, vy:-1.2, t:_e.t, age:0, life:CANOPY_WRECK_T, mode:"wreck", broken:15, r:_e.r, enraged:true };
+        //船体のあちこちで爆発する
+        for(var i=0; i<14; i++){
+            var x = 40 + Math.random()*(CW - 80);
+            killBlast(x, canopyEdge(x - _e.x,_e.y) - Math.random()*60, 30 + Math.random()*20);
+        }
+        fx.shake(36);
+        battleBg.ripple(_e.x, _e.y + 60, 60, 12, 100, "230,150,70");
+    },
+
     fortressRest:function(_e){
         _e.mode = "idle";
         _e.timer = _e.enraged ? 40 : 70;
@@ -881,6 +1113,17 @@ var special = {
     onKill:function(_e){
         if(_e.type == "carrier"){
             mainScreen.drop("capsule",_e.x,_e.y);
+        }
+        if(_e.pod){
+            //天蓋母艦の砲台：壊すとコアにもダメージ。付け根が壊れた跡になる
+            var boss = this.canopyOf();
+            if(boss){
+                boss.broken |= 1 << _e.slot;
+                fx.flare(_e.x, _e.y, 70, "255,170,80", 18);
+                fx.shake(10);
+                popup(_e.x, _e.y + 34, "砲台破壊！", "#c33");
+                mainScreen.hitEnemy(boss, boss.maxHp*CANOPY_POD_DMG, "pod");
+            }
         }
         if(_e.boss){
             //ボス撃破：大爆発・報酬を1回追加(協力プレイの相方にも)
@@ -895,6 +1138,16 @@ var special = {
             for(var i=0; i<4; i++) killBlast(_e.x + (Math.random()-0.5)*_e.r*2.4, _e.y + (Math.random()-0.5)*_e.r*2.4, _e.r);
             effects.push({ ring:true, x:_e.x, y:_e.y, life:30, maxLife:30, R:220, color:"230,120,40" });
             popup(_e.x,_e.y - _e.r - 16,_e.name + " 撃破！　報酬+1","#c33");
+            if(_e.type == "canopy"){
+                //残った砲台も一緒に壊れ、船体が崩れ落ちる
+                for(var i=0; i<enemies.length; i++){
+                    var p = enemies[i];
+                    if(!p.pod || p.dead) continue;
+                    p.dead = true;
+                    killBlast(p.x, p.y, p.r);
+                }
+                this.canopyWreck(_e);
+            }
             sound.stopMusic();
             sound.play("bossDown");
         }
@@ -968,6 +1221,12 @@ var special = {
                 //移動要塞：部位ごとに動く絵(enemyArt.js)
                 enemyArt.draw(_e,_body);
                 return true;
+
+            case "canopy":
+            case "pod":
+                //天蓋母艦と砲台(enemyArt.js)
+                enemyArt.draw(_e,_body);
+                return true;
         }
         return false;
     },
@@ -986,7 +1245,7 @@ var special = {
             ctx.lineWidth = 1;
         }
         if(_e.type == "kai") this.drawKaiParts(_e);
-        if((_e.type == "fortress" || _e.type == "kai") && (_e.mode == "laserAim" || _e.mode == "laser")){
+        if((_e.type == "fortress" || _e.type == "kai" || _e.type == "canopy") && (_e.mode == "laserAim" || _e.mode == "laser")){
             //ドローン君改の第二形態は何本も等間隔に出る(_e.beams)
             var n = _e.beams || 1, purple = _e.form == 2;
             for(var i=0; i<n; i++){
@@ -1071,6 +1330,13 @@ var special = {
         for(var i=0; i<enemies.length; i++){ if(enemies[i].boss && !enemies[i].dead) b = enemies[i]; }
         if(!b) return;
         var w = 320, x = CW/2 - w/2, y = 64;
+        //天蓋母艦は船体が後ろにあるので、コアにかからないよう上へ寄せ、明るい板を敷いて読めるようにする
+        if(b.type == "canopy"){
+            y = 30; w = 260; x = CW/2 - w/2;
+            ctx.fillStyle = "rgba(255,255,255,0.8)";
+            enemyArt.roundRect(x - 14, y - 26, w + 28, 44, 8);
+            ctx.fill();
+        }
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.font = "bold 14px sans-serif";

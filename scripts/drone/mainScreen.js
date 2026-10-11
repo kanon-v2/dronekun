@@ -414,6 +414,7 @@ var mainScreen = {
         }
         this.rares = 0;
         this.rareMsgTime = 0;
+        this.wreck = null;      //崩れ落ちる天蓋母艦の船体
         this.spawned = 0;
         this.kinForced = false;
         this.clock = 0;
@@ -1110,7 +1111,7 @@ var mainScreen = {
     //_src：何で攻撃したか("gun","missile"など。シナジーの判定に使う)
     hitEnemy:function(_e,_dmg,_src){
         //ショップのバフ(強化弾頭)とかすりコンボ。相方の攻撃は相方の画面でもうかけてある。かすりバーストの星は決まったダメージ
-        if(_src != "partner" && _src != "skill") _dmg *= (1 + BUFF_POWER*game.buff("power")) * this.comboMul();
+        if(_src != "partner" && _src != "skill" && _src != "pod") _dmg *= (1 + BUFF_POWER*game.buff("power")) * this.comboMul();
         //凍った敵：次の一撃が2倍で、氷が砕ける(冷凍。armsExtra.js。ゲストの攻撃はホストに届いてから数える)
         if(_e.frozen > 0 && _src != "freeze" && !coop.isGuest()){
             _dmg *= 2;
@@ -1175,7 +1176,7 @@ var mainScreen = {
             aimAt = tgt;
             var dx = tgt.X - e.x, dy = tgt.Y - e.y, d = Math.hypot(dx,dy) || 1;
             //凍った敵は動かず、攻撃もしない(冷凍。armsExtra.js。ボス・レア敵は凍らず遅くなるだけ)
-            if(e.frozen > 0 && !e.boss && !e.rare && !e.countered) continue;
+            if(e.frozen > 0 && !e.boss && !e.rare && !e.countered && !e.pod) continue;
             e.face = Math.atan2(dy,dx);
 
             //レア敵・ボスの動きはbosses.js
@@ -1362,6 +1363,9 @@ var mainScreen = {
             p.life--;
             p.vx *= 0.9; p.vy *= 0.9;
             p.x += p.vx; p.y += p.vy;
+            //天蓋母艦の船体の中に落ちたものは、拾えるよう下へ出す
+            var top = special.ceiling();
+            if(p.y < top) p.y += Math.min(4, top - p.y);
             if(this.state == "over"){
                 if(p.life <= 0) pickups.splice(i,1);
                 continue;
@@ -1408,6 +1412,20 @@ var mainScreen = {
             else if(!f.ring && !f.line && !f.flare){ f.x += f.vx; f.y += f.vy; f.vx *= 0.92; f.vy *= 0.92; }
             if(f.life <= 0) effects.splice(i,1);
         }
+        //崩れ落ちる天蓋母艦の船体(bosses.js の special.canopyWreck。演出が多くても消えないよう別に持つ)
+        var W = this.wreck;
+        if(W){
+            W.t++;
+            W.age++;
+            W.vy += 0.08;
+            W.y += W.vy;
+            if(W.age % 7 == 0 && W.age < 90){
+                var x = 40 + Math.random()*(CW - 80);
+                killBlast(x, canopyEdge(x - W.x, W.y) - Math.random()*50, 24 + Math.random()*16);
+                sound.play("explode");
+            }
+            if(--W.life <= 0) this.wreck = null;
+        }
         for(var i=popups.length-1; i>=0; i--){
             popups[i].y -= 0.6;
             popups[i].life--;
@@ -1450,6 +1468,16 @@ var mainScreen = {
         for(var i=0; i<pickups.length; i++) this.drawPickup(pickups[i]);
         //ボスの攻撃予告・レーザーは敵より奥に描く
         for(var i=0; i<enemies.length; i++) if(enemies[i].boss) special.drawAttack(enemies[i]);
+        //崩れ落ちる天蓋母艦(少し傾きながら落ちて、最後に消える)
+        var W = this.wreck;
+        if(W){
+            ctx.save();
+            ctx.globalAlpha = Math.min(1, W.life/40);
+            ctx.translate(W.x, W.y);
+            ctx.rotate(Math.min(0.08, W.age*0.0008));
+            enemyArt.draw(W, null);
+            ctx.restore();
+        }
         for(var i=0; i<enemies.length; i++) this.drawEnemy(enemies[i]);
 
         //ドローンの装備(弾・ミサイル・虫など)
@@ -1792,6 +1820,12 @@ var mainScreen = {
     },
 
     drawHud:function(){
+        //天蓋母艦が画面の上を覆っている間は、左上と右上に明るい板を敷いて読めるようにする
+        if(special.canopyOf()){
+            ctx.fillStyle = "rgba(255,255,255,0.8)";
+            enemyArt.roundRect(4, 4, 236, 90, 8); ctx.fill();
+            enemyArt.roundRect(CW - 324, 4, 320, 88, 8); ctx.fill();
+        }
         ctx.textBaseline = "middle";
         ctx.textAlign = "left";
         ctx.font = "bold 14px sans-serif";
@@ -1924,10 +1958,12 @@ var mainScreen = {
         if(_visual) b = { x:0, y:0 };   //動かさない仮のボス
         var t = ++this.introT;
         var A = BOSS_DESCENT_TIME, H = A + BOSS_HUSH_TIME, S = H + BOSS_SLAM_TIME;
+        //降りはじめ・止まる・着地の高さ(天蓋母艦は画面の上を覆う高さへ)
+        var land = special.landY(b), y0 = b.type == "canopy" ? land - 260 : -60, hover = land - 160 + BOSS_HOVER_Y;
         b.vx = 0; b.vy = 0;
         if(t <= A){
             var k = t/A, e = k*k*(3 - 2*k);
-            b.y = -60 + (BOSS_HOVER_Y + 60)*e;
+            b.y = y0 + (hover - y0)*e;
             b.x = CW/2 + (Math.random() - 0.5)*5*k;
             this.shake = Math.max(this.shake, 2 + 8*k);
             //天井から砂ぼこりが落ちる
@@ -1941,12 +1977,12 @@ var mainScreen = {
         }else if(t <= H){
             //ッ：ぴたりと止まる
             b.x = CW/2;
-            b.y = BOSS_HOVER_Y - 6*(t - A)/BOSS_HUSH_TIME;   //少し浮き上がって溜める
+            b.y = hover - 6*(t - A)/BOSS_HUSH_TIME;   //少し浮き上がって溜める
             this.shake = 0;
         }else if(t < S){
-            b.y += (160 - b.y)/(S - t);
+            b.y += (land - b.y)/(S - t);
         }else if(!_visual){
-            b.y = 160;
+            b.y = land;
             b.mode = "idle";
             special.bossLanded(b);
         }

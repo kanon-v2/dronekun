@@ -41,7 +41,9 @@ var frames = 0;
 //よけながら円を描いて飛ぶ(smoke-test.html の bot と同じ)
 function bot(){
     frames++; MouseIn = true;
-    MouseX = 480 + 300*Math.cos(frames/60); MouseY = 270 + 170*Math.sin(frames/45);
+    //天蓋母艦(WAVE15)がいる間は、船体の下の空いているところで円を描く
+    var top = special.ceiling(), cy = top ? (top + 540)/2 : 270, ry = top ? (500 - top - 40)/2 : 170;
+    MouseX = 480 + 300*Math.cos(frames/60); MouseY = cy + ry*Math.sin(frames/45);
     var tx = 0, ty = 0, list = enemyShots.concat(enemies.filter(function(e){ return !e.harmless; }));
     for(var i=0; i<list.length; i++){ var o = list[i], dx = drone.X - o.x, dy = drone.Y - o.y, d = Math.hypot(dx,dy) || 1, R = (o.r || 5) + 90; if(d < R){ tx += dx/d*(R-d); ty += dy/d*(R-d); } }
     if(tx || ty){ MouseX = drone.X + tx*2; MouseY = drone.Y + ty*2; }

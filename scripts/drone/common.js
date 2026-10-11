@@ -1047,9 +1047,10 @@ var drone = {
         this.preY = this.Y;
         this.Y = (ty + d * this.Y) / (d+1);
 
-        //画面の外には出ない
+        //画面の外には出ない。天蓋母艦(bosses.js)がいる間は、船体の下までしか上がれない
+        var top = page.number == 1 ? special.ceiling() : 0;
         this.X = Math.max(this.R, Math.min(this.X, CW - this.R));
-        this.Y = Math.max(this.R, Math.min(this.Y, CH - this.R));
+        this.Y = Math.max(this.R, top, Math.min(this.Y, CH - this.R));
     },
     //強化レベルを反映
     applyStats: function(){

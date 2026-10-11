@@ -21,7 +21,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
   `msedge --headless=new --disable-gpu --allow-file-access-from-files --virtual-time-budget=3000 --window-size=960,540 --screenshot=<出力.png> <file:///...html>`
   特定の画面を撮りたいときは、`<base href="../">` を入れたテスト用HTMLで状態を作ってから撮る(`tools/smoke-test.html` の書き方を参照)。
 - バランス調整は、よけて動く自動プレイ(`smoke-test.html` の `bot()`)を何回か回して、到達WAVEで比べる。1回だけの結果は運の差が大きい。
-- 難易度の測定は `tools/difficulty.html`。WAVEごとに「動かない」と「よけて動く」で戦い、被弾の回数とクリアまでの秒数を表にする(`#runs=6&waves=1-9&gear=std` で回数・WAVE・装備を選ぶ。ヘッドレスEdgeの `--dump-dom` で結果を読む)。
+- 難易度の測定は `tools/difficulty.html`。WAVEごとに「動かない」と「よけて動く」で戦い、被弾の回数とクリアまでの秒数を表にする(`#runs=6&waves=1-9&gear=std` で回数・WAVE・装備を選ぶ。ヘッドレスEdgeの `--dump-dom` で結果を読む)。自動プレイはレーザーをよけないので、レーザーを使うボス(移動要塞・天蓋母艦)の被弾は実際より多く出る。
 
 ヘッドレスブラウザの注意:
 - `--virtual-time-budget` を大きくしすぎない。毎フレーム描画すると実時間がとても長くなる(描画は数フレームに1回で十分)。
@@ -38,11 +38,11 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | `sound.js` | BGM・効果音。Web Audio API で合成(音声ファイルなし)。曲データは `TRACKS` |
 | `equipment.js` | 装備(`WEAPONS`)・シナジー(`SYNERGIES`)・戦闘中の装備の動作(`arms`)・シナジー演出(`fx`) |
 | `armsExtra.js` | 追加の装備(火炎放射・円盤・重力弾・バリア・狙撃・冷凍)とそのシナジー。`WEAPONS`・`SYNERGIES`・`arms` に足す(`arms` から `fire2`・`update2`・`draw2` などを呼ぶ)。敵の状態「燃える」「凍る」もここ |
-| `bosses.js` | レア敵・ボス(女王蜂・移動要塞・ドローン君改)。`special` |
+| `bosses.js` | レア敵・ボス(女王蜂・移動要塞・天蓋母艦・ドローン君改)。`special` |
 | `startScreen.js` | タイトル画面 |
 | `mainScreen.js` | 戦闘画面。敵の種類(`ENEMY_TYPES`)・敵の弾・アイテム・HUD |
 | `forces.js` | 同胞(色違いのドローン君)と人間の兵器。`ENEMY_TYPES` に種類を追加している |
-| `enemyArt.js` | 雑魚敵(`mainScreen.js` の6種類と人間の兵器3種類)の見た目(`enemyArt`)。`mainScreen.drawEnemy` から呼ぶ。ボス(女王蜂・移動要塞・ドローン君改)の絵もここ(`enemyArt.queen`・`fortress`・`kai`。`bosses.js` の `special.draw` から呼ぶ) |
+| `enemyArt.js` | 雑魚敵(`mainScreen.js` の6種類と人間の兵器3種類)の見た目(`enemyArt`)。`mainScreen.drawEnemy` から呼ぶ。ボス(女王蜂・移動要塞・天蓋母艦とその砲台・ドローン君改)の絵もここ(`enemyArt.queen`・`fortress`・`canopy`・`pod`・`kai`。`bosses.js` の `special.draw` から呼ぶ) |
 | `upgradeScreen.js` | 強化画面(報酬カード・能力強化・装備・ショップ・能力リセット) |
 | `gameoverScreen.js` | ゲームオーバー画面 |
 | `story.js` | ストーリー(`STORIES`)・ストーリー画面・エンディング・ストーリー確認モード |
@@ -71,7 +71,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 - セーブは `localStorage`。この周の進み具合は `dronekun_save`(強化画面に入ったときに自動セーブ。倒れる・クリアすると消える)、周をまたいで残るもの(パーツ・能力・見たストーリー・難易度ごとの出撃できるいちばん先のWAVE `game.reach`・最後の装備 `game.kept`)は `dronekun_meta`(`save.writeMeta`・`loadMeta`。タイトルに入るたびに読み直す)、ハイスコア `dronekun_best`・クリア済み `dronekun_cleared`。前の作り(能力はレベル5まで)のセーブは、はじめて読むときに `dronekun_meta` へ移す(能力は `OLD_LEVEL_MAP` で近い強さのレベルに)。
 - 周回(ローグライト)：タイトルの「出撃」で難易度(`DIFFICULTIES`。イージー・ノーマル・ハード・ベリーハード、いつでも4つとも選べる)を選び、WAVE1から始める(`startScreen.startRun` → `game.newRun`)。倒れてもパーツ・能力・装備は残り(`game.keepProgress`・`useKept`)、ショップのバフは毎回はじめから。2周目からは強化画面から始まり、その難易度でいちばん先のWAVE(`game.reachOf`)から出撃する。強化画面の「出撃先」・タイトルの「始めるWAVEを選択」(`startScreen.waveSel`。`startRun` に始めるWAVEを渡す)で、難易度ごとにクリア済みのWAVEの次までから選び直せる(協力プレイと同じ窓。`upgradeScreen.js` の `sortieButton`・`drawSortie`)。難易度は敵の体力・弾・WAVEの敵の数・出てくる間隔・撃ち返し・落とすパーツに掛かる(`difficulty()`。協力プレイはホストが選んだ難易度 `coop.diff`、対戦はいつもノーマル)。`game.reset()` は残るものまで全部消す(テスト用)。
 - 画面右下のボタン(`sound.js` の `sound.buttons`)：BGM・SEはいつでも、「かすり範囲」「当たり判定」「ポインタ」の表示/非表示は戦闘中だけ出す(`when`。かすり範囲・当たり判定は対戦では出さない)。表示の設定は `common.js` の `viewOpt`(`localStorage` の `dronekun_view`。戦闘画面の方眼の設定もここに覚える)。ポインタを隠すのは戦闘中だけ(メニューでは操作に要るので出す)。
-- 全20WAVE(`FINAL_WAVE`)。5WAVEごとにボス。WAVE15(`REVEAL_WAVE`)のボス後に真実が明かされ、WAVE16からは人間の兵器が敵になる。何周もして能力(最大レベル `MAX_LEVEL` = 20)を上げて先へ進む前提なので、WAVEごとの敵の伸びは大きめ(`DANMAKU_*`・`ENEMY_HP_GROW`)、落とすパーツは少なめ(`PARTS_DROP_MUL`)。
+- 全20WAVE(`FINAL_WAVE`)。5WAVEごとにボス(WAVE5・10は女王蜂・移動要塞、WAVE15は天蓋母艦、WAVE20はドローン君改。`bossTypeFor`)。WAVE15(`REVEAL_WAVE`)のボス後に真実が明かされ、WAVE16からは人間の兵器が敵になる。何周もして能力(最大レベル `MAX_LEVEL` = 20)を上げて先へ進む前提なので、WAVEごとの敵の伸びは大きめ(`DANMAKU_*`・`ENEMY_HP_GROW`)、落とすパーツは少なめ(`PARTS_DROP_MUL`)。
 
 ## 書き方の決まり
 
@@ -101,7 +101,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 | 衝撃波・ジャスト衝撃波・ジャスト・カウンター | `mainScreen.js` の `BLAST_*`・`JUST_*`・`COUNTER_*`(ジャストの段階 PERFECT／JUST は `JUST_PERFECT`・`JUST_RAM_PERFECT`・`JUST_GOOD`)、衝撃波に使う「やる気」(動く・かする・ジャスト・敵が落とす「やる気」でたまる)は `YARUKI_*`・`MOVE_MIN`、対戦でのダメージは `versus.js` の `VS_DAMAGE_MUL.blast` |
 | 突進の予備動作(パリィの試作) | `mainScreen.js` の `TELL_*`・`pickDashStyle()`(構え方の出やすさ)・`JUST_SHOTS`(弾でもジャストにするか)。動きは `updateDasher`、絵は `enemyArt.dasher` |
 | かすりコンボ・かすりバースト(強スキル) | `mainScreen.js` の `GRAZE_*`・`COMBO_*`・`SKILL_*` |
-| レア敵・ボス | `bosses.js` の `RARE_*`・`BOSS_EVERY`・`makeBoss()`・`KAI_PATTERNS`、女王蜂の突進の予備動作(構えのばらつき・合図・フェイント・連続突進・弾いたときのダメージ)は `QUEEN_*`、ドローン君改の第二形態(体力・攻撃・突進・復活の長さ)は `KAI2*` |
+| レア敵・ボス | `bosses.js` の `RARE_*`・`BOSS_EVERY`・`makeBoss()`・`KAI_PATTERNS`、女王蜂の突進の予備動作(構えのばらつき・合図・フェイント・連続突進・弾いたときのダメージ)は `QUEEN_*`、ドローン君改の第二形態(体力・攻撃・突進・復活の長さ)は `KAI2*`、天蓋母艦(体力・砲台・攻撃の順番と長さ・船体の形)は `CANOPY_*` |
 | 同胞・人間の兵器 | `forces.js` の `kinRate()`・`pickHuman()` |
 | ストーリーの文章・背景・流れる時期 | `story.js` の `STORIES`・`STORY_SKY`・`STORY_AFTER` |
 | BGM | `sound.js` の `TRACKS` |
@@ -136,6 +136,14 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 - 移動要塞(ボス)も同じ考え方で、装甲の板8枚(波のように順にふくらむ。渦巻き弾で開いて中の光が見え、輪が半周まわる)・コア(目のように狙う向きを見て、ときどきシャッターが閉じる。レーザーの予告で開いて光る)・主砲(3方向弾の反動・レーザーで伸びる)・左右の砲台(主砲に遅れて揺れ、少し遅れて撃つ)・噴射口3つ(炎がばらばらにゆらぐ)を動かす。使う値は `t`・`vx`・`mode`・`count`・`angle`・`enraged`・`flash`。
 - ドローン君改(ボス)は、本体がスキンのシートの絵(1枚に焼き込まれている)なので、絵を上(プロペラ・棒)と下(胴体)に切り抜いて2回描き(`KAI_SPLIT`)、上を遅れて弾ませ、傾きにも遅れてしならせる。まわりに図形の改造部品を足して別々に動かす：左右の副砲(エネルギーの線でつながって浮かび、狙う相手は `nearestPlayer` なのでどちらの画面でも同じ。レーザーの予告で前へ出て光をためる)・背中の装甲の輪とケーブル(出力の段階 `phase` で数が増える。五龍の陣 `circleT` で広がる)・胸の鼓動の光・落雷の予告(`strikes`)で副砲から走る稲妻。ブレード・地雷・予告の円は前と同じく `bosses.js` の `drawKaiParts`。
 - ドローン君改の第二形態(`bosses.js` の `KAI2*`)：第一形態(体力・攻撃は前のまま。フェーズ1～3)の体力が0になると、`mainScreen.hitEnemy` が `special.revive` を呼び、倒れずにその場で止まる(`mode` の `down`。攻撃が効かず、体当たりもしない `harmless`。ドローン君の装備と衝撃波も止める `special.holdFire`) → 鼓動と始動音で体力が満ち、赤から紫へ色が変わる(`revive`) → 第二形態(`form` 2、体力は第一形態の `KAI2_HP_MUL` 倍、フェーズ4・5、曲は `kai2`)。第二形態は回るレーザー(`beams` 本)・渦巻き弾・弾の雨・続けての突進(ジャスト衝撃波で弾ける。`special.parry`)を足して使う。倒れる・復活の見た目と音は `special.kaiFx` で、届いた `mode` だけで決まる(協力プレイのゲストは `guestCollide` から呼ぶ。`form`・`beams` は `packEnemy` の `b` で届く)。
+- 天蓋母艦(WAVE15のボス。`bosses.js` の `CANOPY_*`)：画面の上を端から端まで覆って動かない大ボス。当たり判定はまんなかのコア(`r`)だけで、船体は絵。船体の下のふちの形は `CANOPY_EDGE`(`canopyEdge()` で高さを出す。弾の雨・手下の出る位置と絵で同じものを使う)。
+  - 降りきってからは、ドローン君は `CANOPY_FLOOR` より上へ行けない(`special.ceiling()`。`drone.calcXY` で止める。アイテムも下へ出す)。登場は `mainScreen.bossEntrance` で、ほかのボスより上から降りてくる(`special.landY`)。
+  - 着地すると、船体の下に砲台(`pod`。別の敵。`makeCanopyPod`)が4つ降りてくる。砲台はドローン君を狙って扇に撃つ(目の前 `CANOPY_POD_NEAR` では撃たない)。壊すとコアに `CANOPY_POD_DMG` のダメージが入り、付け根が壊れた跡になる(`broken`)。コアを倒すと残った砲台も壊れる。
+  - コアは 弾の雨(下のふちの口から、動くすき間を残して)→ レーザー(なぎ払い)→ 弾の波(大きな弾の扇)→ 手下(左右のハッチから虫)の順(`CANOPY_PATTERNS`)。
+  - 倒すと、船体が傾きながら崩れ落ちて消える(`special.canopyWreck` → `mainScreen.wreck`。演出の数の上限で消えないよう別に持つ)。
+  - 船体が上のHUDの後ろに来るので、いる間は左上・右上・ボスの体力ゲージ(上へ寄せる)に明るい板を敷く。
+  - 協力プレイ：砲台は種類 `pod`(番号と撃つまでの残りを `packEnemy` の p2 で送る)、壊された砲台の印はボスの状態 `b` の12番目で届く。ゲストの画面では、天蓋母艦がいなくなったときに崩れ落ちる。
+  - 絵(`enemyArt.canopy`・`pod`)に使う値は `t`・`mode`・`count`・`angle`・`enraged`・`broken`・`flash`(砲台は `face`・`timer`・`slot`)。`tools/boss-art.html` には入れていない(画面の幅いっぱいなので)。
 - `tools/boss-art.html`：ボスの前の絵と新しい絵・怒り・被弾を並べ、下に時間をずらしたコマを並べる(1枚で動きがわかる)。ふだんは女王蜂、`#fortress` で移動要塞、`#kai` でドローン君改。`#still` で撮影用に止める。
 
 ## 開発用の機能
