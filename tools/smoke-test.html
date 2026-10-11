@@ -369,7 +369,7 @@ try{
 
     // ドローン君改の第二形態：第一形態(体力・攻撃は前のまま)を倒すと、倒れたところで止まり、体力が満ちて第二形態で復活する。
     // 第二形態は回るレーザー・渦巻き弾・弾の雨・突進(ジャストで弾ける)を使い、倒すとWAVEクリア
-    setup(FINAL_WAVE, {}, [null,null,null], 1);
+    setup(FINAL_WAVE, { gun:1 }, ["gun",null,null], 1);
     page.change(1); MouseIn = true;
     for(var i=0; i<3000 && (mainScreen.state != "play" || mainScreen.bossFreeze); i++) mainScreen.update();
     var k2err = errors.length;
@@ -381,15 +381,20 @@ try{
     var kDown = !kb.dead && kb.mode == "down" && kb.harmless && enemies.indexOf(kb) >= 0;
     mainScreen.hitEnemy(kb, 50);     //倒れている間は効かない
     var kNoDmg = kb.hp == 0 && !kb.dead;
-    var kStates = {};
+    var kStates = {}, kFired = false;
+    arms.bullets = []; mainScreen.yaruki = YARUKI_MAX; mainScreen.blast();
+    var kNoBlast = mainScreen.yaruki == YARUKI_MAX;     //復活の間は衝撃波も出せない
     for(var i=0; i<KAI2_DOWN_T + KAI2_REVIVE_T + 60 && kb.form != 2; i++){     //止まる演出(hitStop)のぶん長めに
         mainScreen.invincible = 10;
         mainScreen.update();
         kStates[kb.mode] = true;
+        if((kb.mode == "down" || kb.mode == "revive") && arms.bullets.length > 0) kFired = true;    //ドローン君の装備は撃たない
         if(i % 40 == 0) draw1();
     }
     var kRevived = kb.form == 2 && kb.mode == "idle" && !kb.harmless && kb.maxHp == Math.round(k1Hp*KAI2_HP_MUL) && kb.hp == kb.maxHp &&
                    kb.phase == 4 && kb.look.tint == KAI2_TINT && kStates.revive && mainScreen.state == "play" && enemies.indexOf(kb) >= 0;
+    for(var i=0; i<40; i++){ mainScreen.invincible = 10; mainScreen.update(); }
+    var kFireAgain = arms.bullets.length > 0;     //復活したらまた撃つ
     //第二形態の攻撃をひと通り(出力限界のフェーズ5で)
     kb.hp = kb.maxHp*0.3;
     var kAtt = [];
@@ -414,8 +419,8 @@ try{
     for(var i=0; i<5; i++) mainScreen.update();
     var kKill = kb.dead && mainScreen.state == "clear";
     check("ドローン君改：第一形態を倒すと止まり、復活して第二形態に(攻撃・突進のカウンター・倒すとクリア)",
-          k1Same && kDown && kNoDmg && kRevived && kAtt.length == KAI_PATTERNS[5].length && kPh5 && kBeams && kParry && kKill && errors.length == k2err,
-          "第一形態" + k1Same + "(" + k1Hp + ") 停止" + kDown + " 無敵" + kNoDmg + " 復活" + kRevived + "(" + kb.maxHp + ") Lv5" + kPh5 + " レーザー" + kBeams + " カウンター" + kParry + " 撃破" + kKill);
+          k1Same && kDown && kNoDmg && !kFired && kNoBlast && kFireAgain && kRevived && kAtt.length == KAI_PATTERNS[5].length && kPh5 && kBeams && kParry && kKill && errors.length == k2err,
+          "第一形態" + k1Same + "(" + k1Hp + ") 停止" + kDown + " 無敵" + kNoDmg + " 撃たない" + !kFired + " 衝撃波なし" + kNoBlast + " また撃つ" + kFireAgain + " 復活" + kRevived + "(" + kb.maxHp + ") Lv5" + kPh5 + " レーザー" + kBeams + " カウンター" + kParry + " 撃破" + kKill);
     //第二形態の絵(倒れている・復活・フェーズ4・5・回るレーザー・突進の構え)
     var k2Drawn = 0, k2DErr = errors.length;
     [["down",1.5,3],["revive",1.5,3],["idle",2,4],["laser",2,5],["aim",2,5]].forEach(function(c){

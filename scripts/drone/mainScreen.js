@@ -563,7 +563,7 @@ var mainScreen = {
             frozen = this.slowmo % 2 == 0;
         }
         if(!frozen){
-            arms.update(this.state == "play" && !this.down);
+            arms.update(this.state == "play" && !this.down && !special.holdFire());    //ドローン君改の復活の間は撃たない
             this.updateEnemies();
             this.updateShots();
             this.updatePickups();
@@ -637,6 +637,7 @@ var mainScreen = {
 
     //クリック：やる気を使って周りの敵をまとめて攻撃し、敵の弾を消す
     blast:function(){
+        if(special.holdFire()) return;     //ドローン君改が第二形態へ復活している間は出せない
         if(this.yaruki < YARUKI_COST){
             this.yarukiMsg = 60;
             sound.play("error");

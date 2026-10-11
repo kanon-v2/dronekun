@@ -628,6 +628,14 @@ var special = {
         for(var i=0; i<enemies.length; i++) if(enemies[i].minion) enemies[i].dead = true;
         return true;
     },
+    //ドローン君改が倒れて第二形態へ復活している間か(ドローン君の装備と衝撃波を止める。協力プレイのゲストも届いた mode で決まる)
+    holdFire:function(){
+        for(var i=0; i<enemies.length; i++){
+            var e = enemies[i];
+            if(e.type == "kai" && (e.mode == "down" || e.mode == "revive")) return true;
+        }
+        return false;
+    },
     //倒れている → 復活する(ホストとひとり用)
     kaiRevive:function(_e){
         _e.look.update(0, 0);

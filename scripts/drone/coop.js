@@ -817,7 +817,7 @@ var coop = {
             if(Click == 1 && M.state == "play") M.blast();
         }
         this.guestSync();
-        arms.update(M.state == "play" && !M.down);
+        arms.update(M.state == "play" && !M.down && !special.holdFire());    //ドローン君改の復活の間は撃たない
         this.guestCollide();
         M.updateShots();
         M.updatePickups();
