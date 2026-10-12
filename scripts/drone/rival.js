@@ -16,6 +16,13 @@
 //------------------------------------------------------------------------------
 const RIVAL_WAVES    = [3,8,13,18];     //出てくるWAVE(何番目かが強さの段階 Lv.1～4)
 const RIVAL_AT       = 0.35;            //WAVEの雑魚敵がこの割合だけ出たところで現れる
+//登場の演出(時が止まり、光が集まって組み上がり、名乗る。この間は周りが止まる)
+const RIVAL_INTRO_T  = 210;             //登場の演出の長さ(フレーム)
+const RIVAL_INTRO_STOP = 24;            //はじめの「時が止まる」(色の反転した輪が広がり、色が抜ける)
+const RIVAL_INTRO_GATHER = 22;          //光が集まり始める(ここから RIVAL_INTRO_ARRIVE まで)
+const RIVAL_INTRO_ARRIVE = 72;          //組み上がる(ここから名乗る)
+const RIVAL_INTRO_OUT = 26;             //終わりの「時が動き出す」(色が戻る)
+const RIVAL_INTRO_GUARD = 40;           //時が動き出したあとのドローン君の無敵(フレーム)
 const RIVAL          = { name:"クロノ", en:"CHRONO", title:"時を渡るライバル" };
 const RIVAL_R        = 20;              //当たり判定の半径
 const RIVAL_SCALE    = 1.3;             //絵の大きさ(ドローン君に対して)
@@ -225,19 +232,48 @@ var rival = {
         };
         e.look = new DroneLook();
         e.look.tint = RIVAL_TINT;
-        //画面の上から、ほどけた光が集まって現れる
+        //登場：時が止まり、画面の上から光が集まって組み上がり、名乗る(rival.introStep)
         aimAt = nearestPlayer(e.x, e.y);
         var p = this.spot(e, RIVAL_DIST);
-        this.warp(e, p.x, p.y, RIVAL_WARP_T[0] + 20, "enter");
+        e.x = p.x; e.y = p.y;
         e.wx0 = p.x; e.wy0 = -60;
-        this.announce(lv);
+        e.mode = "intro";
+        e.count = RIVAL_INTRO_T;
+        this.flags(e);
+        mainScreen.shake = 0;
         sound.play("timeStop");
+        sound.timeWarp(true);
         return e;
     },
-    //現れたことを画面の上に出す
-    announce:function(_lv){
-        mainScreen.rareMsg = "ライバル「" + RIVAL.name + "」" + (_lv > 0 ? "が再び現れた！" : "出現！") + "　ワープで動き回る";
-        mainScreen.rareMsgTime = 180;
+    //登場の演出の経過(フレーム)
+    introAge:function(_e){
+        return RIVAL_INTRO_T - _e.count;
+    },
+    //登場の間は時が止まる：ライバルの演出だけを進める(mainScreen.update から。止めている間は true)
+    //協力プレイのゲストは、届いた mode・count で同じ演出を描く(自分のドローン君は動けるが撃たない：special.holdFire)
+    introStep:function(){
+        var e = null;
+        for(var i=0; i<enemies.length; i++) if(enemies[i].type == "chrono" && enemies[i].mode == "intro") e = enemies[i];
+        if(!e) return false;
+        e.t++;
+        e.look.update(0, 0, 0);
+        var age = this.introAge(e);
+        if(age == RIVAL_INTRO_ARRIVE){
+            fx.ring(e.x, e.y, 90, WARP_COLOR, 24, 4);
+            sound.play("warpIn");
+        }
+        if(age == RIVAL_INTRO_T - RIVAL_INTRO_OUT) sound.play("timeResume");
+        if(--e.count <= 0){
+            //時が動き出す：少しのあいだ、ドローン君は無敵(止まっていた弾がすぐ当たらないように)
+            e.mode = "idle";
+            e.timer = 50;
+            e.hpMark = e.hp;
+            this.flags(e);
+            sound.timeWarp(false);
+            mainScreen.guard = Math.max(mainScreen.guard, RIVAL_INTRO_GUARD);
+        }
+        mainScreen.updateEffects();
+        return true;
     },
     //協力プレイのゲスト：届いた種類からライバルを作る(coop.guestSync から)
     guestInit:function(_e){
@@ -248,15 +284,15 @@ var rival = {
         _e.lv = Math.max(0, this.level());
         _e.look = new DroneLook();
         _e.look.tint = RIVAL_TINT;
-        this.announce(_e.lv);
     },
-    //ワープ中・去るところは当たらず、狙われない
+    //登場の演出・ワープ中・去るところは当たらず、狙われない
     flags:function(_e){
-        _e.harmless = _e.mode == "warp" || _e.mode == "flee";
+        _e.harmless = _e.mode == "intro" || _e.mode == "warp" || _e.mode == "flee";
         _e.phased = _e.harmless;
     },
 
     update:function(_e,_dx,_dy,_d){
+        if(_e.mode == "intro") return;     //登場の演出は rival.introStep
         var rage = _e.enraged ? 1 : 0, lv = _e.lv;
         var play = mainScreen.state == "play";
         var toMe = Math.atan2(_dy,_dx);
@@ -389,10 +425,6 @@ var rival = {
         fx.ring(_e.x, _e.y, 56, WARP_COLOR, 16, 3);
         if(_e.wt > RIVAL_BLINK_T) sound.play("warpIn");
         switch(_e.next){
-            case "enter":
-                _e.mode = "idle";
-                _e.timer = 70;
-                break;
             case "idle":
                 _e.mode = "idle";
                 _e.timer = RIVAL_REST[_e.lv][_e.enraged ? 1 : 0];
@@ -535,7 +567,7 @@ var rival = {
         if(_e._pm == "warp" && _e.mode != "warp") _e.arrT = 18;     //組み上がった直後の光
         _e._pm = _e.mode; _e._pc = _e.count;
         //せりふ：現れたとき・本気になったとき・去るとき
-        if(!_e.said0 && _e.mode != "warp"){ _e.said0 = true; this.say(_e, RIVAL_LINES[lv][0]); }
+        if(!_e.said0 && _e.mode != "warp" && !(_e.mode == "intro" && this.introAge(_e) < RIVAL_INTRO_ARRIVE + 10)){ _e.said0 = true; this.say(_e, RIVAL_LINES[lv][0]); }
         if(!_e.said1 && _e.enraged && _e.mode != "flee"){ _e.said1 = true; this.say(_e, RIVAL_LINES[lv][1]); }
         if(!_e.said2 && _e.mode == "flee"){ _e.said2 = true; this.say(_e, RIVAL_LINES[lv][2]); }
         if(_e.sayT > 0) _e.sayT--;
@@ -552,11 +584,13 @@ var rival = {
     },
     //体を出すか(ワープ中・ほどけて消えるところは出さない)
     shown:function(_e){
-        return _e.mode != "warp" && !(_e.mode == "flee" && _e.count <= RIVAL_FLEE_OUT);
+        return _e.mode != "warp" && !(_e.mode == "flee" && _e.count <= RIVAL_FLEE_OUT)
+            && !(_e.mode == "intro" && this.introAge(_e) < RIVAL_INTRO_ARRIVE);
     },
 
     //体(translate済み。special.draw から)
     draw:function(_e,_body){
+        if(_e.mode == "intro" && !this.onTop) return;    //登場の演出の間は、止まった世界の上に描く(rival.drawIntro)
         if(this.shown(_e)){
             var k = RIVAL_SCALE;
             ctx.save();
@@ -649,6 +683,110 @@ var rival = {
     },
 
     //ワープの粒子・突進の予告・時が止まった世界(translateしていない状態。special.drawAttack から。敵より奥に描く)
+    //登場の演出中のライバル
+    introOf:function(){
+        for(var i=0; i<enemies.length; i++) if(enemies[i].type == "chrono" && enemies[i].mode == "intro") return enemies[i];
+        return null;
+    },
+    //登場の演出：時が止まった世界(周りの色を抜いて暗くする)の上に、集まる光と組み上がったライバルを描く
+    //(mainScreen.draw から。ドローン君を描いたあと、揺れ・拡大の中で)
+    drawIntro:function(){
+        var e = this.introOf();
+        if(!e || !e.wfx) return;
+        var age = this.introAge(e);
+        var p = Math.max(0, Math.min(1, age/(RIVAL_INTRO_STOP*0.6), e.count/RIVAL_INTRO_OUT));
+        ctx.save();
+        ctx.globalCompositeOperation = "saturation";
+        ctx.fillStyle = "rgba(128,128,128," + (0.92*p) + ")";
+        ctx.fillRect(-40,-40,CW + 80,CH + 80);
+        ctx.globalCompositeOperation = "source-over";
+        ctx.fillStyle = "rgba(15,25,55," + (0.4*p) + ")";
+        ctx.fillRect(-40,-40,CW + 80,CH + 80);
+        //時が止まる瞬間：現れる場所から、色の反転した輪が広がる
+        if(age < RIVAL_INTRO_STOP){
+            var u = age/RIVAL_INTRO_STOP, r = 20 + (1 - (1 - u)*(1 - u))*1100;
+            ctx.globalCompositeOperation = "difference";
+            ctx.fillStyle = "rgba(255,255,255," + (0.9*(1 - u)) + ")";
+            ctx.beginPath(); ctx.arc(e.x,e.y,r,0,Math.PI*2); ctx.fill();
+            ctx.globalCompositeOperation = "source-over";
+        }
+        ctx.restore();
+        //光が画面の上から集まって組み上がる(現れる場所には縮んでいく光の輪)
+        if(age >= RIVAL_INTRO_GATHER && age < RIVAL_INTRO_ARRIVE){
+            var t = (age - RIVAL_INTRO_GATHER)/(RIVAL_INTRO_ARRIVE - RIVAL_INTRO_GATHER);
+            ctx.strokeStyle = "rgba(" + WARP_COLOR + "," + (0.8*Math.sin(Math.PI*t)) + ")";
+            ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.arc(e.x,e.y,10 + 90*(1 - t),0,Math.PI*2); ctx.stroke();
+            ctx.lineWidth = 1;
+            e.wfx.draw(e.wx0, e.wy0, e.x, e.y, t);
+        }
+        if(age >= RIVAL_INTRO_ARRIVE){
+            this.onTop = true;
+            ctx.save();
+            ctx.translate(e.x, e.y);
+            this.draw(e, null);
+            ctx.restore();
+            this.onTop = false;
+            //組み上がった直後：光る
+            var g = 1 - (age - RIVAL_INTRO_ARRIVE)/20;
+            if(g > 0) e.wfx.drawGlow(e.x, e.y, 0.9*g);
+        }
+    },
+    //登場の演出の文字(揺れ・拡大の外。mainScreen.draw から)：上下の黒い帯・名前と異名・時が止まった案内
+    drawUi:function(){
+        var e = this.introOf();
+        if(!e) return;
+        var age = this.introAge(e), lv = e.lv || 0;
+        ctx.save();
+        ctx.textBaseline = "middle";
+        //画面のまんなかの案内(時が止まる・動き出す)
+        var msg = age < RIVAL_INTRO_ARRIVE ? "時間停止 ―― 何かが来る！" : e.count <= RIVAL_INTRO_OUT ? "時は動き出す" : "";
+        if(msg){
+            ctx.globalAlpha = Math.min(1, age/10, e.count/8);
+            ctx.fillStyle = "rgba(10,20,40,0.6)";
+            ctx.fillRect(0, CH/2 - 150, CW, 40);
+            ctx.textAlign = "center";
+            ctx.font = "bold 20px sans-serif";
+            ctx.fillStyle = "rgb(" + WARP_COLOR + ")";
+            ctx.fillText(msg, CW/2, CH/2 - 130);
+            ctx.globalAlpha = 1;
+        }
+        //組み上がってから：上下の黒い帯と、右から名前(ボスの名乗りと同じ形で、ライバルの色)
+        var a = age - RIVAL_INTRO_ARRIVE;
+        if(a >= 0){
+            var k = Math.min(1, a/18, e.count/20);
+            ctx.fillStyle = "#000";
+            ctx.fillRect(0, 0, CW, 40*k);
+            ctx.fillRect(0, CH - 40*k, CW, 40*k);
+            var ease = 1 - Math.pow(1 - Math.min(1, a/28), 3);
+            var x = CW + 320 - (320 + GS*2)*ease, y = CH - 150;
+            ctx.globalAlpha = Math.min(1, e.count/20);
+            ctx.textAlign = "right";
+            ctx.font = "bold 16px sans-serif";
+            ctx.fillStyle = "rgb(30,120,190)";
+            ctx.fillText("RIVAL　" + RIVAL.en + (lv > 0 ? "　再戦 Lv." + (lv + 1) : ""), x - 4, y - 44);
+            ctx.font = "900 54px serif";
+            ctx.lineJoin = "round";
+            ctx.lineWidth = 8;
+            ctx.strokeStyle = "rgba(255,255,255,0.9)";
+            ctx.strokeText(RIVAL.name, x, y);
+            ctx.fillStyle = "rgb(" + RIVAL_TINT + ")";
+            ctx.fillText(RIVAL.name, x, y);
+            ctx.lineJoin = "miter";
+            //名前の下に伸びる線(ハチマキの赤)と異名
+            var w = 380*Math.min(1, Math.max(0, (a - 12)/24));
+            ctx.fillStyle = RIVAL_SCARF;
+            ctx.fillRect(x - w, y + 34, w, 4);
+            ctx.font = "bold 17px sans-serif";
+            ctx.fillStyle = "#eee";
+            ctx.globalAlpha *= Math.min(1, Math.max(0, (a - 24)/16));
+            ctx.fillText(RIVAL.title + " ――", x - 6, y + 58);
+        }
+        ctx.restore();
+        ctx.lineWidth = 1;
+        ctx.fillStyle = "#000";
+    },
+
     drawAttack:function(_e){
         this.watch(_e);
         var W = _e.wfx;

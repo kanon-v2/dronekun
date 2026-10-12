@@ -543,8 +543,20 @@ try{
     var findRv = function(){ return enemies.filter(function(e){ return e.type == "chrono"; })[0]; };
     while(!rv && rvF < 60*120){ bot(); mainScreen.hp = 99; mainScreen.update(); rvF++; rv = findRv(); if(rvF % 30 == 0) draw1(); }
     var rvAt = mainScreen.spawned;
-    check("ライバル：WAVE8の途中(雑魚敵が" + rival.at + "体出たところ)でワープして現れる。現れないWAVEもある", rvNone && rv && rv.mode == "warp" && rv.lv == 1 && rvAt >= rival.at && rv.harmless && rv.phased,
-          (rv ? "段階" + rv.lv : "出ない") + " 出た数" + rvAt + "/" + rival.at + " WAVE4は" + (rvNone ? "出ない" : "出る"));
+    check("ライバル：WAVE8の途中(雑魚敵が" + rival.at + "体出たところ)で、登場の演出から現れる。現れないWAVEもある", rvNone && rv && rv.mode == "intro" && rv.lv == 1 && rvAt >= rival.at && rv.harmless && rv.phased,
+          (rv ? "段階" + rv.lv + " " + rv.mode : "出ない") + " 出た数" + rvAt + "/" + rival.at + " WAVE4は" + (rvNone ? "出ない" : "出る"));
+    // 登場の演出：時が止まり(ほかの敵・弾・ドローン君は動かず、撃たない)、名乗ってから戦いが始まる(少しのあいだ無敵)
+    var rvOther = enemies.filter(function(e){ return e != rv; })[0], rvOx = rvOther ? rvOther.x : 0, rvDx = drone.X, rvShots = arms.bullets.length;
+    MouseX = drone.X + 200; MouseY = drone.Y;
+    var rvFrozen = true;
+    for(var i=0; i<RIVAL_INTRO_T - 1; i++){
+        mainScreen.update(); if(i % 15 == 0) draw1();
+        if((rvOther && rvOther.x != rvOx) || drone.X != rvDx || !special.holdFire()) rvFrozen = false;
+    }
+    var rvSaid = rv.sayT > 0 && rv.sayText == RIVAL_LINES[1][0];
+    mainScreen.update();
+    check("ライバルの登場：時が止まって名乗り、終わると戦いが始まる(ドローン君は少し無敵)", rvFrozen && rvSaid && rv.mode == "idle" && !rv.harmless && mainScreen.guard > 0 && errors.length == rvErr,
+          "止まる" + rvFrozen + " せりふ" + rvSaid + " " + rv.mode + " 無敵" + mainScreen.guard);
     var rvModes = {}, rvPlant = 0, rvRelease = 0;
     for(var i=0; i<60*30 && rv; i++){
         bot(); mainScreen.hp = 99;

@@ -463,6 +463,8 @@ var mainScreen = {
         if(this.hitStop > 0){ this.hitStop--; return; }
         //時止めワープ(試作。timeStop.js)：時が止まっている間は、ワープの演出だけを進める
         if(timeStop.step()) return;
+        //ライバル(rival.js)の登場の間も時が止まる：演出だけを進める
+        if(rival.introStep()) return;
         //ジャスト衝撃波のあとは、画面のすべてをゆっくりにする(何フレームかに1回だけ進め、だんだん元の速さへ)
         if(this.justSlow > 0){
             this.justSlow--;
@@ -1548,6 +1550,7 @@ var mainScreen = {
             ctx.globalAlpha = 1;
         }
         //かすりの範囲(弾のふちがこの輪に入るとかすり。かすった瞬間は明るく光る。右下のボタンで隠せる)
+        rival.drawIntro();      //ライバルの登場：止まった世界の上に、集まる光とライバル(rival.js)
         if(showMe && !this.down && viewOpt.graze && !timeStop.active) this.drawGrazeRange();
         //敵の弾に対する当たり判定(中心の点。右下のボタンで隠せる)
         if(showMe && viewOpt.hitbox && !timeStop.active){
@@ -1605,6 +1608,7 @@ var mainScreen = {
         this.drawGogogo();
         this.drawBanner();
         this.drawBossIntro();
+        rival.drawUi();         //ライバルの登場の名乗り(rival.js)
         bossDebug.drawTag();
         timeStop.drawUi();
 

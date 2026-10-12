@@ -711,11 +711,12 @@ var special = {
         for(var i=0; i<enemies.length; i++) if(enemies[i].minion) enemies[i].dead = true;
         return true;
     },
-    //ドローン君改が倒れて第二形態へ復活している間か(ドローン君の装備と衝撃波を止める。協力プレイのゲストも届いた mode で決まる)
+    //ドローン君改が倒れて第二形態へ復活している間・ライバルの登場の間か(ドローン君の装備と衝撃波を止める。協力プレイのゲストも届いた mode で決まる)
     holdFire:function(){
         for(var i=0; i<enemies.length; i++){
             var e = enemies[i];
             if(e.type == "kai" && (e.mode == "down" || e.mode == "revive")) return true;
+            if(e.type == "chrono" && e.mode == "intro") return true;     //ライバルの登場の間(rival.js)
         }
         return false;
     },
