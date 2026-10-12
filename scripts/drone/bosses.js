@@ -1362,7 +1362,7 @@ var special = {
             //中ボス(ライバル)：名前の前に RIVAL と段階、ゲージはワープの光の色
             ctx.fillStyle = "rgb(" + RIVAL_TINT + ")";
             //第二形態(目覚めの途中から)は名前が変わる
-            ctx.fillText("RIVAL　" + (b.form > 1 ? RIVAL2.name : b.name) + "　Lv." + ((b.lv || 0) + 1) + (b.enraged ? "（本気）" : ""),CW/2,y - 12);
+            ctx.fillText("RIVAL　" + (rival.second(b) ? RIVAL2.name : b.name) + "　Lv." + ((b.lv || 0) + 1) + (b.enraged ? "（本気）" : ""),CW/2,y - 12);
         }else{
             ctx.fillStyle = b.enraged ? "#c33" : (f2 ? "#62138a" : "#000");
             ctx.fillText("BOSS　" + (f2 ? KAI2.name : b.name) + (b.enraged ? "（怒り）" : ""),CW/2,y - 12);

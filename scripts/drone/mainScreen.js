@@ -517,8 +517,8 @@ var mainScreen = {
                 if(this.bossFreeze) break;   //ボスの登場の演出中は敵を出さない・衝撃波も出せない
                 this.spawn();
                 if(Click == 1) this.blast();
-                //全部倒したらWAVEクリア
-                if(this.toSpawn == 0 && enemies.length == 0){
+                //全部倒したらWAVEクリア(ライバルが出るWAVEは、ライバルを撃退してから)
+                if(this.toSpawn == 0 && enemies.length == 0 && rival.done){
                     this.state = "clear";
                     this.stateTime = 0;
                     this.bonus = Math.max(1, Math.round(Math.ceil(game.wave/2)*difficulty().parts));     //WAVEクリアのパーツ(難易度の倍率を掛ける)
@@ -615,7 +615,7 @@ var mainScreen = {
             this.toSpawn = 1;
             if(enemies.length >= TRIAL_MAX_ENEMIES) return;
         }
-        //中ボス(ライバル)：WAVEの途中で現れる。いる間は雑魚敵を出さない(rival.js)
+        //中ボス(ライバル)：WAVEの最後に現れる。いる間は雑魚敵を出さない(rival.js)
         if(rival.check()) return;
         if(this.toSpawn <= 0) return;
         this.spawnTimer--;

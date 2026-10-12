@@ -541,10 +541,10 @@ try{
     page.change(1); MouseIn = true;
     var rvErr = errors.length, rv = null, rvF = 0;
     var findRv = function(){ return enemies.filter(function(e){ return e.type == "chrono"; })[0]; };
-    while(!rv && rvF < 60*120){ bot(); mainScreen.hp = 99; mainScreen.update(); rvF++; rv = findRv(); if(rvF % 30 == 0) draw1(); }
-    var rvAt = mainScreen.spawned;
-    check("ライバル：WAVE8の途中(雑魚敵が" + rival.at + "体出たところ)で、登場の演出から現れる。現れないWAVEもある", rvNone && rv && rv.mode == "intro" && rv.lv == 1 && rvAt >= rival.at && rv.harmless && rv.phased,
-          (rv ? "段階" + rv.lv + " " + rv.mode : "出ない") + " 出た数" + rvAt + "/" + rival.at + " WAVE4は" + (rvNone ? "出ない" : "出る"));
+    while(!rv && rvF < 60*120){ bot(); mainScreen.hp = 99; if(mainScreen.toSpawn > 1) mainScreen.toSpawn = 1; enemies.slice().forEach(function(e){ if(e.type != "chrono" && !e.dead) mainScreen.hitEnemy(e, 99999, "gun"); }); mainScreen.update(); rvF++; rv = findRv(); if(rvF % 30 == 0) draw1(); }
+    var rvAt = mainScreen.spawned, rvLast = rv && mainScreen.toSpawn == 0 && enemies.length == 1 && mainScreen.state == "play";
+    check("ライバル：WAVE8の最後(雑魚敵が出尽くして全部倒したところ)で、登場の演出から現れる。現れないWAVEもある", rvNone && rv && rvLast && rv.mode == "intro" && rv.lv == 1 && rv.harmless && rv.phased,
+          (rv ? "段階" + rv.lv + " " + rv.mode : "出ない") + " 最後" + rvLast + " 出た数" + rvAt + " WAVE4は" + (rvNone ? "出ない" : "出る"));
     // 登場の演出：時が止まり(ほかの敵・弾・ドローン君は動かず、撃たない)、名乗ってから戦いが始まる(少しのあいだ無敵)
     var rvOther = enemies.filter(function(e){ return e != rv; })[0], rvOx = rvOther ? rvOther.x : 0, rvDx = drone.X, rvShots = arms.bullets.length;
     MouseX = drone.X + 200; MouseY = drone.Y;
@@ -616,15 +616,15 @@ try{
     check("ライバルの第二形態：時戻し(弾の輪を放って時を止め、逆向きに戻す)を使う", rvModes2.rewind && rvModes2.rstop && rvRewHeld >= RIVAL2_REWIND_N[1] && rvRewBack >= RIVAL2_REWIND_N[1] && errors.length == rvErr,
           "止まった弾" + rvRewHeld + " 戻る弾" + rvRewBack);
     check("ライバルの分身：協力プレイで種類・動きを送れる", rvClonePack && COOP_TYPES[rvClonePack.e[1]] == "chronoClone" && COOP_MODES[rvClonePack.e[6] & 31] == "dash", rvClonePack ? JSON.stringify(rvClonePack.e) : "なし");
-    // 撃退：第二形態の体力が0になると去る(報酬カプセル・パーツ)。分身も消える。去ったら雑魚敵がまた出てくる
+    // 撃退：第二形態の体力が0になると去る(報酬カプセル・パーツ)。分身も消える。去るとWAVEクリア
     while(rv.mode == "warp" || rv.mode == "awaken") mainScreen.update();
     var rvScore = game.score;
     mainScreen.hitEnemy(rv, 99999, "gun");
     var rvFlee = rv.mode == "flee" && !rv.dead && pickups.some(function(p){ return p.kind == "capsule"; }) && game.score > rvScore;
     for(var i=0; i<RIVAL_FLEE_T + 5; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
     for(var i=0; i<240; i++){ bot(); mainScreen.hp = 99; mainScreen.update(); }
-    check("ライバル：体力が0になると捨てぜりふを残して去り、報酬カプセルを落とす。分身も消え、そのあと雑魚敵がまた出る", rvFlee && !findRv() && !enemies.some(function(e){ return e.clone; }) && !rival.musicOn && (mainScreen.spawned > rvAt || mainScreen.toSpawn == 0) && errors.length == rvErr,
-          "去る" + rvFlee + " 雑魚" + rvAt + "→" + mainScreen.spawned);
+    check("ライバル：体力が0になると捨てぜりふを残して去り、報酬カプセルを落とす。分身も消え、去るとWAVEクリア", rvFlee && !findRv() && !enemies.some(function(e){ return e.clone; }) && !rival.musicOn && (mainScreen.state == "clear" || page.number == 2) && errors.length == rvErr,
+          "去る" + rvFlee + " " + mainScreen.state + " page" + page.number);
     // WAVE3(Lv.1)は第二形態がなく、第一形態を倒すとそのまま去る
     setup(3, { gun:3 }, ["gun",null,null], 6);
     page.change(1);

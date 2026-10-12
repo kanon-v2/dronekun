@@ -17,7 +17,6 @@
 //  協力プレイ：ホストが動かし、ワープの出発点・長さは coop.packEnemy の b の12～14番目で届く
 //------------------------------------------------------------------------------
 const RIVAL_WAVES    = [3,8,13,18];     //出てくるWAVE(何番目かが強さの段階 Lv.1～4)
-const RIVAL_AT       = 0.35;            //WAVEの雑魚敵がこの割合だけ出たところで現れる
 //登場の演出(時が止まり、光が集まって組み上がり、名乗る。この間は周りが止まる)
 const RIVAL_INTRO_T  = 210;             //登場の演出の長さ(フレーム)
 const RIVAL_INTRO_STOP = 24;            //はじめの「時が止まる」(色の反転した輪が広がり、色が抜ける)
@@ -85,8 +84,13 @@ const RIVAL2_FROM     = 1;          //第二形態がある段階(lv。1 = WAVE8
 const RIVAL2_HP_MUL   = 1.2;        //第二形態の体力(第一形態の体力に掛ける)
 const RIVAL2_TINT     = "70,35,125";    //第二形態と分身の体の色(紫がかった紺)
 const RIVAL2_GLOW     = "200,130,255";  //第二形態のまわりの光の色
-const RIVAL2_AWAKEN_T = 200;        //目覚めの演出の長さ(この間は時が止まる)
-const RIVAL2_SPLIT_AT = 60;         //目覚めの演出で、分身が回り出して体力が満ち始める時(ここから名乗る)
+const RIVAL2_AWAKEN_T = 300;        //目覚めの演出の長さ(この間は時が止まる)。撃破 → 鼓動 → 時間停止と力の集まり → 覚醒 → 名乗り
+const RIVAL2_DOWN_T   = 64;         //目覚めの演出：撃たれて吹き飛び、火花を散らして倒れている(曲も止まる)
+const RIVAL2_BEATS    = [76,100];   //目覚めの演出：鼓動(倒れた体から紫の輪が広がる)
+const RIVAL2_STOP_AT  = 118;        //目覚めの演出：時が止まる(色が抜ける)。ここから体が起き上がり、光が集まる
+const RIVAL2_SPLIT_AT = 178;        //目覚めの演出：覚醒(閃光・色が変わる・分身が回り出して体力が満ち始める。ここから名乗る)
+const RIVAL2_FALL     = 46;         //目覚めの演出：吹き飛んで落ちる距離(px)
+const RIVAL2_DOWN_LINE = "ぐっ……！";  //目覚めの演出：倒れたときのせりふ
 const RIVAL2_FILL_T   = 80;         //体力が満ちる長さ
 const RIVAL2_PATTERNS = [null,      //攻撃の順番(Lv.2～4)。split 分身の陣・cross 分身突進・phantom 幻影包囲(分身が残る)・dash 突進
     ["split","waltz","cross","rewind","phantom","split","dash"],      //waltz 分身の輪舞・rewind 時戻し
@@ -229,7 +233,6 @@ RivalWarp.prototype = {
 BOSS_PARTS.chronoClone = { name:"分身", r:RIVAL_R };
 
 var rival = {
-    at:0,           //このWAVEで、雑魚敵がこの数だけ出たら現れる
     done:true,      //このWAVEではもう現れた(現れないWAVEも true)
     musicOn:false,  //ライバルの曲にしている
 
@@ -240,7 +243,6 @@ var rival = {
     //WAVEの始め(mainScreen.enter から。雑魚敵の数が決まったあと)
     reset:function(){
         this.done = this.level() < 0 || bossDebug.trial;
-        this.at = bossDebug.rival ? 0 : Math.max(1, Math.floor(mainScreen.toSpawn*RIVAL_AT));
         this.musicOn = false;
     },
     //戦っているライバル(撃退されて去っていくところは含まない)
@@ -251,10 +253,11 @@ var rival = {
         }
         return null;
     },
-    //WAVEの途中で現れる(mainScreen.spawn から)。いる間は true(雑魚敵を出さない)
+    //WAVEの最後(雑魚敵が出尽くして、全部倒したところ)で現れる(mainScreen.spawn から)。いる間は true
+    //撃退して去るとWAVEクリア
     check:function(){
         if(this.alive()) return true;
-        if(this.done || mainScreen.spawned < this.at) return false;
+        if(this.done || mainScreen.toSpawn > 0 || enemies.length > 0) return false;
         this.done = true;
         enemies.push(this.make());
         return true;
@@ -334,9 +337,7 @@ var rival = {
         //置いたままの弾は消える
         enemyShots = enemyShots.filter(function(b){ return b.held != _e.id; });
         mainScreen.shake = 0;
-        fx.flare(_e.x, _e.y, 70, RIVAL2_GLOW, 18);
-        sound.play("timeStop");
-        sound.timeWarp(true);
+        //見た目と音は rival.awakenFx(協力プレイのゲストも、届いた mode・count から同じものを出す)
         return true;
     },
     awakenAge:function(_e){
@@ -345,14 +346,8 @@ var rival = {
     //目覚めの1コマ(introStep から。時が止まっている)
     awakenStep:function(_e){
         var age = this.awakenAge(_e);
-        if(age == RIVAL2_SPLIT_AT){
-            fx.ring(_e.x, _e.y, 110, RIVAL2_GLOW, 26, 4);
-            fx.shake(10);
-            sound.play("warpOut");
-        }
         //体力が満ちていく(上の体力ゲージで見える)
         if(age >= RIVAL2_SPLIT_AT) _e.hp = _e.maxHp*Math.min(1, (age - RIVAL2_SPLIT_AT)/RIVAL2_FILL_T);
-        if(age == RIVAL2_AWAKEN_T - RIVAL_INTRO_OUT) sound.play("timeResume");
         if(--_e.count <= 0){
             _e.form = 2;
             _e.hp = _e.maxHp;
@@ -361,16 +356,93 @@ var rival = {
             _e.timer = 50;
             _e.cycle = 0;
             this.flags(_e);
-            sound.timeWarp(false);
-            //曲を少し速く、はじめから
-            sound.music(null);
-            sound.music("rival", TRACKS.rival.bpm + 16);
             mainScreen.guard = Math.max(mainScreen.guard, RIVAL_INTRO_GUARD);
         }
     },
     //第二形態の見た目か(目覚めの途中で、分かれたところから)
     second:function(_e){
         return _e.form == 2 || (_e.mode == "awaken" && this.awakenAge(_e) >= RIVAL2_SPLIT_AT);
+    },
+    //目覚めの演出の体のずれ・傾き(撃たれて吹き飛んで倒れ、時が止まってから起き上がる)
+    awakenPose:function(_e){
+        var age = this.awakenAge(_e), D = Math.max(0, Math.min(RIVAL2_FALL, CH - 40 - _e.y));     //画面の下から落ちないように
+        if(age >= RIVAL2_SPLIT_AT) return { dx:0, dy:0, rot:0 };
+        if(age < RIVAL2_STOP_AT){
+            //跳ね上がってから落ち、そのあとは倒れたまま
+            var u = Math.min(1, age/28);
+            return { dx:-14*u, dy:D*u - 34*Math.sin(Math.PI*u), rot:-1.2*Math.min(1, age/18) };
+        }
+        //起き上がる(終わりに近づくほど震える)
+        var v = (age - RIVAL2_STOP_AT)/(RIVAL2_SPLIT_AT - RIVAL2_STOP_AT), e = v*v*(3 - 2*v), j = 4*v*v;
+        return { dx:-14*(1 - e) + (Math.random() - 0.5)*j, dy:D*(1 - e) + (Math.random() - 0.5)*j, rot:-1.2*(1 - e) };
+    },
+    //目覚めの演出の見た目と音(watch から描画のたびに。ホストもゲストも、届いた mode・count から同じものを出す。過ぎた時を1度ずつ)
+    awakenFx:function(_e){
+        if(_e.mode != "awaken"){
+            //時が動き出した：曲を少し速く、はじめから
+            if(_e.awLast != null && _e.form == 2){
+                sound.music(null);
+                sound.music("rival", TRACKS.rival.bpm + 16);
+            }
+            _e.awLast = null;
+            return;
+        }
+        var age = this.awakenAge(_e), last = _e.awLast == null ? -1 : _e.awLast;
+        _e.awLast = age;
+        var at = function(_t){ return last < _t && age >= _t; };
+        var P = this.awakenPose(_e), x = _e.x + P.dx, y = _e.y + P.dy;
+        //撃破：閃光・大きな揺れ・爆発。曲が止まる
+        if(at(0)){
+            sound.stopMusic();
+            sound.play("explode");
+            sound.play("destroyed");
+            fx.flare(_e.x, _e.y, 110, "255,255,255", 16);
+            fx.ring(_e.x, _e.y, 80, "255,230,200", 18, 5);
+            fx.sparks(_e.x, _e.y, 26, "255,200,120", 9, 3);
+            fx.shake(16);
+        }
+        //倒れている間：火花と煙
+        if(age > last && age > 20 && age < RIVAL2_STOP_AT && age % 6 == 0){
+            fx.sparks(x + (Math.random() - 0.5)*24, y + (Math.random() - 0.5)*16, 3, "255,170,100", 3, 2);
+            if(age % 12 == 0) effects.push({ smoke:true, x:x + (Math.random() - 0.5)*16, y:y, vx:(Math.random() - 0.5)*0.5, vy:-0.7,
+                                             R0:5, R1:20, life:40, maxLife:40, color:"55,50,70" });
+        }
+        if(at(RIVAL2_DOWN_T - 24)) this.say(_e, RIVAL2_DOWN_LINE);
+        //鼓動：倒れた体から紫の輪が広がる
+        for(var i=0; i<RIVAL2_BEATS.length; i++){
+            if(!at(RIVAL2_BEATS[i])) continue;
+            sound.play("heartbeat");
+            fx.ring(x, y, 60 + 30*i, RIVAL2_GLOW, 22, 3);
+            fx.flare(x, y, 40 + 20*i, RIVAL2_GLOW, 12);
+            fx.shake(3 + 3*i);
+        }
+        //時が止まる：起き上がり、光が吸い込まれるように集まる
+        if(at(RIVAL2_STOP_AT)){
+            _e.sayT = Math.min(_e.sayT, 8);       //倒れたときのせりふは消す
+            sound.play("timeStop");
+            sound.play("beamCharge");
+        }
+        if(age >= RIVAL2_STOP_AT && age < RIVAL2_SPLIT_AT){
+            var k = (age - RIVAL2_STOP_AT)/(RIVAL2_SPLIT_AT - RIVAL2_STOP_AT);
+            mainScreen.shake = Math.max(mainScreen.shake, 1 + 4*k);
+            //進んだコマの数だけ(画面のリフレッシュレートによらない)
+            for(var n=Math.min(4, age - Math.max(last, RIVAL2_STOP_AT - 1)); n>0; n--){
+                var a = Math.random()*Math.PI*2, R = 160 + Math.random()*80, sp = 6 + 8*k, L = Math.round(R/sp);
+                effects.push({ x:x + Math.cos(a)*R, y:y + Math.sin(a)*R, vx:-Math.cos(a)*sp, vy:-Math.sin(a)*sp,
+                               life:L, maxLife:L, size:2 + 2*k, glow:Math.random() < 0.6 ? RIVAL2_GLOW : WARP_COLOR });
+            }
+        }
+        //覚醒：閃光・二重の輪・分身が飛び出す
+        if(at(RIVAL2_SPLIT_AT)){
+            sound.play("bossImpact");
+            sound.play("warpOut");
+            fx.flare(_e.x, _e.y, 140, RIVAL2_GLOW, 22);
+            fx.ring(_e.x, _e.y, 130, RIVAL2_GLOW, 26, 6);
+            fx.ring(_e.x, _e.y, 220, "255,255,255", 34, 3);
+            fx.sparks(_e.x, _e.y, 30, RIVAL2_GLOW, 10, 3);
+            fx.shake(14);
+        }
+        if(at(RIVAL2_AWAKEN_T - RIVAL_INTRO_OUT)) sound.play("timeResume");
     },
     //協力プレイのゲスト：届いた種類からライバルを作る(coop.guestSync から)
     guestInit:function(_e){
@@ -914,6 +986,7 @@ var rival = {
         if(_e.mode == "warp" && _e._pm != "warp") _e.arrT = 0;
         if(_e._pm == "warp" && _e.mode != "warp") _e.arrT = 18;     //組み上がった直後の光
         _e._pm = _e.mode; _e._pc = _e.count;
+        this.awakenFx(_e);
         //せりふ：現れたとき・本気になったとき・去るとき
         if(!_e.said0 && _e.mode != "warp" && !(_e.mode == "intro" && this.introAge(_e) < RIVAL_INTRO_ARRIVE + 10)){ _e.said0 = true; this.say(_e, RIVAL_LINES[lv][0]); }
         if(!_e.said1 && _e.enraged && _e.mode != "flee" && _e.form != 2){ _e.said1 = true; this.say(_e, RIVAL_LINES[lv][1]); }
@@ -949,10 +1022,12 @@ var rival = {
                 ctx.rotate(0.35*Math.min(1, (RIVAL_FLEE_T - _e.count)/20));
                 ctx.translate((Math.random() - 0.5)*2, 0);
             }
-            //目覚める前：体力が0になって傾き、ときどき明滅する
+            //目覚める前：撃たれて吹き飛んで倒れ、明滅する → 時が止まってから起き上がる
             if(_e.mode == "awaken" && !this.second(_e)){
-                ctx.rotate(0.4*Math.min(1, this.awakenAge(_e)/20));
-                if(Math.random() < 0.15) ctx.globalAlpha = 0.5;
+                var P = this.awakenPose(_e);
+                ctx.translate(P.dx, P.dy);
+                ctx.rotate(P.rot);
+                if(this.awakenAge(_e) < RIVAL2_STOP_AT && Math.random() < 0.2) ctx.globalAlpha = 0.5;
             }
             //よろけている間は回る
             if(_e.mode == "stagger") ctx.rotate(Math.sin(_e.count*0.5)*0.4);
@@ -1084,17 +1159,23 @@ var rival = {
         var e = this.introOf();
         if(!e || !e.wfx) return;
         var aw = e.mode == "awaken", S = this.stage(e), age = S.age;
-        var p = Math.max(0, Math.min(1, age/(RIVAL_INTRO_STOP*0.6), e.count/RIVAL_INTRO_OUT));
+        //目覚めは、撃破と鼓動のあとで時が止まる(それまでは少し暗くなるだけ)
+        var t0 = aw ? RIVAL2_STOP_AT : 0, st = age - t0;
+        var p = Math.max(0, Math.min(1, st/(RIVAL_INTRO_STOP*0.6), e.count/RIVAL_INTRO_OUT));
         ctx.save();
+        if(aw && st < 0){
+            ctx.fillStyle = "rgba(10,5,25," + (0.35*Math.min(1, age/30)) + ")";
+            ctx.fillRect(-40,-40,CW + 80,CH + 80);
+        }
         ctx.globalCompositeOperation = "saturation";
         ctx.fillStyle = "rgba(128,128,128," + (0.92*p) + ")";
         ctx.fillRect(-40,-40,CW + 80,CH + 80);
         ctx.globalCompositeOperation = "source-over";
-        ctx.fillStyle = "rgba(15,25,55," + (0.4*p) + ")";
+        ctx.fillStyle = aw ? "rgba(25,10,50," + (0.5*p) + ")" : "rgba(15,25,55," + (0.4*p) + ")";
         ctx.fillRect(-40,-40,CW + 80,CH + 80);
         //時が止まる瞬間：ライバルのところから、色の反転した輪が広がる
-        if(age < RIVAL_INTRO_STOP){
-            var u = age/RIVAL_INTRO_STOP, r = 20 + (1 - (1 - u)*(1 - u))*1100;
+        if(st >= 0 && st < RIVAL_INTRO_STOP){
+            var u = st/RIVAL_INTRO_STOP, r = 20 + (1 - (1 - u)*(1 - u))*1100;
             ctx.globalCompositeOperation = "difference";
             ctx.fillStyle = "rgba(255,255,255," + (0.9*(1 - u)) + ")";
             ctx.beginPath(); ctx.arc(e.x,e.y,r,0,Math.PI*2); ctx.fill();
@@ -1110,6 +1191,8 @@ var rival = {
             ctx.lineWidth = 1;
             e.wfx.draw(e.wx0, e.wy0, e.x, e.y, t);
         }
+        //目覚め：時が止まってから、体の後ろに逆回りの時計の紋が浮かび、覚醒で広がって消える
+        if(aw && st >= 0) this.drawClock(e, age);
         //目覚め：分身が体から分かれて回り、広がってから体に重なる
         if(aw && age >= S.at){
             var n = RIVAL2_CLONES[e.lv || 0] + 1, u = (age - S.at)/(S.T - S.at);
@@ -1136,6 +1219,46 @@ var rival = {
             if(g > 0 && g <= 1) e.wfx.drawGlow(e.x, e.y, 0.9*g);
         }
     },
+    //目覚めの時計の紋(translateしていない状態)：目盛りの輪と、逆回りに速くなっていく2本の針。覚醒で広がって消える
+    drawClock:function(_e,_age){
+        var g = (_age - RIVAL2_STOP_AT)/(RIVAL2_SPLIT_AT - RIVAL2_STOP_AT), R = 78, a = Math.min(1, g*2);
+        if(g > 1){
+            var o = (_age - RIVAL2_SPLIT_AT)/24;
+            if(o >= 1) return;
+            R = 78 + 170*(1 - (1 - o)*(1 - o));
+            a = 1 - o;
+        }
+        var spin = -Math.min(1, g)*Math.min(1, g)*30;     //逆回り(時を戻す)。だんだん速く
+        ctx.save();
+        ctx.translate(_e.x, _e.y);
+        ctx.globalAlpha = 0.85*a;
+        ctx.strokeStyle = "rgb(" + RIVAL2_GLOW + ")";
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0,0,R,0,Math.PI*2); ctx.stroke();
+        ctx.globalAlpha = 0.4*a;
+        ctx.beginPath(); ctx.arc(0,0,R*0.82,0,Math.PI*2); ctx.stroke();
+        ctx.globalAlpha = 0.85*a;
+        for(var i=0; i<12; i++){
+            var t = i*Math.PI/6 + spin*0.05, l = i % 3 == 0 ? 12 : 6;
+            ctx.lineWidth = i % 3 == 0 ? 3 : 2;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(t)*(R - l), Math.sin(t)*(R - l));
+            ctx.lineTo(Math.cos(t)*R, Math.sin(t)*R);
+            ctx.stroke();
+        }
+        //針(長針は短針の12倍の速さ)
+        if(g <= 1){
+            ctx.lineCap = "round";
+            ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(Math.cos(spin - Math.PI/2)*R*0.7, Math.sin(spin - Math.PI/2)*R*0.7); ctx.stroke();
+            ctx.lineWidth = 5;
+            var h = spin/12 - Math.PI/2;
+            ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(Math.cos(h)*R*0.45, Math.sin(h)*R*0.45); ctx.stroke();
+            ctx.lineCap = "butt";
+        }
+        ctx.restore();
+        ctx.lineWidth = 1;
+    },
     //登場・目覚めの演出の文字(揺れ・拡大の外。mainScreen.draw から)：上下の黒い帯・名前と異名・時が止まった案内
     drawUi:function(){
         var e = this.introOf();
@@ -1143,10 +1266,19 @@ var rival = {
         var aw = e.mode == "awaken", S = this.stage(e), age = S.age, lv = e.lv || 0, N = aw ? RIVAL2 : RIVAL;
         ctx.save();
         ctx.textBaseline = "middle";
-        //画面のまんなかの案内(時が止まる・動き出す)
-        var msg = age < S.at ? (aw ? "時間停止 ―― まだ終わっていない！？" : "時間停止 ―― 何かが来る！") : e.count <= RIVAL_INTRO_OUT ? "時は動き出す" : "";
+        //目覚め：撃破の瞬間と覚醒の瞬間に、画面が白く光る
+        if(aw){
+            var w = age < 14 ? 0.75*(1 - age/14) : age >= S.at && age < S.at + 22 ? 0.95*(1 - (age - S.at)/22) : 0;
+            if(w > 0){
+                ctx.fillStyle = age < 14 ? "rgba(255,255,255," + w + ")" : "rgba(235,215,255," + w + ")";
+                ctx.fillRect(0, 0, CW, CH);
+            }
+        }
+        //画面のまんなかの案内(時が止まる・動き出す)。目覚めは、時が止まってから
+        var st = age - (aw ? RIVAL2_STOP_AT : 0);
+        var msg = st >= 0 && age < S.at ? (aw ? "時間停止 ―― まだ終わっていない！？" : "時間停止 ―― 何かが来る！") : e.count <= RIVAL_INTRO_OUT ? "時は動き出す" : "";
         if(msg){
-            ctx.globalAlpha = Math.min(1, age/10, e.count/8);
+            ctx.globalAlpha = Math.min(1, Math.max(0, st)/10, e.count/8);
             ctx.fillStyle = "rgba(10,20,40,0.6)";
             ctx.fillRect(0, CH/2 - 150, CW, 40);
             ctx.textAlign = "center";
@@ -1163,7 +1295,7 @@ var rival = {
             ctx.fillRect(0, 0, CW, 40*k);
             ctx.fillRect(0, CH - 40*k, CW, 40*k);
             var ease = 1 - Math.pow(1 - Math.min(1, a/28), 3);
-            var x = CW + 320 - (320 + GS*2)*ease, y = CH - 150;
+            var x = CW + 320 - (320 + GS*2)*ease, y = e.y > CH*0.55 ? 235 : CH - 150;     //ライバルが下のほうにいるときは、重ならないよう上に
             ctx.globalAlpha = Math.min(1, e.count/20);
             ctx.textAlign = "right";
             ctx.font = "bold 16px sans-serif";
