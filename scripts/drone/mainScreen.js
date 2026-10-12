@@ -73,7 +73,7 @@ const JUST_GOOD = { slow:0.45, max:8, yaruki:10, guard:36 };   //JUST の見返�
 const JUST_COOP_SLOW  = 40;     //協力プレイで、敵と弾がゆっくりになる時間(ふたりの画面で同じ。ふつうの衝撃波は BLAST_SLOWMO)
 const JUST_COLOR      = "90,220,255";
 //ジャスト・カウンター：体当たりしてくる敵がぶつかる直前に衝撃波を出すとジャストになり、その敵を敵の群れへ弾き返す
-const COUNTER_TYPES   = ["dasher","mdrone","queen","kai"];    //弾き返せる敵(突進・人間のドローン・女王蜂とドローン君改の突進)
+const COUNTER_TYPES   = ["dasher","mdrone","queen","kai","chrono"];    //弾き返せる敵(突進・人間のドローン・女王蜂とドローン君改・ライバルの突進)
 const COUNTER_SPEED   = 11;     //弾き返した突進の速さ(突進そのものは5)
 const COUNTER_TURN    = 0.08;   //狙った敵へ曲がる強さ(1フレームのラジアン)
 const COUNTER_RANGE   = 700;    //狙う敵を探す距離(いなければ来た向きへ返す)
@@ -412,6 +412,8 @@ var mainScreen = {
             this.toSpawn = game.wave >= FINAL_WAVE ? 0 : Math.floor(this.toSpawn/3);
             if(!this.isKaiWave()) sound.play("warning");   //ドローン君改は静かな鼓動から始まる
         }
+        if(bossDebug.rival) this.toSpawn = 0;     //デバッグのライバル戦：雑魚敵なしで、すぐライバルが現れる
+        rival.reset();          //中ボス(ライバル)が現れるWAVEか・いつ現れるか(rival.js)
         this.rares = 0;
         this.rareMsgTime = 0;
         this.wreck = null;      //崩れ落ちる天蓋母艦の船体
@@ -590,6 +592,7 @@ var mainScreen = {
         if(this.droneIn > 0) this.droneIn--;
         if(this.beatT > 0) this.beatT--;
         if(this.kaiDark > 0) this.kaiDark--;
+        rival.music();      //ライバルがいる間はライバルの曲(rival.js)
     },
     //ボスの登場の演出中か(ドローン君を動かさない)
     cinematic:function(){
@@ -610,6 +613,8 @@ var mainScreen = {
             this.toSpawn = 1;
             if(enemies.length >= TRIAL_MAX_ENEMIES) return;
         }
+        //中ボス(ライバル)：WAVEの途中で現れる。いる間は雑魚敵を出さない(rival.js)
+        if(rival.check()) return;
         if(this.toSpawn <= 0) return;
         this.spawnTimer--;
         if(this.spawnTimer > 0) return;
@@ -724,7 +729,7 @@ var mainScreen = {
     //ジャスト・カウンターで弾き返せる敵か(突進は飛び出している間だけ。女王蜂・ドローン君改も突進している間だけ)
     canCounter:function(_e){
         if(_e.dead || _e.countered || _e.rival || COUNTER_TYPES.indexOf(_e.type) < 0) return false;
-        if(_e.type == "queen" || _e.type == "kai") return _e.mode == "dash";
+        if(_e.type == "queen" || _e.type == "kai" || _e.type == "chrono") return _e.mode == "dash";
         return !(_e.type == "dasher" && _e.tell != TELL.dash);
     },
     //構えている(衝撃波に耐える)突進か
@@ -1593,7 +1598,7 @@ var mainScreen = {
             ctx.textBaseline = "middle";
             ctx.font = "bold 16px sans-serif";
             ctx.fillStyle = "#b8860b";
-            ctx.fillText("★ " + this.rareMsg,CW/2,this.bossWave ? 100 : 70);
+            ctx.fillText("★ " + this.rareMsg,CW/2,(this.bossWave || rival.alive()) ? 100 : 70);
             ctx.globalAlpha = 1;
             ctx.fillStyle = "#000";
         }

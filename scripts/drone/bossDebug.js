@@ -25,6 +25,7 @@ var bossDebug = {
     gear:1,         //装備の強さ(BOSS_DEBUG_GEAR の番号)
     god:false,      //無敵
     warp:false,     //時止めワープ(試作の能力。timeStop.js)。ボス戦・武器試用の両方で働く
+    rival:false,    //ライバル(中ボス。rival.js)と戦っている(雑魚敵なしで、すぐ現れる)
     wave:5,
     keep:null,      //始める前の進行状況(終わったら戻す)
     msg:"",
@@ -98,7 +99,9 @@ var bossDebug = {
     //終わった(_result："clear" 撃破 / "over" 撃墜 / "quit" 中断)
     finish:function(_result){
         var sec = Math.round(this.startTime/60);
+        var wasRival = this.rival;
         this.active = false;
+        this.rival = false;
         timeStop.reset();   //時が止まったまま戻ってきたとき
         save.restore(this.keep);
         if(this.trial){
@@ -106,7 +109,7 @@ var bossDebug = {
             this.picking = true;
             this.msg = "前回：" + this.armsText() + "　毎秒ダメージ " + this.dps(false).toFixed(1) + "・撃破 " + this.kills + "（" + sec + "秒）";
         }else{
-            this.msg = _result == "clear" ? "WAVE " + this.wave + " 撃破！（" + sec + "秒）"
+            this.msg = _result == "clear" ? (wasRival ? "ライバル WAVE " + this.wave + " 撃退！（" : "WAVE " + this.wave + " 撃破！（") + sec + "秒）"
                      : _result == "over" ? "WAVE " + this.wave + " 撃墜されました（" + sec + "秒）" : "中断しました";
         }
         this.menu = true;
@@ -146,14 +149,20 @@ var bossDebug = {
     //メニュー：ボスの行を押す
     rows:function(){
         var out = [];
-        for(var i=0; i<BOSS_DEBUG_WAVES.length; i++) out.push(new drawRect(CW/2, GS*5.4 + i*GS*1.7, GS*16, GS*1.4));
+        for(var i=0; i<BOSS_DEBUG_WAVES.length; i++) out.push(new drawRect(CW/2, GS*5.4 + i*GS*1.45, GS*16, GS*1.25));
+        return out;
+    },
+    //ボスの下の段：ライバル(中ボス。rival.js)と戦うWAVE
+    rivalRows:function(){
+        var out = [];
+        for(var i=0; i<RIVAL_WAVES.length; i++) out.push(new drawRect(CW/2 + (i - 1.5)*GS*4.1, GS*5.4 + BOSS_DEBUG_WAVES.length*GS*1.45, GS*3.9, GS*1.25));
         return out;
     },
     //メニューの下のボタン：ストーリー確認・武器試用・装備・無敵・閉じる・(下の段に)時止めワープ
     tools:function(){
         var out = [];
-        for(var i=0; i<5; i++) out.push(new drawRect(CW/2 + (i - 2)*116, GS*12.5, 110, 36));
-        out.push(new drawRect(CW/2, GS*13.8, 180, 32));
+        for(var i=0; i<5; i++) out.push(new drawRect(CW/2 + (i - 2)*116, GS*12.8, 110, 36));
+        out.push(new drawRect(CW/2, GS*14.1, 180, 32));
         return out;
     },
     //武器試用：装備の一覧(WEAPON_IDS の順)
@@ -193,6 +202,10 @@ var bossDebug = {
         var r = this.rows();
         for(var i=0; i<r.length; i++){
             if(r[i].clicked()){ this.start(BOSS_DEBUG_WAVES[i]); return; }
+        }
+        var rr = this.rivalRows();
+        for(var i=0; i<rr.length; i++){
+            if(rr[i].clicked()){ this.rival = true; this.start(RIVAL_WAVES[i]); return; }
         }
         var t = this.tools();
         if(t[0].clicked()){ this.startStory(); return; }
@@ -241,6 +254,9 @@ var bossDebug = {
                 ctx.font = "bold 17px sans-serif";
                 r[i].button("ボス戦 WAVE " + w + "　" + BOSS_TYPES[bossTypeFor(w)].name);
             }
+            var rr = this.rivalRows();
+            ctx.font = "bold 14px sans-serif";
+            for(var i=0; i<rr.length; i++) rr[i].button("ライバル W" + RIVAL_WAVES[i]);
             var t = this.tools();
             var labels = ["ストーリー確認", "武器試用", "装備「" + BOSS_DEBUG_GEAR[this.gear] + "」", "無敵「" + (this.god ? "オン" : "オフ") + "」", "閉じる",
                           "時止めワープ「" + (this.warp ? "オン" : "オフ") + "」"];
@@ -301,7 +317,7 @@ var bossDebug = {
             ctx.font = "bold 14px sans-serif";
             ctx.fillText("毎秒ダメージ " + this.dps(true).toFixed(1) + "（直近" + TRIAL_DPS_SEC + "秒）　撃破 " + this.kills, CW/2, 42);
         }else{
-            ctx.fillText("DEBUG ボス戦　装備「" + BOSS_DEBUG_GEAR[this.gear] + "」" + (this.god ? "　無敵" : "") + (this.warp ? "　時止めワープ" : "") + "　右下の「DEBUG：戻る」で戻る", CW/2, 24);
+            ctx.fillText((this.rival ? "DEBUG ライバル戦" : "DEBUG ボス戦") + "　装備「" + BOSS_DEBUG_GEAR[this.gear] + "」" + (this.god ? "　無敵" : "") + (this.warp ? "　時止めワープ" : "") + "　右下の「DEBUG：戻る」で戻る", CW/2, 24);
         }
         ctx.fillStyle = "#000";
     }

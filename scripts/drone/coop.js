@@ -10,10 +10,10 @@
 //  ・被弾の判定は、それぞれが自分のドローン君について行う
 //  ・強化・装備・パーツはそれぞれ別。敵の体力は2倍
 //------------------------------------------------------------------------------
-const COOP_TYPES  = ["bug","dasher","shooter","tank","spinner","bomber","kin","mdrone","heli","panzer","goldbug","carrier","queen","fortress","kai","canopy","pod"];
+const COOP_TYPES  = ["bug","dasher","shooter","tank","spinner","bomber","kin","mdrone","heli","panzer","goldbug","carrier","queen","fortress","kai","canopy","pod","chrono"];
 const COOP_SHOTS  = ["normal","small","big","water","missile","dragon"];
 const COOP_PICKS  = ["part","yaruki","capsule"];
-const COOP_MODES  = ["enter","idle","aim","dash","spiral","triple","laserAim","laser","feint","stagger","down","revive","rain","wave","summon"];
+const COOP_MODES  = ["enter","idle","aim","dash","spiral","triple","laserAim","laser","feint","stagger","down","revive","rain","wave","summon","warp","shoot","hold","flee"];
 const COOP_STATES = ["start","play","clear","over"];
 const COOP_LIMIT  = 12000;  //1回に送る状態の大きさの上限(バイト)。超えるときはゲストから遠いものから削る
 const COOP_HP_MUL = 2;      //協力プレイでの敵の体力の倍率
@@ -531,7 +531,8 @@ var coop = {
             _s.b = [_e.id, COOP_MODES.indexOf(_e.mode), r((_e.angle || 0)*100), _e.count || 0, _e.phase || 0,
                     r((_e.bladeA || 0)*100), _e.circleT || 0, r(aimA*100), _e.fake ? 1 : 0,     //女王蜂のフェイントの印(合図を出さない)
                     r((_e.form || 1)*2), _e.beams || 1,      //ドローン君改の形態(2倍。3は復活の途中)・レーザーの本数
-                    _e.broken || 0];                        //天蓋母艦の壊された砲台の印
+                    _e.broken || 0,                         //天蓋母艦の壊された砲台の印
+                    r(_e.wx0 || 0), r(_e.wy0 || 0), _e.wt || 0];    //ライバルのワープの出発点・長さ(rival.js)
             if(_e.mines){ _s.bm = []; for(var i=0; i<_e.mines.length; i++) _s.bm.push(r(_e.mines[i].x), r(_e.mines[i].y), _e.mines[i].t); }
             if(_e.strikes){ _s.bk = []; for(var i=0; i<_e.strikes.length; i++) _s.bk.push(r(_e.strikes[i].x), r(_e.strikes[i].y), _e.strikes[i].t); }
         }
@@ -860,6 +861,7 @@ var coop = {
                       boss:!!BOSS_TYPES[type], rare:!!RARE_TYPES[type], name:(RARE_TYPES[type] || BOSS_TYPES[type] || {}).name };
                 if(type == "kin"){ e.look = new DroneLook(); }
                 if(type == "kai"){ e.look = new DroneLook(); e.look.tint = "190,20,30"; e.mines = []; e.strikes = []; }
+                if(type == "chrono") rival.guestInit(e);
             }else{
                 e.vx = (x - e.x)/dt*0.5 + e.vx*0.5;
                 e.vy = (y - e.y)/dt*0.5 + e.vy*0.5;
@@ -902,6 +904,11 @@ var coop = {
                 b.form = (S.b[9] || 2)/2; b.beams = S.b[10] || 1;
                 b.broken = S.b[11] || 0;
                 b.harmless = b.mode == "down" || b.mode == "revive";    //倒れて復活している間のドローン君改
+                if(b.type == "chrono"){
+                    //ライバル：ワープの出発点・長さ。ワープ中・去るところは当たらず、狙われない
+                    b.wx0 = S.b[12]; b.wy0 = S.b[13]; b.wt = S.b[14];
+                    rival.flags(b);
+                }
                 if(b.type == "kai"){
                     b.mines = []; b.strikes = [];
                     var bm = S.bm || [], bk = S.bk || [];
@@ -916,6 +923,7 @@ var coop = {
             if(seen[e.id]) continue;
             e.dead = true;
             if(e.type == "canopy") special.canopyWreck(e);     //天蓋母艦の船体が崩れ落ちる
+            if(e.type == "chrono") continue;    //ライバルは倒れずにワープで去る(rival.js)
             if(Math.hypot(e.x - drone.X, e.y - drone.Y) < 350){
                 killBlast(e.x,e.y,e.r,e.type == "goldbug" ? "255,215,0" : null);
                 sound.play("kill");

@@ -26,6 +26,7 @@ window.requestAnimationFrame = function(){};   //ループはこのページで�
 <script src="scripts/drone/battleBg.js"></script>
 <script src="scripts/drone/bossDebug.js"></script>
 <script src="scripts/drone/timeStop.js"></script>
+<script src="scripts/drone/rival.js"></script>
 <script src="tools/fake-peer.js"></script>
 <script src="scripts/drone/coop.js"></script>
 <script src="scripts/drone/versus.js"></script>
@@ -64,6 +65,10 @@ function autoPlay(){
             if(cd){ wantCounter = false; mainScreen.counter(cd); }
         }
         if(coop.role == "guest" && enemies.some(function(e){ return e.countered; })) extra.cSeen++;
+        //ライバル(rival.js)：ゲストにも見えて、ワープの出発点・長さが届く
+        var rv = enemies.filter(function(e){ return e.type == "chrono"; })[0];
+        if(rv && coop.role == "guest" && rv.mid && rv.look) extra.rvSeen++;
+        if(rv && coop.role == "guest" && rv.mode == "warp" && rv.wt > 0 && rv.harmless) extra.rvWarp++;
         if(wantJust && mainScreen.state == "play"){ wantJust = false; enemyShots.push({ x:drone.X - 30, y:drone.Y, vx:4, vy:0, r:5 }); mainScreen.yaruki = YARUKI_MAX; mainScreen.blast(); }
         if(shootPartner && coop.partner && frames % 15 == 0){
             var a = Math.random()*Math.PI*2, px = coop.partner.pos.X, py = coop.partner.pos.Y;
@@ -107,7 +112,7 @@ arms.pullWell = function(_x,_y,_pull){ if(coop.role == "host" && _pull == 1.0) e
 var readEvents0 = coop.readEvents, inEvents = false;
 coop.readEvents = function(){ var s0 = mainScreen.slowmo; inEvents = true; var ret = readEvents0.apply(this, arguments); inEvents = false; if(coop.role == "host" && mainScreen.slowmo > s0 && mainScreen.slowmo == JUST_COOP_SLOW) extra.justSlow++; return ret; };
 //相方のジャスト・カウンターが届いて、ホストが突進を弾き返した回数(extra.counter)と、ゲストに弾き返した突進が見えた回数(extra.cSeen)
-extra.counter = 0; extra.cSeen = 0;
+extra.counter = 0; extra.cSeen = 0; extra.rvSeen = 0; extra.rvWarp = 0;
 var counter0 = mainScreen.counter;
 mainScreen.counter = function(_e){ if(coop.role == "host" && inEvents && !_e.countered) extra.counter++; return counter0.apply(this, arguments); };
 //対戦で与えたダメージの内訳(装備ごと。バランス調整用)
@@ -150,6 +155,7 @@ window.addEventListener("message", function(ev){
     //ジャスト・カウンター：ホストが止まった突進を出し、ゲストがそれを弾き返す
     if(m.cmd == "dasher" && page.number == 1){ var nd = makeEnemy("dasher"); nd.x = 480; nd.y = 60; nd.timer = 99999; enemies.push(nd); }
     if(m.cmd == "counter") wantCounter = true;
+    if(m.cmd == "rival" && page.number == 1){ enemies.push(rival.make()); }
     if(m.cmd == "clearSrc") vsSrc = {};
     if(m.cmd == "forfeit" && versus.phase == "fight") versus.hp = 0;
     if(m.cmd == "join"){ coop.init(); page.change(6); coop.joinRoom(m.code); }

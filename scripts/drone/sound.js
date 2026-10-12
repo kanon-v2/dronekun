@@ -116,6 +116,25 @@ const TRACKS = {
             67,0,71,0,74,0,77,79
         ]
     },
+    //ライバル(中ボス。rival.js)：Em - C - D - B(速く、駆け上がるメロディ。せり合う感じ)
+    rival:{
+        bpm:164,
+        prog:[[40,"m"],[36,"M"],[38,"M"],[35,"M"],[40,"m"],[36,"M"],[38,"M"],[35,"M"]],
+        bass:"x.xxx.xxx.xxx.xx", bassType:"sawtooth", bassVol:0.12, bassOctUp:true,
+        arp:"x.xxx.xxx.xxx.xx", arpOct:24, arpType:"square", arpVol:0.017,
+        pad:0,
+        kick:"x..x..x.x..x..x.", snare:"....x.......x...", hat:"xxx.xxx.xxx.xxx.",
+        lead:[
+            76,0,79,83,0,88,0,86,
+            84,0,83,79,0,76,0,79,
+            81,0,78,81,0,86,0,81,
+            83,0,0,78,75,0,71,0,
+            76,76,0,79,0,83,0,86,
+            88,0,86,84,0,83,0,79,
+            81,0,83,86,0,90,0,86,
+            87,0,0,0,83,0,78,0
+        ]
+    },
     //人間との戦い(WAVE16～)：Em - Em - C - D - Em - Em - B - B(戦闘曲のメロディを低く暗く)
     revolt:{
         bpm:146,
@@ -498,6 +517,11 @@ var sound = {
                 this.noise(0.7,0.08,"highpass",1500,9000,S);
                 this.jingle([84,88,91,96,100,103],0.05,"triangle",0.045,0.12);
                 break;
+            //ライバル(rival.js)の短いワープ：「ヒュッ」と上がる
+            case "blink":
+                this.tone("sine",1400,3400,0.08,0.05,S);
+                this.noise(0.07,0.04,"highpass",5000,9000,S);
+                break;
             //移動先で組み上がる：下りてくるきらめきと「キン」
             case "warpIn":
                 this.jingle([103,100,96,91,0,0,0,96],0.05,"sine",0.05,0.14);
@@ -673,12 +697,8 @@ var sound = {
         switch(_i){
             case 0: this.music("title"); break;
             case 1:
-                //WAVEが進むほどテンポが上がる。人間との戦いでは曲が変わる
                 this.music(null);
-                //序盤は明るく、同胞が増えてくる中盤から緊迫、人間との戦いでは暗い曲
-                if(game.wave > REVEAL_WAVE) this.music("revolt");
-                else if(game.wave < 8) this.music("heroic", TRACKS.heroic.bpm + (game.wave - 1)*2);
-                else this.music("battle", TRACKS.battle.bpm + Math.min(game.wave - 1, 10) * 2);
+                this.battleMusic();
                 this.play("waveStart");
                 break;
             case 2: this.music(game.wave > REVEAL_WAVE ? "revolt" : "shop"); break;
@@ -687,6 +707,14 @@ var sound = {
             case 5: this.music("title"); break;
             case 6: this.music("title"); break;
         }
+    },
+
+    //戦闘の曲(WAVEの始めと、ライバルが去ったあと。rival.js)
+    //WAVEが進むほどテンポが上がる。序盤は明るく、同胞が増えてくる中盤から緊迫、人間との戦いでは暗い曲
+    battleMusic:function(){
+        if(game.wave > REVEAL_WAVE) this.music("revolt");
+        else if(game.wave < 8) this.music("heroic", TRACKS.heroic.bpm + (game.wave - 1)*2);
+        else this.music("battle", TRACKS.battle.bpm + Math.min(game.wave - 1, 10) * 2);
     },
 
     //一時停止中はBGMを小さくする

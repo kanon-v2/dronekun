@@ -168,6 +168,14 @@ var steps = [
         });
     },
     function(next){
+        //ライバル(中ボス。rival.js)：ホストに出すと、ゲストにも見えて、ワープ(出発点・長さ)が届く
+        cmd("host", { cmd:"rival" });
+        waitFor(function(){ return st.guest.extra.rvSeen > 0 && st.guest.extra.rvWarp > 0; }, 5000, function(ok){
+            check("ライバルがゲストにも見え、ワープが届く", ok, "見えた" + st.guest.extra.rvSeen + "・ワープ" + st.guest.extra.rvWarp);
+            next();
+        });
+    },
+    function(next){
         cmd("host", { cmd:"die" }); cmd("guest", { cmd:"die" });
         waitFor(function(){ return both(function(s){ return s.page == 3; }); }, 15000, function(ok){
             check("ふたりとも撃墜でゲームオーバー", ok, desc()); next();

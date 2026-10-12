@@ -212,6 +212,7 @@ var special = {
             case "kai":      this.kai(_e,_dx,_dy,_d); return true;
             case "canopy":   this.canopy(_e,_dx,_dy,_d); return true;
             case "pod":      this.pod(_e,_dx,_dy,_d); return true;
+            case "chrono":   rival.update(_e,_dx,_dy,_d); return true;     //中ボス：ライバル(rival.js)
         }
         return false;
     },
@@ -448,6 +449,7 @@ var special = {
     //連続突進を全部弾くと、大きなダメージを受けて長く目を回す
     //ドローン君改(第二形態)の突進も同じように弾ける(値は KAI2_*)
     parry:function(_e){
+        if(_e.type == "chrono"){ rival.parry(_e); return; }     //ライバルの突進(rival.js)
         if((_e.type != "queen" && _e.type != "kai") || _e.mode != "dash") return;
         var kai = _e.type == "kai";
         _e.parried = (_e.parried || 0) + 1;
@@ -692,6 +694,7 @@ var special = {
     //倒されたボスが復活するならtrue(mainScreen.hitEnemy から。体力が0になったときに呼ばれる。動かすのはホストとひとり用だけ)
     //ドローン君改の第一形態は、倒れたところで止まり(down)、体力が満ちて(revive)第二形態になる
     revive:function(_e){
+        if(_e.type == "chrono") return rival.retreat(_e);      //ライバルは倒れずに去る(rival.js)
         if(_e.type != "kai" || _e.form != 1) return false;
         _e.form = 1.5;          //復活の途中(もう一度は倒れない)
         _e.hp = 0;
@@ -1227,12 +1230,18 @@ var special = {
                 //天蓋母艦と砲台(enemyArt.js)
                 enemyArt.draw(_e,_body);
                 return true;
+
+            case "chrono":
+                //ライバル(rival.js)
+                rival.draw(_e,_body);
+                return true;
         }
         return false;
     },
 
     //ボスの攻撃予告・レーザー(translateしていない状態で呼ばれる)
     drawAttack:function(_e){
+        if(_e.type == "chrono"){ rival.drawAttack(_e); return; }    //ライバル(rival.js)
         if((_e.type == "queen" || _e.type == "kai") && _e.mode == "aim"){
             //狙っている間は薄く、本物の突進の合図(QUEEN_CUE。ドローン君改は KAI2_CUE)で濃くなる(フェイントは薄いまま)
             var C = _e.type == "kai" ? KAI2_CUE : QUEEN_CUE;
@@ -1342,11 +1351,17 @@ var special = {
         ctx.font = "bold 14px sans-serif";
         //ドローン君改は、倒れて復活するところから第二形態の名前になる
         var f2 = b.type == "kai" && b.form > 1 && b.mode != "down";
-        ctx.fillStyle = b.enraged ? "#c33" : (f2 ? "#62138a" : "#000");
-        ctx.fillText("BOSS　" + (f2 ? KAI2.name : b.name) + (b.enraged ? "（怒り）" : ""),CW/2,y - 12);
+        if(b.mid){
+            //中ボス(ライバル)：名前の前に RIVAL と段階、ゲージはワープの光の色
+            ctx.fillStyle = "rgb(" + RIVAL_TINT + ")";
+            ctx.fillText("RIVAL　" + b.name + "　Lv." + ((b.lv || 0) + 1) + (b.enraged ? "（本気）" : ""),CW/2,y - 12);
+        }else{
+            ctx.fillStyle = b.enraged ? "#c33" : (f2 ? "#62138a" : "#000");
+            ctx.fillText("BOSS　" + (f2 ? KAI2.name : b.name) + (b.enraged ? "（怒り）" : ""),CW/2,y - 12);
+        }
         ctx.fillStyle = "#ddd";
         ctx.fillRect(x,y,w,10);
-        ctx.fillStyle = f2 ? "#8a2ac0" : "#c33";
+        ctx.fillStyle = b.mid ? "#2a8fd0" : f2 ? "#8a2ac0" : "#c33";
         ctx.fillRect(x,y,w*Math.max(0,b.hp)/b.maxHp,10);
         ctx.strokeStyle = "#000";
         ctx.strokeRect(x + 0.5,y + 0.5,w - 1,9);

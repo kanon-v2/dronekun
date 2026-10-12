@@ -25,6 +25,7 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
 <script src="scripts/drone/battleBg.js"></script>
 <script src="scripts/drone/bossDebug.js"></script>
 <script src="scripts/drone/timeStop.js"></script>
+<script src="scripts/drone/rival.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="scripts/drone/coop.js"></script>
 <script src="scripts/drone/versus.js"></script>
@@ -531,6 +532,52 @@ try{
     var cvWreck = !!mainScreen.wreck && enemies.every(function(e){ return !e.pod || e.dead; });
     for(var i=0; i<CANOPY_WRECK_T + 10; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
     check("天蓋母艦：倒すと砲台も壊れ、船体が崩れ落ちて消える", cvWreck && !mainScreen.wreck && special.ceiling() == 0 && errors.length == cvErr, "崩れ" + cvWreck);
+
+    // ライバル(中ボス。rival.js)：決まったWAVEの途中で現れ、ワープで動き回る。いる間は雑魚敵が出ない。突進を弾ける。体力0で去り、報酬カプセルを落とす
+    setup(4, { gun:3 }, ["gun",null,null], 6);
+    page.change(1);
+    var rvNone = rival.done;
+    setup(8, { gun:3 }, ["gun",null,null], 6);
+    page.change(1); MouseIn = true;
+    var rvErr = errors.length, rv = null, rvF = 0;
+    var findRv = function(){ return enemies.filter(function(e){ return e.type == "chrono"; })[0]; };
+    while(!rv && rvF < 60*120){ bot(); mainScreen.hp = 99; mainScreen.update(); rvF++; rv = findRv(); if(rvF % 30 == 0) draw1(); }
+    var rvAt = mainScreen.spawned;
+    check("ライバル：WAVE8の途中(雑魚敵が" + rival.at + "体出たところ)でワープして現れる。現れないWAVEもある", rvNone && rv && rv.mode == "warp" && rv.lv == 1 && rvAt >= rival.at && rv.harmless && rv.phased,
+          (rv ? "段階" + rv.lv : "出ない") + " 出た数" + rvAt + "/" + rival.at + " WAVE4は" + (rvNone ? "出ない" : "出る"));
+    var rvModes = {}, rvPlant = 0, rvRelease = 0;
+    for(var i=0; i<60*30 && rv; i++){
+        bot(); mainScreen.hp = 99;
+        mainScreen.update(); if(i % 10 == 0) draw1();
+        rv.hp = rv.maxHp; rv.hpMark = rv.hp;
+        rvModes[rv.mode + (rv.mode == "warp" ? "-" + rv.next : "")] = true;
+        var held = enemyShots.filter(function(b){ return b.held; }).length;
+        rvPlant = Math.max(rvPlant, held);
+        if(rv.mode == "hold" && rv.count == 1) rvRelease = held;
+    }
+    check("ライバル：ワープで回り込み、狙い撃ち・突進・幻影包囲(止まった弾を置き、時が動くと飛ぶ)を使う。いる間は雑魚敵が出ない",
+          rvModes.shoot && rvModes.dash && rvModes["warp-blink"] && rvModes.hold && rvPlant >= RIVAL_PHANTOM_SHOTS*RIVAL_PHANTOM_N[1] && mainScreen.spawned == rvAt && rival.musicOn && errors.length == rvErr,
+          Object.keys(rvModes).join(",") + " 置いた弾" + rvPlant + " 雑魚" + rvAt + "→" + mainScreen.spawned);
+    // 突進をジャスト・カウンターで弾く・削られすぎるとワープでよける
+    rv.mode = "dash"; rv.count = 10; rv.aimX = 1; rv.aimY = 0; rv.x = drone.X - 60; rv.y = drone.Y; rv.vx = RIVAL_DASH_SPEED; rv.vy = 0;
+    var rvHp = rv.hp, rvCan = mainScreen.canCounter(rv);
+    mainScreen.counter(rv);
+    var rvParry = rv.mode == "stagger" && rv.hp < rvHp;
+    rv.mode = "idle"; rv.timer = 999; rv.dodgeCd = 0; rv.hpMark = rv.hp; rv.hp -= rv.maxHp*RIVAL_DODGE*1.2;
+    mainScreen.update();
+    check("ライバル：突進はジャスト・カウンターで弾けて、削られすぎるとワープでよける", rvCan && rvParry && rv.mode == "warp" && rv.next == "idle", "カウンター" + rvCan + "/" + rvParry + " よけ" + rv.mode);
+    var rvPack = { e:[] }; coop.packEnemy(rv, rvPack);
+    check("ライバル：協力プレイで種類・ワープの出発点と長さを送れる", COOP_TYPES[rvPack.e[1]] == "chrono" && rvPack.b[14] == rv.wt && rvPack.b[12] == Math.round(rv.wx0)
+          && ["warp","shoot","hold","flee"].every(function(m){ return COOP_MODES.indexOf(m) >= 0; }), JSON.stringify(rvPack.b));
+    // 撃退：倒れずに去る(報酬カプセル・パーツ)。去ったら雑魚敵がまた出てくる
+    for(var i=0; i<RIVAL_WARP_T[1] + 2; i++) mainScreen.update();
+    var rvScore = game.score;
+    mainScreen.hitEnemy(rv, 99999, "gun");
+    var rvFlee = rv.mode == "flee" && !rv.dead && pickups.some(function(p){ return p.kind == "capsule"; }) && game.score > rvScore;
+    for(var i=0; i<RIVAL_FLEE_T + 5; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
+    for(var i=0; i<240; i++){ bot(); mainScreen.hp = 99; mainScreen.update(); }
+    check("ライバル：体力が0になると捨てぜりふを残して去り、報酬カプセルを落とす。そのあと雑魚敵がまた出る", rvFlee && !findRv() && !rival.musicOn && (mainScreen.spawned > rvAt || mainScreen.toSpawn == 0) && errors.length == rvErr,
+          "去る" + rvFlee + " 雑魚" + rvAt + "→" + mainScreen.spawned);
 
     // 3. 全シナジー
     SYNERGIES.forEach(function(s){
