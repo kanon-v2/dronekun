@@ -176,6 +176,14 @@ var steps = [
         });
     },
     function(next){
+        //ライバルの第二形態の分身：ゲストにも分身が見え、動き(分身の陣)が届く
+        cmd("host", { cmd:"clones" });
+        waitFor(function(){ return st.guest.extra.cloneSeen > 0; }, 8000, function(ok){
+            check("ライバルの分身がゲストにも見える", ok, "見えた" + st.guest.extra.cloneSeen);
+            next();
+        });
+    },
+    function(next){
         cmd("host", { cmd:"die" }); cmd("guest", { cmd:"die" });
         waitFor(function(){ return both(function(s){ return s.page == 3; }); }, 15000, function(ok){
             check("ふたりとも撃墜でゲームオーバー", ok, desc()); next();

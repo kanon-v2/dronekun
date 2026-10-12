@@ -213,6 +213,7 @@ var special = {
             case "canopy":   this.canopy(_e,_dx,_dy,_d); return true;
             case "pod":      this.pod(_e,_dx,_dy,_d); return true;
             case "chrono":   rival.update(_e,_dx,_dy,_d); return true;     //中ボス：ライバル(rival.js)
+            case "chronoClone": rival.cloneUpdate(_e,_dx,_dy,_d); return true;   //ライバルの分身(rival.js)
         }
         return false;
     },
@@ -716,7 +717,7 @@ var special = {
         for(var i=0; i<enemies.length; i++){
             var e = enemies[i];
             if(e.type == "kai" && (e.mode == "down" || e.mode == "revive")) return true;
-            if(e.type == "chrono" && e.mode == "intro") return true;     //ライバルの登場の間(rival.js)
+            if(e.type == "chrono" && (e.mode == "intro" || e.mode == "awaken")) return true;     //ライバルの登場・目覚めの間(rival.js)
         }
         return false;
     },
@@ -1129,6 +1130,7 @@ var special = {
                 mainScreen.hitEnemy(boss, boss.maxHp*CANOPY_POD_DMG, "pod");
             }
         }
+        if(_e.clone) rival.cloneKilled(_e);     //ライバルの分身(rival.js)
         if(_e.boss){
             //ボス撃破：大爆発・報酬を1回追加(協力プレイの相方にも)
             game.pendingReward = (game.pendingReward || 0) + 1;
@@ -1235,6 +1237,10 @@ var special = {
             case "chrono":
                 //ライバル(rival.js)
                 rival.draw(_e,_body);
+                return true;
+            case "chronoClone":
+                //ライバルの分身(rival.js)
+                rival.drawClone(_e,_body);
                 return true;
         }
         return false;
@@ -1355,14 +1361,15 @@ var special = {
         if(b.mid){
             //中ボス(ライバル)：名前の前に RIVAL と段階、ゲージはワープの光の色
             ctx.fillStyle = "rgb(" + RIVAL_TINT + ")";
-            ctx.fillText("RIVAL　" + b.name + "　Lv." + ((b.lv || 0) + 1) + (b.enraged ? "（本気）" : ""),CW/2,y - 12);
+            //第二形態(目覚めの途中から)は名前が変わる
+            ctx.fillText("RIVAL　" + (b.form > 1 ? RIVAL2.name : b.name) + "　Lv." + ((b.lv || 0) + 1) + (b.enraged ? "（本気）" : ""),CW/2,y - 12);
         }else{
             ctx.fillStyle = b.enraged ? "#c33" : (f2 ? "#62138a" : "#000");
             ctx.fillText("BOSS　" + (f2 ? KAI2.name : b.name) + (b.enraged ? "（怒り）" : ""),CW/2,y - 12);
         }
         ctx.fillStyle = "#ddd";
         ctx.fillRect(x,y,w,10);
-        ctx.fillStyle = b.mid ? "#2a8fd0" : f2 ? "#8a2ac0" : "#c33";
+        ctx.fillStyle = b.mid ? (b.form > 1 ? "#8a4ad0" : "#2a8fd0") : f2 ? "#8a2ac0" : "#c33";
         ctx.fillRect(x,y,w*Math.max(0,b.hp)/b.maxHp,10);
         ctx.strokeStyle = "#000";
         ctx.strokeRect(x + 0.5,y + 0.5,w - 1,9);

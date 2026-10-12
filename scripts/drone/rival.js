@@ -77,7 +77,34 @@ const RIVAL_LINES = [                   //せりふ(現れたとき・本気に�
     ["時の速さに、ついてこられるか？", "おもしろくなってきた！", "次こそは…必ず！"],
     ["これが最後の勝負だ、ドローン君！", "全力でいくぞ！", "…強くなったな、ドローン君"]
 ];
-const RIVAL_CELL     = 3;               //ワープの粒子1つの大きさ(ゲームの px。ドローン君の WARP_CELL より粗く、軽く)
+//第二形態(WAVE8から)：第一形態(上の値のまま)の体力が0になると、時を止めて分身の力に目覚める
+const RIVAL2          = { name:"クロノ・ミラージュ", en:"CHRONO MIRAGE", title:"時を分かつ幻影" };
+const RIVAL2_FROM     = 1;          //第二形態がある段階(lv。1 = WAVE8から)
+const RIVAL2_HP_MUL   = 0.6;        //第二形態の体力(第一形態の体力に掛ける)
+const RIVAL2_TINT     = "70,35,125";    //第二形態と分身の体の色(紫がかった紺)
+const RIVAL2_GLOW     = "200,130,255";  //第二形態のまわりの光の色
+const RIVAL2_AWAKEN_T = 200;        //目覚めの演出の長さ(この間は時が止まる)
+const RIVAL2_SPLIT_AT = 60;         //目覚めの演出で、分身が回り出して体力が満ち始める時(ここから名乗る)
+const RIVAL2_FILL_T   = 80;         //体力が満ちる長さ
+const RIVAL2_PATTERNS = [null,      //攻撃の順番(Lv.2～4)。split 分身の陣・cross 分身突進・phantom 幻影包囲(分身が残る)・dash 突進
+    ["split","cross","phantom","split","dash"],
+    ["split","cross","phantom","cross","split","dash"],
+    ["cross","split","phantom","cross","split","dash"]
+];
+const RIVAL2_REST     = [null,[75,55],[65,48],[55,40]];     //攻撃のあと、次の攻撃まで(Lv.2～4。ふだん・本気)
+const RIVAL2_CLONES   = [0,3,3,4];  //分身の数(本物のほかに。Lv.1～4)
+const RIVAL2_CLONE_HP = 0.04;       //分身の体力(第二形態の体力に対する割合。少し撃てば消える)
+const RIVAL2_SPLIT_T  = 170;        //分身の陣：本物と分身が一緒に動き回って撃つ長さ
+const RIVAL2_SPLIT_R  = 210;        //分身の陣：ドローン君を囲む距離
+const RIVAL2_SPLIT_EVERY = 44;      //分身の陣：1体が撃つ間隔(1体ずつ順番にずらす)
+const RIVAL2_SPLIT_N  = 3;          //分身の陣：1回に撃つ弾の数
+const RIVAL2_CROSS_R  = 270;        //分身突進：ドローン君を囲む距離
+const RIVAL2_CROSS_AIM = 34;        //分身突進：構えの長さ(1体目。合図 RIVAL_CUE を含まない)
+const RIVAL2_CROSS_GAP = 14;        //分身突進：1体ずつ飛び出すずれ(フレーム)
+const RIVAL2_FADE_T   = 20;         //分身が消える長さ
+const RIVAL2_FLICKER  = 90;         //分身はこの間隔でちらつく(よく見ると本物と見分けられる)
+const RIVAL2_LINES    = ["まだだ…！ 時の分身を見せてやる！", "どれが本物か、見抜けるか！"];    //目覚めたとき・本気になったとき
+const RIVAL_CELL     = 3;              //ワープの粒子1つの大きさ(ゲームの px。ドローン君の WARP_CELL より粗く、軽く)
 
 //------------------------------------------------------------------------------
 //  ワープの粒子(timeStop.js と同じ描き方：今のコマを別のキャンバスへ写し、小さな四角を道すじの上に描く)
@@ -184,6 +211,9 @@ RivalWarp.prototype = {
 //------------------------------------------------------------------------------
 //  動き(special.update から。動かすのはホストとひとり用だけ)
 //------------------------------------------------------------------------------
+//分身(協力プレイのゲストが種類から大きさを知るため)
+BOSS_PARTS.chronoClone = { name:"分身", r:RIVAL_R };
+
 var rival = {
     at:0,           //このWAVEで、雑魚敵がこの数だけ出たら現れる
     done:true,      //このWAVEではもう現れた(現れないWAVEも true)
@@ -252,11 +282,11 @@ var rival = {
     //登場の間は時が止まる：ライバルの演出だけを進める(mainScreen.update から。止めている間は true)
     //協力プレイのゲストは、届いた mode・count で同じ演出を描く(自分のドローン君は動けるが撃たない：special.holdFire)
     introStep:function(){
-        var e = null;
-        for(var i=0; i<enemies.length; i++) if(enemies[i].type == "chrono" && enemies[i].mode == "intro") e = enemies[i];
+        var e = this.introOf();
         if(!e) return false;
         e.t++;
         e.look.update(0, 0, 0);
+        if(e.mode == "awaken"){ this.awakenStep(e); mainScreen.updateEffects(); return true; }
         var age = this.introAge(e);
         if(age == RIVAL_INTRO_ARRIVE){
             fx.ring(e.x, e.y, 90, WARP_COLOR, 24, 4);
@@ -275,6 +305,59 @@ var rival = {
         mainScreen.updateEffects();
         return true;
     },
+    //第二形態に目覚める(rival.retreat から。第一形態の体力が0になったとき)：時が止まり、分身が回りながら体力が満ちる
+    awaken:function(_e){
+        _e.form = 1.5;          //目覚めの途中(協力プレイでは b の9番目で届く)
+        _e.sayT = 0;            //前のせりふは消す(目覚めのせりふを出す)
+        _e.mode = "awaken";
+        _e.count = RIVAL2_AWAKEN_T;
+        _e.maxHp = Math.max(1, Math.round(_e.maxHp*RIVAL2_HP_MUL));
+        _e.hp = 0;
+        _e.enraged = false;
+        _e.chain = 0;
+        _e.vx = 0; _e.vy = 0;
+        this.flags(_e);
+        //置いたままの弾は消える
+        enemyShots = enemyShots.filter(function(b){ return b.held != _e.id; });
+        mainScreen.shake = 0;
+        fx.flare(_e.x, _e.y, 70, RIVAL2_GLOW, 18);
+        sound.play("timeStop");
+        sound.timeWarp(true);
+        return true;
+    },
+    awakenAge:function(_e){
+        return RIVAL2_AWAKEN_T - _e.count;
+    },
+    //目覚めの1コマ(introStep から。時が止まっている)
+    awakenStep:function(_e){
+        var age = this.awakenAge(_e);
+        if(age == RIVAL2_SPLIT_AT){
+            fx.ring(_e.x, _e.y, 110, RIVAL2_GLOW, 26, 4);
+            fx.shake(10);
+            sound.play("warpOut");
+        }
+        //体力が満ちていく(上の体力ゲージで見える)
+        if(age >= RIVAL2_SPLIT_AT) _e.hp = _e.maxHp*Math.min(1, (age - RIVAL2_SPLIT_AT)/RIVAL2_FILL_T);
+        if(age == RIVAL2_AWAKEN_T - RIVAL_INTRO_OUT) sound.play("timeResume");
+        if(--_e.count <= 0){
+            _e.form = 2;
+            _e.hp = _e.maxHp;
+            _e.hpMark = _e.hp;
+            _e.mode = "idle";
+            _e.timer = 50;
+            _e.cycle = 0;
+            this.flags(_e);
+            sound.timeWarp(false);
+            //曲を少し速く、はじめから
+            sound.music(null);
+            sound.music("rival", TRACKS.rival.bpm + 16);
+            mainScreen.guard = Math.max(mainScreen.guard, RIVAL_INTRO_GUARD);
+        }
+    },
+    //第二形態の見た目か(目覚めの途中で、分かれたところから)
+    second:function(_e){
+        return _e.form == 2 || (_e.mode == "awaken" && this.awakenAge(_e) >= RIVAL2_SPLIT_AT);
+    },
     //協力プレイのゲスト：届いた種類からライバルを作る(coop.guestSync から)
     guestInit:function(_e){
         _e.r = RIVAL_R;
@@ -285,14 +368,31 @@ var rival = {
         _e.look = new DroneLook();
         _e.look.tint = RIVAL_TINT;
     },
-    //登場の演出・ワープ中・去るところは当たらず、狙われない
+    //協力プレイのゲスト：届いた種類から分身を作る
+    guestInitClone:function(_e){
+        _e.r = RIVAL_R;
+        _e.clone = true;
+        _e.mid = true;
+        _e.name = "分身";
+        _e.glow = WARP_COLOR;
+        _e.lv = Math.max(0, this.level());
+        _e.look = new DroneLook();
+        _e.look.tint = RIVAL2_TINT;
+    },
+    //登場・目覚めの演出・ワープ中・去るところは当たらず、狙われない
+    //分身は、現れる・消えるところは当たらず、置き去りの分身(stay)は体当たりしてこない
     flags:function(_e){
-        _e.harmless = _e.mode == "intro" || _e.mode == "warp" || _e.mode == "flee";
+        if(_e.clone){
+            _e.phased = _e.mode == "warp" || _e.mode == "fade";
+            _e.harmless = _e.phased || _e.mode == "stay";
+            return;
+        }
+        _e.harmless = _e.mode == "intro" || _e.mode == "awaken" || _e.mode == "warp" || _e.mode == "flee";
         _e.phased = _e.harmless;
     },
 
     update:function(_e,_dx,_dy,_d){
-        if(_e.mode == "intro") return;     //登場の演出は rival.introStep
+        if(_e.mode == "intro" || _e.mode == "awaken") return;     //登場・目覚めの演出は rival.introStep
         var rage = _e.enraged ? 1 : 0, lv = _e.lv;
         var play = mainScreen.state == "play";
         var toMe = Math.atan2(_dy,_dx);
@@ -320,21 +420,17 @@ var rival = {
                 }
                 if(--_e.count <= 0) this.rest(_e);
                 break;
+            case "split":
+                //分身の陣(第二形態)：分身と一緒に動き回り、順番に撃つ
+                this.strafe(_e);
+                if(play) this.splitShot(_e, toMe);
+                if(--_e.count <= 0) this.rest(_e);
+                break;
             case "aim":
-                //狙いを合わせ、合図(最後の RIVAL_CUE)で向きを固める
-                _e.vx *= 0.8; _e.vy *= 0.8;
-                if(_e.count > RIVAL_CUE){ _e.aimX = _dx/_d; _e.aimY = _dy/_d; }
-                if(_e.count == RIVAL_CUE) sound.play("tell");
-                if(--_e.count <= 0){ _e.mode = "dash"; _e.count = RIVAL_DASH_T; sound.play("dash"); }
+                this.aimStep(_e,_dx,_dy,_d);
                 break;
             case "dash":
-                _e.vx = _e.aimX*RIVAL_DASH_SPEED;
-                _e.vy = _e.aimY*RIVAL_DASH_SPEED;
-                if(_e.t % 2 == 0) effects.push({ x:_e.x, y:_e.y, vx:-_e.vx*0.1, vy:-_e.vy*0.1, life:14, maxLife:14, size:4, glow:WARP_COLOR });
-                if(--_e.count <= 0 || _e.x < _e.r || _e.x > CW - _e.r || _e.y < 80 || _e.y > CH - _e.r){
-                    _e.x = Math.max(_e.r, Math.min(_e.x, CW - _e.r));
-                    _e.y = Math.max(80, Math.min(_e.y, CH - _e.r));
-                    _e.vx = 0; _e.vy = 0;
+                if(this.dashStep(_e)){
                     if(_e.chain > 0){
                         //ワープで回り込んで、もう一度
                         _e.chain--;
@@ -372,6 +468,32 @@ var rival = {
         }
         _e.look.update(dirFromVel(_e.vx,_e.vy), _e.vx, _e.vy);
         this.flags(_e);
+    },
+    //突進の構え：狙いを合わせ、合図(最後の RIVAL_CUE)で向きを固める(本物も分身も)
+    aimStep:function(_e,_dx,_dy,_d){
+        _e.vx *= 0.8; _e.vy *= 0.8;
+        if(_e.count > RIVAL_CUE){ _e.aimX = _dx/_d; _e.aimY = _dy/_d; }
+        if(_e.count == RIVAL_CUE) sound.play("tell");
+        if(--_e.count <= 0){ _e.mode = "dash"; _e.count = RIVAL_DASH_T; sound.play("dash"); }
+    },
+    //突進の1コマ。終わったら(時間切れか画面の端) true
+    dashStep:function(_e){
+        _e.vx = _e.aimX*RIVAL_DASH_SPEED;
+        _e.vy = _e.aimY*RIVAL_DASH_SPEED;
+        if(_e.t % 2 == 0) effects.push({ x:_e.x, y:_e.y, vx:-_e.vx*0.1, vy:-_e.vy*0.1, life:14, maxLife:14, size:4, glow:WARP_COLOR });
+        if(--_e.count <= 0 || _e.x < _e.r || _e.x > CW - _e.r || _e.y < 80 || _e.y > CH - _e.r){
+            _e.x = Math.max(_e.r, Math.min(_e.x, CW - _e.r));
+            _e.y = Math.max(80, Math.min(_e.y, CH - _e.r));
+            _e.vx = 0; _e.vy = 0;
+            return true;
+        }
+        return false;
+    },
+    //分身の陣で撃つ(1体ずつ順番にずらす)
+    splitShot:function(_e,_a){
+        if((_e.count + (_e.slot || 0)*Math.round(RIVAL2_SPLIT_EVERY/(RIVAL2_CLONES[_e.lv] + 1))) % RIVAL2_SPLIT_EVERY != 0) return;
+        fireFan(_e.x, _e.y, _a, RIVAL2_SPLIT_N, 0.22, RIVAL_SHOT_SPEED*Math.min(1.3,danmaku()), "normal");
+        sound.play("shot");
     },
     //ドローン君のまわりを、横へ跳ねながら動き回る(ときどき向きを急に変える)
     strafe:function(_e){
@@ -427,11 +549,20 @@ var rival = {
         switch(_e.next){
             case "idle":
                 _e.mode = "idle";
-                _e.timer = RIVAL_REST[_e.lv][_e.enraged ? 1 : 0];
+                _e.timer = this.restTime(_e);
                 break;
             case "shoot":
                 _e.mode = "shoot";
                 _e.count = RIVAL_SHOOT_T;
+                break;
+            case "split":
+                _e.mode = "split";
+                _e.count = RIVAL2_SPLIT_T;
+                break;
+            case "cross":
+                //分身突進：1体ずつずらして構える(本物も分身の1体として並ぶ)
+                _e.mode = "aim";
+                _e.count = RIVAL2_CROSS_AIM + _e.delay + RIVAL_CUE;
                 break;
             case "aim":
             case "chain":
@@ -455,12 +586,18 @@ var rival = {
     //攻撃を終えて動き回る
     rest:function(_e){
         _e.mode = "idle";
-        _e.timer = RIVAL_REST[_e.lv][_e.enraged ? 1 : 0];
+        _e.timer = this.restTime(_e);
         _e.hpMark = _e.hp;
     },
+    //攻撃のあと、次の攻撃まで(第二形態は RIVAL2_REST)
+    restTime:function(_e){
+        return (_e.form == 2 ? RIVAL2_REST : RIVAL_REST)[_e.lv][_e.enraged ? 1 : 0];
+    },
     nextAttack:function(_e){
-        var list = RIVAL_PATTERNS[_e.lv], p = list[_e.cycle++ % list.length];
-        if(p == "shoot"){
+        var list = (_e.form == 2 ? RIVAL2_PATTERNS : RIVAL_PATTERNS)[_e.lv], p = list[_e.cycle++ % list.length];
+        if(p == "split" || p == "cross"){
+            this.surround(_e, p);
+        }else if(p == "shoot"){
             var s = this.spot(_e, RIVAL_DIST);
             this.warp(_e, s.x, s.y, RIVAL_WARP_T[_e.lv], "shoot");
         }else if(p == "dash"){
@@ -475,6 +612,101 @@ var rival = {
             _e.pi = 0;
             this.blink(_e);
         }
+    },
+    //------------------------------------------------------------ 分身(第二形態)
+    //分身の陣(split)・分身突進(cross)：ドローン君を囲む場所へ、本物と分身がひとつの場所から散って現れる。
+    //どれが本物かは毎回変わる(本物を当てて撃つ。分身は少し撃てば消える)
+    surround:function(_e,_kind){
+        var n = RIVAL2_CLONES[_e.lv] + 1, real = Math.floor(Math.random()*n), a0 = Math.random()*Math.PI*2;
+        var R = _kind == "split" ? RIVAL2_SPLIT_R : RIVAL2_CROSS_R;
+        _e.chain = 0;
+        var me = { x:_e.x, y:_e.y };
+        for(var i=0; i<n; i++){
+            var a = a0 + i*Math.PI*2/n;
+            var p = this.clamp(aimAt.X + Math.cos(a)*R, aimAt.Y + Math.sin(a)*R*0.75);
+            var o = { orbit:a, slot:i, delay:i*RIVAL2_CROSS_GAP };
+            if(i == real){
+                this.warp(_e, p.x, p.y, RIVAL_WARP_T[_e.lv], _kind);
+                _e.orbit = o.orbit; _e.slot = o.slot; _e.delay = o.delay;
+            }else{
+                o.wx0 = me.x; o.wy0 = me.y;
+                this.spawnClone(_e, p.x, p.y, _kind, o);
+            }
+        }
+    },
+    //分身を出す(_next：現れたあとにすること。"stay" はその場に置き去り)
+    spawnClone:function(_o,_x,_y,_next,_opt){
+        var hp = Math.max(1, Math.round(_o.maxHp*RIVAL2_CLONE_HP));
+        var c = {
+            id:++enemySeq,
+            type:"chronoClone", clone:true, mid:true, owner:_o.id, lv:_o.lv, name:"分身", glow:WARP_COLOR,
+            r:RIVAL_R, hp:hp, maxHp:hp, score:0, parts:0,
+            x:_x, y:_y, vx:0, vy:0, flash:0, timer:0, t:_o.t, dead:false, slow:0, bladeCd:0,
+            aimX:0, aimY:1, orbit:0, stepT:randIn(RIVAL_STEP_T), slot:0, delay:0,
+            mode:_next == "stay" ? "stay" : "warp", count:_next == "stay" ? 0 : RIVAL_WARP_T[_o.lv], next:_next
+        };
+        for(var k in _opt) c[k] = _opt[k];
+        c.look = new DroneLook();
+        c.look.tint = RIVAL2_TINT;
+        this.flags(c);
+        enemies.push(c);
+        return c;
+    },
+    fade:function(_c){
+        _c.mode = "fade";
+        _c.count = RIVAL2_FADE_T;
+        this.flags(_c);
+    },
+    //分身の動き(special.update から。動かすのはホストとひとり用だけ)
+    cloneUpdate:function(_c,_dx,_dy,_d){
+        var o = null;
+        for(var i=0; i<enemies.length; i++) if(enemies[i].id == _c.owner) o = enemies[i];
+        //本物が去る・いない・目覚め直す間は消える
+        if(_c.mode != "fade" && (!o || o.dead || o.mode == "flee" || o.mode == "awaken")) this.fade(_c);
+        var play = mainScreen.state == "play";
+        switch(_c.mode){
+            case "warp":
+                _c.vx = 0; _c.vy = 0;
+                if(--_c.count <= 0){
+                    fx.ring(_c.x, _c.y, 56, WARP_COLOR, 16, 3);
+                    if(_c.next == "split"){ _c.mode = "split"; _c.count = RIVAL2_SPLIT_T; }
+                    else{ _c.mode = "aim"; _c.count = RIVAL2_CROSS_AIM + _c.delay + RIVAL_CUE; }
+                }
+                break;
+            case "split":
+                this.strafe(_c);
+                if(play) this.splitShot(_c, Math.atan2(_dy,_dx));
+                if(--_c.count <= 0) this.fade(_c);
+                break;
+            case "aim":
+                this.aimStep(_c,_dx,_dy,_d);
+                break;
+            case "dash":
+                if(this.dashStep(_c)) this.fade(_c);
+                break;
+            case "stay":
+                _c.vx *= 0.85; _c.vy *= 0.85;
+                break;
+            case "fade":
+                _c.vx *= 0.9; _c.vy *= 0.9;
+                if(--_c.count <= 0) _c.dead = true;
+                break;
+        }
+        _c.look.update(dirFromVel(_c.vx,_c.vy), _c.vx, _c.vy);
+        this.flags(_c);
+    },
+    //分身の突進をジャスト衝撃波で弾いた：分身は砕ける(mainScreen.counter から)
+    parryClone:function(_c){
+        if(_c.mode != "dash") return;
+        fx.flare(_c.x, _c.y, 40, JUST_COLOR, 12);
+        popup(_c.x, _c.y - _c.r - 10, "カウンター！", "rgb(30,150,200)");
+        mainScreen.hitEnemy(_c, _c.maxHp*10, "counter");
+    },
+    //分身が倒された(special.onKill から)
+    cloneKilled:function(_c){
+        fx.flare(_c.x, _c.y, 50, WARP_COLOR, 14);
+        popup(_c.x, _c.y - _c.r - 6, "分身だ！", "rgb(110,70,190)");
+        sound.play("blink");
     },
     //幻影包囲の次の場所へ短くワープ(囲む円の上を、ドローン君の向こう側へ飛び越えるように跳ぶ)
     blink:function(_e){
@@ -491,6 +723,8 @@ var rival = {
             fireShot(_e.x + Math.cos(a)*22, _e.y + Math.sin(a)*22, 0, 0, "normal");
             enemyShots[enemyShots.length - 1].held = _e.id;
         }
+        //第二形態：跳んだ跡に分身が残る(時が動き出すと消える)
+        if(_e.form == 2 && _e.blinks > 1) this.spawnClone(_e, _e.x, _e.y, "stay", {});
     },
     //時が動き出す：置いた弾が、それぞれドローン君へ飛ぶ
     release:function(_e){
@@ -501,6 +735,11 @@ var rival = {
             var t = nearestPlayer(b.x,b.y), a = Math.atan2(t.Y - b.y, t.X - b.x);
             b.vx = Math.cos(a)*sp; b.vy = Math.sin(a)*sp;
             b.held = 0;
+        }
+        //跳んだ跡に残った分身は消える
+        for(var i=0; i<enemies.length; i++){
+            var c = enemies[i];
+            if(c.clone && c.owner == _e.id && c.mode == "stay") this.fade(c);
         }
         _e.relT = 24;
         fx.ring(_e.x, _e.y, 120, WARP_COLOR, 20, 4);
@@ -523,6 +762,9 @@ var rival = {
     },
     //体力が0になった：倒れずに、捨てぜりふを残して去る(special.revive から。true で倒さない)
     retreat:function(_e){
+        //WAVE8から：第一形態は倒れず、第二形態に目覚める
+        if(_e.lv >= RIVAL2_FROM && (_e.form || 1) == 1) return this.awaken(_e);
+        if(_e.mode == "awaken") return true;
         _e.hp = 0;
         _e.mode = "flee";
         _e.count = RIVAL_FLEE_T;
@@ -568,7 +810,10 @@ var rival = {
         _e._pm = _e.mode; _e._pc = _e.count;
         //せりふ：現れたとき・本気になったとき・去るとき
         if(!_e.said0 && _e.mode != "warp" && !(_e.mode == "intro" && this.introAge(_e) < RIVAL_INTRO_ARRIVE + 10)){ _e.said0 = true; this.say(_e, RIVAL_LINES[lv][0]); }
-        if(!_e.said1 && _e.enraged && _e.mode != "flee"){ _e.said1 = true; this.say(_e, RIVAL_LINES[lv][1]); }
+        if(!_e.said1 && _e.enraged && _e.mode != "flee" && _e.form != 2){ _e.said1 = true; this.say(_e, RIVAL_LINES[lv][1]); }
+        //第二形態：目覚めたとき・本気になったとき
+        if(!_e.saidA && _e.mode == "awaken" && this.awakenAge(_e) >= RIVAL2_SPLIT_AT + 10){ _e.saidA = true; this.say(_e, RIVAL2_LINES[0]); }
+        if(!_e.said3 && _e.enraged && _e.form == 2 && _e.mode != "flee"){ _e.said3 = true; this.say(_e, RIVAL2_LINES[1]); }
         if(!_e.said2 && _e.mode == "flee"){ _e.said2 = true; this.say(_e, RIVAL_LINES[lv][2]); }
         if(_e.sayT > 0) _e.sayT--;
         if(_e.arrT > 0) _e.arrT--;
@@ -590,27 +835,57 @@ var rival = {
 
     //体(translate済み。special.draw から)
     draw:function(_e,_body){
-        if(_e.mode == "intro" && !this.onTop) return;    //登場の演出の間は、止まった世界の上に描く(rival.drawIntro)
+        if((_e.mode == "intro" || _e.mode == "awaken") && !this.onTop) return;    //登場・目覚めの演出の間は、止まった世界の上に描く(rival.drawIntro)
         if(this.shown(_e)){
-            var k = RIVAL_SCALE;
             ctx.save();
             //撃退されたあとは傾いて震える
             if(_e.mode == "flee"){
                 ctx.rotate(0.35*Math.min(1, (RIVAL_FLEE_T - _e.count)/20));
                 ctx.translate((Math.random() - 0.5)*2, 0);
             }
+            //目覚める前：体力が0になって傾き、ときどき明滅する
+            if(_e.mode == "awaken" && !this.second(_e)){
+                ctx.rotate(0.4*Math.min(1, this.awakenAge(_e)/20));
+                if(Math.random() < 0.15) ctx.globalAlpha = 0.5;
+            }
             //よろけている間は回る
             if(_e.mode == "stagger") ctx.rotate(Math.sin(_e.count*0.5)*0.4);
-            //まわりのワープの光
-            enemyArt.halo(0, 0, 34 + Math.sin(_e.t*0.12)*3, WARP_COLOR, _e.mode == "hold" ? 0.6 : 0.25);
-            this.drawBand(_e, k, false);
-            if(_body) ctx.globalAlpha = 0.6;
-            _e.look.draw(0, 0, k);
-            ctx.globalAlpha = 1;
-            this.drawBand(_e, k, true);
+            this.drawBody(_e, _body, ctx.globalAlpha);
             ctx.restore();
         }
         if(_e.sayT > 0) this.drawSay(_e);
+    },
+    //体：まわりの光・ハチマキ・ドローン君の絵(translate済み。第二形態と分身は紫がかった色)
+    drawBody:function(_e,_body,_alpha){
+        var k = RIVAL_SCALE, f2 = _e.clone || this.second(_e);
+        _e.look.tint = f2 ? RIVAL2_TINT : RIVAL_TINT;
+        ctx.globalAlpha = _alpha;
+        enemyArt.halo(0, 0, 34 + Math.sin(_e.t*0.12)*3, f2 ? RIVAL2_GLOW : WARP_COLOR, _e.mode == "hold" ? 0.6 : 0.25);
+        this.drawBand(_e, k, false);
+        if(_body) ctx.globalAlpha = _alpha*0.6;
+        _e.look.draw(0, 0, k);
+        ctx.globalAlpha = _alpha;
+        this.drawBand(_e, k, true);
+        ctx.globalAlpha = 1;
+    },
+    //分身(translate済み。special.draw から)：本物と同じ姿。現れる・消えるときは透け、ときどきちらつく
+    drawClone:function(_c,_body){
+        var a = 1;
+        if(_c.mode == "warp") a = 1 - _c.count/RIVAL_WARP_T[_c.lv || 0];
+        if(_c.mode == "fade") a = _c.count/RIVAL2_FADE_T;
+        if(_c.mode == "stay") a = 0.7;
+        if((_c.t + _c.id*13) % RIVAL2_FLICKER < 4) a *= 0.45;
+        //突進の構え：本物と同じ予告の線
+        if(_c.mode == "aim"){
+            var cue = _c.count <= RIVAL_CUE ? 1 - _c.count/RIVAL_CUE : 0;
+            ctx.strokeStyle = "rgba(" + WARP_COLOR + "," + (0.3 + 0.6*cue) + ")";
+            ctx.lineWidth = _c.r*1.4;
+            ctx.globalAlpha = 0.3;
+            ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(_c.aimX*1200, _c.aimY*1200); ctx.stroke();
+            ctx.globalAlpha = 1;
+            ctx.lineWidth = 1;
+        }
+        this.drawBody(_c, _body, Math.max(0, a));
     },
     //ハチマキ：体の上のほうに巻いた帯(_front)と、結び目からなびく2本の端(体の後ろ)。
     //体と同じように弾んで傾く(DroneLook.draw と同じ動き)。端は動きと逆へ、止まっているときは後ろへ垂れる
@@ -685,15 +960,24 @@ var rival = {
     //ワープの粒子・突進の予告・時が止まった世界(translateしていない状態。special.drawAttack から。敵より奥に描く)
     //登場の演出中のライバル
     introOf:function(){
-        for(var i=0; i<enemies.length; i++) if(enemies[i].type == "chrono" && enemies[i].mode == "intro") return enemies[i];
+        for(var i=0; i<enemies.length; i++){
+            var e = enemies[i];
+            if(e.type == "chrono" && (e.mode == "intro" || e.mode == "awaken")) return e;
+        }
         return null;
     },
-    //登場の演出：時が止まった世界(周りの色を抜いて暗くする)の上に、集まる光と組み上がったライバルを描く
+    //演出の経過と、名乗り始める時(登場：組み上がったとき 目覚め：分身が回り出したとき)
+    stage:function(_e){
+        return _e.mode == "awaken" ? { age:this.awakenAge(_e), at:RIVAL2_SPLIT_AT, T:RIVAL2_AWAKEN_T }
+                                   : { age:this.introAge(_e), at:RIVAL_INTRO_ARRIVE, T:RIVAL_INTRO_T };
+    },
+    //登場・目覚めの演出：時が止まった世界(周りの色を抜いて暗くする)の上に、ライバルを描く
+    //登場は画面の上から光が集まって組み上がり、目覚めは分身がまわりを回って体に重なる
     //(mainScreen.draw から。ドローン君を描いたあと、揺れ・拡大の中で)
     drawIntro:function(){
         var e = this.introOf();
         if(!e || !e.wfx) return;
-        var age = this.introAge(e);
+        var aw = e.mode == "awaken", S = this.stage(e), age = S.age;
         var p = Math.max(0, Math.min(1, age/(RIVAL_INTRO_STOP*0.6), e.count/RIVAL_INTRO_OUT));
         ctx.save();
         ctx.globalCompositeOperation = "saturation";
@@ -702,7 +986,7 @@ var rival = {
         ctx.globalCompositeOperation = "source-over";
         ctx.fillStyle = "rgba(15,25,55," + (0.4*p) + ")";
         ctx.fillRect(-40,-40,CW + 80,CH + 80);
-        //時が止まる瞬間：現れる場所から、色の反転した輪が広がる
+        //時が止まる瞬間：ライバルのところから、色の反転した輪が広がる
         if(age < RIVAL_INTRO_STOP){
             var u = age/RIVAL_INTRO_STOP, r = 20 + (1 - (1 - u)*(1 - u))*1100;
             ctx.globalCompositeOperation = "difference";
@@ -711,8 +995,8 @@ var rival = {
             ctx.globalCompositeOperation = "source-over";
         }
         ctx.restore();
-        //光が画面の上から集まって組み上がる(現れる場所には縮んでいく光の輪)
-        if(age >= RIVAL_INTRO_GATHER && age < RIVAL_INTRO_ARRIVE){
+        //登場：光が画面の上から集まって組み上がる(現れる場所には縮んでいく光の輪)
+        if(!aw && age >= RIVAL_INTRO_GATHER && age < RIVAL_INTRO_ARRIVE){
             var t = (age - RIVAL_INTRO_GATHER)/(RIVAL_INTRO_ARRIVE - RIVAL_INTRO_GATHER);
             ctx.strokeStyle = "rgba(" + WARP_COLOR + "," + (0.8*Math.sin(Math.PI*t)) + ")";
             ctx.lineWidth = 3;
@@ -720,39 +1004,53 @@ var rival = {
             ctx.lineWidth = 1;
             e.wfx.draw(e.wx0, e.wy0, e.x, e.y, t);
         }
-        if(age >= RIVAL_INTRO_ARRIVE){
+        //目覚め：分身が体から分かれて回り、広がってから体に重なる
+        if(aw && age >= S.at){
+            var n = RIVAL2_CLONES[e.lv || 0] + 1, u = (age - S.at)/(S.T - S.at);
+            var R = 90*Math.sin(Math.PI*Math.min(1, u*1.15));
+            this.onTop = true;
+            for(var i=0; i<n; i++){
+                var a = age*0.09 + i*Math.PI*2/n;
+                ctx.save();
+                ctx.translate(e.x + Math.cos(a)*R, e.y + Math.sin(a)*R*0.8);
+                this.drawBody(e, null, 0.45);
+                ctx.restore();
+            }
+            this.onTop = false;
+        }
+        if(age >= (aw ? 0 : S.at)){
             this.onTop = true;
             ctx.save();
             ctx.translate(e.x, e.y);
             this.draw(e, null);
             ctx.restore();
             this.onTop = false;
-            //組み上がった直後：光る
-            var g = 1 - (age - RIVAL_INTRO_ARRIVE)/20;
-            if(g > 0) e.wfx.drawGlow(e.x, e.y, 0.9*g);
+            //組み上がった・目覚めた直後：光る
+            var g = 1 - (age - S.at)/20;
+            if(g > 0 && g <= 1) e.wfx.drawGlow(e.x, e.y, 0.9*g);
         }
     },
-    //登場の演出の文字(揺れ・拡大の外。mainScreen.draw から)：上下の黒い帯・名前と異名・時が止まった案内
+    //登場・目覚めの演出の文字(揺れ・拡大の外。mainScreen.draw から)：上下の黒い帯・名前と異名・時が止まった案内
     drawUi:function(){
         var e = this.introOf();
         if(!e) return;
-        var age = this.introAge(e), lv = e.lv || 0;
+        var aw = e.mode == "awaken", S = this.stage(e), age = S.age, lv = e.lv || 0, N = aw ? RIVAL2 : RIVAL;
         ctx.save();
         ctx.textBaseline = "middle";
         //画面のまんなかの案内(時が止まる・動き出す)
-        var msg = age < RIVAL_INTRO_ARRIVE ? "時間停止 ―― 何かが来る！" : e.count <= RIVAL_INTRO_OUT ? "時は動き出す" : "";
+        var msg = age < S.at ? (aw ? "時間停止 ―― まだ終わっていない！？" : "時間停止 ―― 何かが来る！") : e.count <= RIVAL_INTRO_OUT ? "時は動き出す" : "";
         if(msg){
             ctx.globalAlpha = Math.min(1, age/10, e.count/8);
             ctx.fillStyle = "rgba(10,20,40,0.6)";
             ctx.fillRect(0, CH/2 - 150, CW, 40);
             ctx.textAlign = "center";
             ctx.font = "bold 20px sans-serif";
-            ctx.fillStyle = "rgb(" + WARP_COLOR + ")";
+            ctx.fillStyle = "rgb(" + (aw ? RIVAL2_GLOW : WARP_COLOR) + ")";
             ctx.fillText(msg, CW/2, CH/2 - 130);
             ctx.globalAlpha = 1;
         }
-        //組み上がってから：上下の黒い帯と、右から名前(ボスの名乗りと同じ形で、ライバルの色)
-        var a = age - RIVAL_INTRO_ARRIVE;
+        //組み上がって・目覚めてから：上下の黒い帯と、右から名前(ボスの名乗りと同じ形で、ライバルの色)
+        var a = age - S.at;
         if(a >= 0){
             var k = Math.min(1, a/18, e.count/20);
             ctx.fillStyle = "#000";
@@ -763,15 +1061,15 @@ var rival = {
             ctx.globalAlpha = Math.min(1, e.count/20);
             ctx.textAlign = "right";
             ctx.font = "bold 16px sans-serif";
-            ctx.fillStyle = "rgb(30,120,190)";
-            ctx.fillText("RIVAL　" + RIVAL.en + (lv > 0 ? "　再戦 Lv." + (lv + 1) : ""), x - 4, y - 44);
+            ctx.fillStyle = aw ? "rgb(150,80,220)" : "rgb(30,120,190)";
+            ctx.fillText("RIVAL　" + N.en + (aw ? "　SECOND FORM" : lv > 0 ? "　再戦 Lv." + (lv + 1) : ""), x - 4, y - 44);
             ctx.font = "900 54px serif";
             ctx.lineJoin = "round";
             ctx.lineWidth = 8;
             ctx.strokeStyle = "rgba(255,255,255,0.9)";
-            ctx.strokeText(RIVAL.name, x, y);
-            ctx.fillStyle = "rgb(" + RIVAL_TINT + ")";
-            ctx.fillText(RIVAL.name, x, y);
+            ctx.strokeText(N.name, x, y);
+            ctx.fillStyle = "rgb(" + (aw ? RIVAL2_TINT : RIVAL_TINT) + ")";
+            ctx.fillText(N.name, x, y);
             ctx.lineJoin = "miter";
             //名前の下に伸びる線(ハチマキの赤)と異名
             var w = 380*Math.min(1, Math.max(0, (a - 12)/24));
@@ -780,7 +1078,7 @@ var rival = {
             ctx.font = "bold 17px sans-serif";
             ctx.fillStyle = "#eee";
             ctx.globalAlpha *= Math.min(1, Math.max(0, (a - 24)/16));
-            ctx.fillText(RIVAL.title + " ――", x - 6, y + 58);
+            ctx.fillText(N.title + " ――", x - 6, y + 58);
         }
         ctx.restore();
         ctx.lineWidth = 1;

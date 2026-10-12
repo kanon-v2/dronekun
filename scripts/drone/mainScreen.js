@@ -73,7 +73,7 @@ const JUST_GOOD = { slow:0.45, max:8, yaruki:10, guard:36 };   //JUST の見返�
 const JUST_COOP_SLOW  = 40;     //協力プレイで、敵と弾がゆっくりになる時間(ふたりの画面で同じ。ふつうの衝撃波は BLAST_SLOWMO)
 const JUST_COLOR      = "90,220,255";
 //ジャスト・カウンター：体当たりしてくる敵がぶつかる直前に衝撃波を出すとジャストになり、その敵を敵の群れへ弾き返す
-const COUNTER_TYPES   = ["dasher","mdrone","queen","kai","chrono"];    //弾き返せる敵(突進・人間のドローン・女王蜂とドローン君改・ライバルの突進)
+const COUNTER_TYPES   = ["dasher","mdrone","queen","kai","chrono","chronoClone"];    //弾き返せる敵(突進・人間のドローン・女王蜂とドローン君改・ライバルと分身の突進)
 const COUNTER_SPEED   = 11;     //弾き返した突進の速さ(突進そのものは5)
 const COUNTER_TURN    = 0.08;   //狙った敵へ曲がる強さ(1フレームのラジアン)
 const COUNTER_RANGE   = 700;    //狙う敵を探す距離(いなければ来た向きへ返す)
@@ -731,7 +731,7 @@ var mainScreen = {
     //ジャスト・カウンターで弾き返せる敵か(突進は飛び出している間だけ。女王蜂・ドローン君改も突進している間だけ)
     canCounter:function(_e){
         if(_e.dead || _e.countered || _e.rival || COUNTER_TYPES.indexOf(_e.type) < 0) return false;
-        if(_e.type == "queen" || _e.type == "kai" || _e.type == "chrono") return _e.mode == "dash";
+        if(_e.type == "queen" || _e.type == "kai" || _e.type == "chrono" || _e.type == "chronoClone") return _e.mode == "dash";
         return !(_e.type == "dasher" && _e.tell != TELL.dash);
     },
     //構えている(衝撃波に耐える)突進か
@@ -759,6 +759,7 @@ var mainScreen = {
     counter:function(_e){
         if(coop.isGuest()){ coop.onCounter(_e); return; }
         if(_e.dead || _e.countered) return;
+        if(_e.clone){ rival.parryClone(_e); return; }  //ライバルの分身は砕ける(rival.js)
         if(_e.boss){ special.parry(_e); return; }     //ボス(女王蜂)は飛ばさず、弾いてよろけさせる(bosses.js)
         //連続突進の途中なら、はじいてよろけさせるだけ(次の突進が来る)。全部弾くと最後に強く弾き返す
         if(_e.type == "dasher" && _e.chain > 0){
@@ -1131,7 +1132,7 @@ var mainScreen = {
         //ゲストの攻撃はダメージをホストへ送るだけ(敵を動かしているのはホスト)
         if(coop.isGuest()){ coop.guestHit(_e,_dmg,_src); return; }
         if(_e.dead) return;
-        if(_e.boss && _e.harmless) return;     //倒れて復活している間のドローン君改(bosses.js の special.revive)
+        if((_e.boss && _e.harmless) || _e.phased) return;     //倒れて復活している間のドローン君改(bosses.js の special.revive)・ワープ中のライバルと分身(rival.js)
         bossDebug.dealt(_e,_dmg);
         _e.hp -= _dmg;
         _e.flash = 6;
@@ -1145,8 +1146,8 @@ var mainScreen = {
         _e.dead = true;
         arms.onKill(_e,_src);
         game.score += _e.score;
-        popup(_e.x,_e.y - _e.r,"+" + _e.score);
-        killBlast(_e.x,_e.y,_e.r,_e.type == "goldbug" ? "255,215,0" : null);
+        if(_e.score > 0) popup(_e.x,_e.y - _e.r,"+" + _e.score);
+        killBlast(_e.x,_e.y,_e.r,_e.type == "goldbug" ? "255,215,0" : _e.glow);     //分身(rival.js)はワープの光の色
         for(var i=partsDrop(_e.parts); i>0; i--) this.drop("part",_e.x,_e.y);
         if(Math.random() < YARUKI_DROP_RATE) this.drop("yaruki",_e.x,_e.y);
         special.onKill(_e);
@@ -1773,7 +1774,7 @@ var mainScreen = {
         }
 
         //体力ゲージ(硬い敵が傷ついたとき)
-        if(_e.maxHp > 1 && _e.hp < _e.maxHp && !_e.boss){
+        if(_e.maxHp > 1 && _e.hp < _e.maxHp && !_e.boss && !_e.clone){     //分身は本物と見分けがつかないよう出さない
             var w = _e.r*2;
             ctx.fillStyle = "#ddd";
             ctx.fillRect(_e.x - w/2, _e.y - _e.r - 10, w, 4);

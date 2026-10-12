@@ -581,15 +581,53 @@ try{
     var rvPack = { e:[] }; coop.packEnemy(rv, rvPack);
     check("ライバル：協力プレイで種類・ワープの出発点と長さを送れる", COOP_TYPES[rvPack.e[1]] == "chrono" && rvPack.b[14] == rv.wt && rvPack.b[12] == Math.round(rv.wx0)
           && ["warp","shoot","hold","flee"].every(function(m){ return COOP_MODES.indexOf(m) >= 0; }), JSON.stringify(rvPack.b));
-    // 撃退：倒れずに去る(報酬カプセル・パーツ)。去ったら雑魚敵がまた出てくる
+    // 第二形態(WAVE8から)：第一形態の体力が0になると、時が止まって目覚め(第一形態の体力に RIVAL2_HP_MUL を掛けた体力)、分身で戦う
     for(var i=0; i<RIVAL_WARP_T[1] + 2; i++) mainScreen.update();
+    var rvMax1 = rv.maxHp;
+    mainScreen.hitEnemy(rv, 99999, "gun");
+    var rvAwake = rv.mode == "awaken" && !rv.dead && special.holdFire() && rv.harmless;
+    for(var i=0; i<RIVAL2_AWAKEN_T; i++){ mainScreen.update(); if(i % 15 == 0) draw1(); }
+    var rv2 = rv.form == 2 && rv.mode == "idle" && rv.maxHp == Math.round(rvMax1*RIVAL2_HP_MUL) && rv.hp == rv.maxHp && rv.sayText == RIVAL2_LINES[0];
+    check("ライバルの第二形態：WAVE8から、第一形態を倒すと時が止まって目覚め、体力が満ちる", rvAwake && rv2 && errors.length == rvErr,
+          "目覚め" + rvAwake + " 第二形態" + rv2 + " 体力" + Math.round(rv.hp) + "/" + rv.maxHp + "(第一形態" + rvMax1 + ")");
+    var rvModes2 = {}, rvClones = 0, rvCloneKinds = {}, rvClonePack = null, rvCloneParry = false;
+    for(var i=0; i<60*35; i++){
+        bot(); mainScreen.hp = 99;
+        mainScreen.update(); if(i % 10 == 0) draw1();
+        rv.hp = rv.maxHp; rv.hpMark = rv.hp;
+        rvModes2[rv.mode] = true;
+        var cl = enemies.filter(function(e){ return e.clone; });
+        rvClones = Math.max(rvClones, cl.length);
+        cl.forEach(function(c){ rvCloneKinds[c.mode] = true; });
+        //突進している分身を、ジャスト・カウンターで弾くと砕ける
+        var cd = cl.filter(function(c){ return c.mode == "dash"; })[0];
+        if(cd && !rvCloneParry){
+            rvClonePack = { e:[] }; coop.packEnemy(cd, rvClonePack);
+            mainScreen.counter(cd);
+            rvCloneParry = cd.dead;
+        }
+    }
+    check("ライバルの第二形態：分身の陣・分身突進・幻影包囲(分身が残る)で、本物と分身が一緒に戦う。突進する分身は弾くと砕ける",
+          rvModes2.split && rvModes2.aim && rvModes2.hold && rvClones >= RIVAL2_CLONES[1] && rvCloneKinds.split && rvCloneKinds.dash && rvCloneKinds.stay && rvCloneParry && errors.length == rvErr,
+          "本物" + Object.keys(rvModes2).join(",") + " 分身" + rvClones + "体 " + Object.keys(rvCloneKinds).join(",") + " 弾く" + rvCloneParry);
+    check("ライバルの分身：協力プレイで種類・動きを送れる", rvClonePack && COOP_TYPES[rvClonePack.e[1]] == "chronoClone" && COOP_MODES[rvClonePack.e[6] & 31] == "dash", rvClonePack ? JSON.stringify(rvClonePack.e) : "なし");
+    // 撃退：第二形態の体力が0になると去る(報酬カプセル・パーツ)。分身も消える。去ったら雑魚敵がまた出てくる
+    while(rv.mode == "warp" || rv.mode == "awaken") mainScreen.update();
     var rvScore = game.score;
     mainScreen.hitEnemy(rv, 99999, "gun");
     var rvFlee = rv.mode == "flee" && !rv.dead && pickups.some(function(p){ return p.kind == "capsule"; }) && game.score > rvScore;
     for(var i=0; i<RIVAL_FLEE_T + 5; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
     for(var i=0; i<240; i++){ bot(); mainScreen.hp = 99; mainScreen.update(); }
-    check("ライバル：体力が0になると捨てぜりふを残して去り、報酬カプセルを落とす。そのあと雑魚敵がまた出る", rvFlee && !findRv() && !rival.musicOn && (mainScreen.spawned > rvAt || mainScreen.toSpawn == 0) && errors.length == rvErr,
+    check("ライバル：体力が0になると捨てぜりふを残して去り、報酬カプセルを落とす。分身も消え、そのあと雑魚敵がまた出る", rvFlee && !findRv() && !enemies.some(function(e){ return e.clone; }) && !rival.musicOn && (mainScreen.spawned > rvAt || mainScreen.toSpawn == 0) && errors.length == rvErr,
           "去る" + rvFlee + " 雑魚" + rvAt + "→" + mainScreen.spawned);
+    // WAVE3(Lv.1)は第二形態がなく、第一形態を倒すとそのまま去る
+    setup(3, { gun:3 }, ["gun",null,null], 6);
+    page.change(1);
+    var rv3 = rival.make(); enemies.push(rv3);
+    for(var i=0; i<RIVAL_INTRO_T + 2; i++) mainScreen.update();
+    while(rv3.mode == "warp") mainScreen.update();
+    mainScreen.hitEnemy(rv3, 99999, "gun");
+    check("ライバル：WAVE3は第二形態がなく、倒すとそのまま去る", rv3.mode == "flee" && (rv3.form || 1) == 1 && errors.length == rvErr, rv3.mode);
 
     // 3. 全シナジー
     SYNERGIES.forEach(function(s){
