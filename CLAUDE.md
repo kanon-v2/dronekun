@@ -50,6 +50,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | `bossDebug.js` | デバッグのメニュー：ボス戦だけを遊ぶ・武器試用・ストーリー確認(`#debug` で開いたときだけ) |
 | `timeStop.js` | ショップのバフ「時止めワープ」(被弾の瞬間に自動で時が止まり、選んだ場所へ粒子になって移る。クールタイム `BUFF_WARP_CD` 秒・WAVEの始めは使える・協力プレイ／対戦では働かない)。デバッグのメニューで「オン」にすると、クールタイムなしで試せる |
 | `rival.js` | 中ボス：ライバル「クロノ」(下記「ライバル(中ボス)」参照)。ワープの粒子は `timeStop.js` と同じ描き方(`RivalWarp`) |
+| `shotLab.js` | 敵の攻撃の試作。弾でない攻撃も持つ：範囲攻撃(`shotLab.zone`。円・横の帯・縦の帯を光の線がなぞり、ためのあと範囲全体を攻撃。衝撃波では消せない。`ZONE_*`)、バケツ(`shotLab.bucket`。画面の上でドローン君の上へ寄り、傾けて液体(弾 `goo`)を流す。続いた粒は糸でつながり、最後に口にしずくがたまって糸を引いて落ち、床でしぶきになって飛び散る。粘りは `GOO_VISCOSITY`(0 さらさら～1 どろどろ)1つで、落ち方・糸の長さ・しぶきがまとめて変わる。`BUCKET_*`・`GOO_*`)。範囲攻撃・バケツは `shotLab.update`・`drawUnder`・`drawOver` で動かして描き、協力プレイのゲストにはまだ届かない(液体は弾なので届く)。弾の試作(分裂弾・加速弾・ため弾・波打ち弾・曲がり弾・跳ね弾・ブーメラン弾・針弾・ジャスト不可弾)。ジャスト不可弾(`SHOT_KINDS` の `noJust`)はジャスト衝撃波にならず、衝撃波でははね返らずに消えるだけ(当たりそうだったら「ジャスト不可」と出す。`shotLab.noJust`・`denied`)。見分けやすいよう白い芯の代わりに黒地に赤い×、回る赤白のしまの輪、近いと赤く脈打つ(`NOJUST_*`)。`SHOT_KINDS` に種類を足し、動き `shotLab.step`・絵 `shotLab.draw` を `mainScreen.updateShots`・`draw` から呼ぶ。まだ敵には持たせていない(撃つには `shotLab.fire`)。調整値は `SPLIT_*`・`ACCEL_*`・`REAIM_*`・`WAVE_*`・`CURVE_*`・`BOUNCE_*`・`BOOMER_*`・`NEEDLE_*`。協力プレイでは動きはホストだけで計算し、弾の種類の番号(`coop.js` の `COOP_SHOTS`)は `SHOT_KINDS` の並び |
 | `lib/peerjs.min.js` | PeerJS 1.5.5(外部ライブラリ。MITライセンス、`lib/PEERJS-LICENSE`)。協力プレイの通信に使う。手を加えない |
 | `coop.js` | ふたりで協力プレイ(下記「協力プレイ」参照)。対戦も同じ部屋・通信を使う |
 | `versus.js` | ふたりで対戦(下記「対戦」参照)。page 7 |
@@ -170,6 +171,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
   - 武器試用：装備を3つまで選び(押した順に装備枠へ)、装備のレベル・能力のレベル・敵の強さ(`TRIAL_WAVES` のWAVEの雑魚敵)を決めて戦う。敵は尽きずに出続け(`TRIAL_MAX_ENEMIES` 体まで)、いつも無敵。画面上に直近 `TRIAL_DPS_SEC` 秒の毎秒ダメージと撃破数、戻ると始めからの平均を出す(`mainScreen.hitEnemy` から `bossDebug.dealt` で数える)。
   - ストーリー確認：戦闘なしで全ストーリーを順に流す。終わるとメニューへ戻る。
   - 時止めワープ「オン」(ショップのバフと同じ能力。`timeStop.js`)：クールタイムなしで、ボス戦・武器試用で、被弾する瞬間に時が止まり(ダメージなし)、クリック・タップした場所へ、体が粒子にほどけて飛び、組み上がる。そのあと `WARP_GUARD` の間は無敵。協力プレイ・対戦では働かない。粒子はドローン君の今のコマを別のキャンバスに写して小さく切って描く(`getImageData` は使わない)。
+  - 攻撃の試作：画面の上の砲台が、試作の弾・攻撃(`shotLab.js`)を `SHOT_LAB_SEC` 秒ずつ順に出す。左の一覧を押すと、その攻撃だけを繰り返す(「自動で順番に」で戻る。`shotLab.labPickAt`)(雑魚敵なし・無敵。弾の速さ・数は `SHOT_LAB_WAVE` のもの)。
   - 途中でメニューへ戻るのは、右下の「DEBUG：戻る」(`sound.buttons` の `debugBack`)。
 - `common.js` の `DEBUG = true` で、マウス座標などを左上に表示。
 - 画面上部の中央に、フレームレート(1秒あたりの描画回数)を常に表示している(`draw.js` の `fps`)。`FPS_WARN` 未満でオレンジ、`FPS_BAD` 未満で赤。

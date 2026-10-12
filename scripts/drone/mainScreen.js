@@ -390,6 +390,7 @@ var mainScreen = {
 
     enter:function(){
         enemies = []; enemyShots = []; pickups = []; effects = []; popups = [];
+        shotLab.clear();        //試作の攻撃(範囲攻撃・バケツ。shotLab.js)
         this.down = false;      //協力プレイで倒れている(次のWAVEで復帰)
         if(coop.active){
             //WAVEごとにダメージの合計をリセット(敵の番号は通しなので混ざらない)
@@ -516,7 +517,8 @@ var mainScreen = {
             case "play":
                 if(this.bossFreeze) break;   //ボスの登場の演出中は敵を出さない・衝撃波も出せない
                 this.spawn();
-                if(Click == 1) this.blast();
+                //(デバッグの攻撃の試作で、左の一覧を押したときは攻撃を選ぶだけ。shotLab.js)
+                if(Click == 1 && !(inputMode == "mouse" && shotLab.labPickAt(MouseX,MouseY))) this.blast();
                 //全部倒したらWAVEクリア(ライバルが出るWAVEは、ライバルを撃退してから)
                 if(this.toSpawn == 0 && enemies.length == 0 && rival.done){
                     this.state = "clear";
@@ -526,6 +528,7 @@ var mainScreen = {
                     sound.stopMusic();
                     sound.play("clear");
                     enemyShots = [];
+                    shotLab.clear();
                 }
                 break;
             case "clear":
@@ -610,6 +613,12 @@ var mainScreen = {
     },
 
     spawn:function(){
+        //デバッグの弾の試作：雑魚敵は出さず、砲台が試作の弾を撃つ(shotLab.js)
+        if(bossDebug.lab){
+            this.toSpawn = 1;
+            shotLab.labStep();
+            return;
+        }
         //デバッグの武器試用：敵は尽きずに出続ける(多すぎるときは待つ。bossDebug.js)
         if(bossDebug.trial){
             this.toSpawn = 1;
@@ -659,7 +668,9 @@ var mainScreen = {
         for(var i=enemyShots.length-1; i>=0; i--){
             var d = Math.hypot(enemyShots[i].x - drone.X, enemyShots[i].y - drone.Y);
             if(d < BLAST_RADIUS){
-                if(just) near.push({ s:enemyShots[i], d:d });
+                //ジャストにならない弾ははね返らず、消えるだけ。当たりそうだった弾には「ジャスト不可」と出す(shotLab.js)
+                if(shotLab.noJust(enemyShots[i])) shotLab.denied(enemyShots[i]);
+                else if(just) near.push({ s:enemyShots[i], d:d });
                 enemyShots.splice(i,1);
             }
         }
@@ -714,6 +725,7 @@ var mainScreen = {
         var tier = 0;
         for(var i=0; i<enemyShots.length && JUST_SHOTS; i++){
             var b = enemyShots[i];
+            if(shotLab.noJust(b)) continue;     //ジャストにならない弾(shotLab.js)
             var t = this.hitTime(b.x,b.y,b.vx,b.vy,(b.r || 5) + HIT_CORE);
             if(t >= 0) tier = Math.max(tier, t <= JUST_PERFECT ? 2 : 1);
         }
@@ -1079,7 +1091,7 @@ var mainScreen = {
         if(timeStop.trigger()) return;
         this.breakCombo(true);     //被弾するとかすりコンボは途切れる
         //デバッグのボス戦で無敵にしているとき・武器試用は減らない(当たった音と点滅だけ)
-        if(bossDebug.active && (bossDebug.god || bossDebug.trial)){
+        if(bossDebug.active && (bossDebug.god || bossDebug.trial || bossDebug.lab)){
             this.invincible = 30;
             sound.play("damage");
             return;
@@ -1315,8 +1327,11 @@ var mainScreen = {
     //敵の弾
     //当たり判定はドローン中心の小さな点だけ。すれすれでよけると「かすり」でやる気がたまる
     updateShots:function(){
+        shotLab.update();       //試作の攻撃(範囲攻撃・バケツ。shotLab.js)
         for(var i=enemyShots.length-1; i>=0; i--){
             var b = enemyShots[i];
+            //試作の弾の動き(shotLab.js)
+            if(shotLab.step(b)){ enemyShots.splice(i,1); continue; }
             if(b.homing){
                 //追尾弾(ドローン君改のミサイル・龍)：少しずつドローン君の方へ曲がり、時間で消える
                 var cur = Math.atan2(b.vy,b.vx);
@@ -1491,10 +1506,12 @@ var mainScreen = {
         //ドローンの装備(弾・ミサイル・虫など)
         arms.draw(this.state != "over");
 
+        shotLab.drawUnder();    //試作の攻撃：範囲攻撃の範囲・液体の糸(弾の下に描く)
         //敵の弾(種類ごとに色と大きさが違う。白い芯で見やすく)
         for(var i=0; i<enemyShots.length; i++){
             var b = enemyShots[i];
             var r = b.r || 5;
+            if(shotLab.draw(b)) continue;   //試作の弾(shotLab.js)
             if(b.kind == "missile"){
                 //ドローン君改のミサイル(黒い弾頭の赤い筒)
                 ctx.save();
@@ -1537,6 +1554,7 @@ var mainScreen = {
             ctx.fillStyle = "#fff";
             ctx.beginPath(); ctx.arc(b.x,b.y,r*0.45,0,Math.PI*2); ctx.fill();
         }
+        shotLab.drawOver();     //試作の攻撃：バケツ(弾の上に描く)
 
         //かすりコンボ：ドローン君のまわりに、途切れるまでの時間を表す輪
         if(showMe && !this.down && this.combo >= 2) this.drawComboAura();

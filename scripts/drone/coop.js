@@ -11,7 +11,7 @@
 //  ・強化・装備・パーツはそれぞれ別。敵の体力は2倍
 //------------------------------------------------------------------------------
 const COOP_TYPES  = ["bug","dasher","shooter","tank","spinner","bomber","kin","mdrone","heli","panzer","goldbug","carrier","queen","fortress","kai","canopy","pod","chrono","chronoClone"];
-const COOP_SHOTS  = ["normal","small","big","water","missile","dragon"];
+const COOP_SHOTS  = Object.keys(SHOT_KINDS);  //弾の種類の番号(試作の弾 shotLab.js も後ろに並ぶ)
 const COOP_PICKS  = ["part","yaruki","capsule"];
 const COOP_MODES  = ["enter","idle","aim","dash","spiral","triple","laserAim","laser","feint","stagger","down","revive","rain","wave","summon","warp","shoot","hold","flee","intro","awaken","split","stay","fade","waltz","rewind","rstop"];
 const COOP_STATES = ["start","play","clear","over"];

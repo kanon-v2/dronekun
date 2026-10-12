@@ -26,6 +26,7 @@ var bossDebug = {
     god:false,      //無敵
     warp:false,     //時止めワープ(試作の能力。timeStop.js)。ボス戦・武器試用の両方で働く
     rival:false,    //ライバル(中ボス。rival.js)と戦っている(雑魚敵なしで、すぐ現れる)
+    lab:false,      //攻撃の試作(shotLab.js)を見ている(雑魚敵なし。試作の弾・攻撃を順に出す。無敵)
     wave:5,
     keep:null,      //始める前の進行状況(終わったら戻す)
     msg:"",
@@ -88,6 +89,12 @@ var bossDebug = {
         this.startTime = 0;
         page.change(1);
     },
+    //攻撃の試作を見る(shotLab.js)
+    startLab:function(){
+        this.lab = true;
+        shotLab.labStart();
+        this.start(SHOT_LAB_WAVE);
+    },
     //武器試用を始める
     startTrial:function(){
         if(this.trialArms.length == 0) return;
@@ -99,15 +106,18 @@ var bossDebug = {
     //終わった(_result："clear" 撃破 / "over" 撃墜 / "quit" 中断)
     finish:function(_result){
         var sec = Math.round(this.startTime/60);
-        var wasRival = this.rival;
+        var wasRival = this.rival, wasLab = this.lab;
         this.active = false;
         this.rival = false;
+        this.lab = false;
         timeStop.reset();   //時が止まったまま戻ってきたとき
         save.restore(this.keep);
         if(this.trial){
             this.trial = false;
             this.picking = true;
             this.msg = "前回：" + this.armsText() + "　毎秒ダメージ " + this.dps(false).toFixed(1) + "・撃破 " + this.kills + "（" + sec + "秒）";
+        }else if(wasLab){
+            this.msg = "攻撃の試作を終えました（" + sec + "秒）";
         }else{
             this.msg = _result == "clear" ? (wasRival ? "ライバル WAVE " + this.wave + " 撃退！（" : "WAVE " + this.wave + " 撃破！（") + sec + "秒）"
                      : _result == "over" ? "WAVE " + this.wave + " 撃墜されました（" + sec + "秒）" : "中断しました";
@@ -162,7 +172,8 @@ var bossDebug = {
     tools:function(){
         var out = [];
         for(var i=0; i<5; i++) out.push(new drawRect(CW/2 + (i - 2)*116, GS*12.8, 110, 36));
-        out.push(new drawRect(CW/2, GS*14.1, 180, 32));
+        out.push(new drawRect(CW/2 - 95, GS*14.1, 180, 32));
+        out.push(new drawRect(CW/2 + 95, GS*14.1, 180, 32));
         return out;
     },
     //武器試用：装備の一覧(WEAPON_IDS の順)
@@ -214,6 +225,7 @@ var bossDebug = {
         if(t[3].clicked()){ this.toggleGod(); return; }
         if(t[4].clicked()){ this.close(); return; }
         if(t[5].clicked()){ this.toggleWarp(); return; }
+        if(t[6].clicked()){ this.startLab(); return; }
     },
     updateTrial:function(){
         var a = this.armButtons();
@@ -259,7 +271,7 @@ var bossDebug = {
             for(var i=0; i<rr.length; i++) rr[i].button("ライバル W" + RIVAL_WAVES[i]);
             var t = this.tools();
             var labels = ["ストーリー確認", "武器試用", "装備「" + BOSS_DEBUG_GEAR[this.gear] + "」", "無敵「" + (this.god ? "オン" : "オフ") + "」", "閉じる",
-                          "時止めワープ「" + (this.warp ? "オン" : "オフ") + "」"];
+                          "時止めワープ「" + (this.warp ? "オン" : "オフ") + "」", "攻撃の試作"];
             ctx.font = "bold 14px sans-serif";
             for(var i=0; i<t.length; i++) t[i].button(labels[i]);
         }
@@ -312,7 +324,10 @@ var bossDebug = {
         ctx.textBaseline = "middle";
         ctx.font = "bold 12px sans-serif";
         ctx.fillStyle = "#c33";
-        if(this.trial){
+        if(this.lab){
+            ctx.fillText("DEBUG 攻撃の試作(無敵)　左の一覧で攻撃を選べます　右下の「DEBUG：戻る」で戻る", CW/2, 24);
+            shotLab.drawLab();
+        }else if(this.trial){
             ctx.fillText("DEBUG 武器試用　" + this.armsText() + (this.warp ? "　時止めワープ" : "") + "　右下の「DEBUG：戻る」で戻る", CW/2, 24);
             ctx.font = "bold 14px sans-serif";
             ctx.fillText("毎秒ダメージ " + this.dps(true).toFixed(1) + "（直近" + TRIAL_DPS_SEC + "秒）　撃破 " + this.kills, CW/2, 42);

@@ -147,6 +147,7 @@ canvas.addEventListener("pointerdown",function(e){
         //BGM/SEボタンと衝撃波ボタンはその場で処理。タイトル画面のボタンはタップとして押す。それ以外はドラッグ開始
         if(sound.tapButton(p.x,p.y)) return;
         if(page.number != 0 && mainScreen.touchBlastHit(p.x,p.y)){ Click = 1; return; }   //戦闘中・対戦の戦闘中
+        if(page.number == 1 && shotLab.labPickAt(p.x,p.y)) return;     //デバッグの攻撃の試作：左の一覧で攻撃を選ぶ(shotLab.js)
         if(page.number == 0 && startScreen.touchUI(p.x,p.y)){ tapAt(p); return; }
         drag.id = e.pointerId;
         drag.x = p.x; drag.y = p.y;

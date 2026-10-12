@@ -242,7 +242,7 @@ var rival = {
     },
     //WAVEの始め(mainScreen.enter から。雑魚敵の数が決まったあと)
     reset:function(){
-        this.done = this.level() < 0 || bossDebug.trial;
+        this.done = this.level() < 0 || bossDebug.trial || bossDebug.lab;
         this.musicOn = false;
     },
     //戦っているライバル(撃退されて去っていくところは含まない)

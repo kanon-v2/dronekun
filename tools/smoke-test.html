@@ -26,6 +26,7 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
 <script src="scripts/drone/bossDebug.js"></script>
 <script src="scripts/drone/timeStop.js"></script>
 <script src="scripts/drone/rival.js"></script>
+<script src="scripts/drone/shotLab.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="scripts/drone/coop.js"></script>
 <script src="scripts/drone/versus.js"></script>
@@ -110,6 +111,101 @@ try{
     Math.random = rand0;
     rv = enemyShots.length;
     check("序盤から、虫はときどき狙って撃ち、倒れた虫は撃ち返す", bugShot && rv >= 3, "虫の弾" + bugShot + " 撃ち返し" + rv);
+
+    // 試作の弾(shotLab.js)：分裂・ため・跳ね・ブーメランの動き
+    enemies = []; enemyShots = []; mainScreen.toSpawn = 0;
+    var lerr = errors.length;
+    var sp = shotLab.fire(200,200,0,2,"split");
+    for(var i=0; i<SPLIT_FUSE; i++) mainScreen.updateShots();
+    var splitOk = enemyShots.indexOf(sp) < 0 && enemyShots.filter(function(b){ return b.kind == "small"; }).length == SPLIT_N;
+    enemyShots = [];
+    MouseX = drone.X; MouseY = drone.Y;
+    var ra = shotLab.fire(drone.X > CW/2 ? 150 : CW - 150, 120, Math.PI/2, 3, "reaim"), stopped = false;
+    for(var i=0; i<200 && !(stopped && ra.wait <= 0); i++){ mainScreen.updateShots(); if(ra.vx == 0 && ra.vy == 0) stopped = true; }
+    var reaimOk = stopped && ra.vx*(drone.X - ra.x) > 0;     //止まってから、ドローン君の方へ撃ち出された
+    enemyShots = [];
+    var bo = shotLab.fire(CW - 20, 20, 0, 4, "bounce");
+    for(var i=0; i<5; i++) mainScreen.updateShots();
+    var bounceOk = bo.vx < 0 && bo.left == BOUNCE_TIMES - 1;
+    var bm = shotLab.fire(400, 300, 0, 4, "boomer");
+    for(var i=0; i<40; i++) mainScreen.updateShots();
+    var boomerOk = bm.vx < 0;
+    enemyShots = [];
+    // ジャスト不可弾：当たる直前でもジャストにならず、衝撃波でははね返らずに消えて「ジャスト不可」と出る
+    mainScreen.down = false;
+    var nj = shotLab.fire(drone.X - 20, drone.Y, 0, 4, "nojust");
+    var njNoJust = !mainScreen.isJust();
+    fireShot(drone.X + 20, drone.Y, Math.PI, 4, "normal");
+    var njMixed = mainScreen.isJust();      //ふつうの弾が混ざればジャストになる
+    enemyShots = [nj]; popups = [];
+    mainScreen.yaruki = 100; var njJ = mainScreen.just;
+    mainScreen.blast();
+    var njBlast = enemyShots.length == 0 && mainScreen.just == njJ && popups.some(function(p){ return p.text == "ジャスト不可"; });
+    var njOk = njNoJust && njMixed && njBlast;
+    enemyShots = []; popups = [];
+    // 範囲攻撃：スキャンとためのあと、範囲の中にいれば被弾、外なら無傷
+    mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.hp = 5;
+    shotLab.zone("circle", drone.X, drone.Y);
+    shotLab.zone("band", 0, drone.Y > CH/2 ? 40 : CH - 40);     //ドローン君のいない帯
+    for(var i=0; i<ZONE_SCAN + ZONE_WAIT - 1; i++) mainScreen.updateShots();
+    var zHp0 = mainScreen.hp;
+    mainScreen.updateShots();
+    var zoneOk = zHp0 == 5 && mainScreen.hp == 4;
+    for(var i=0; i<ZONE_STRIKE + 2; i++) mainScreen.updateShots();
+    zoneOk = zoneOk && shotLab.zones.length == 0;
+    // バケツ：傾けて液体を流し(続いた粒は同じ流れの番号)、口にしずくがたまってから落ち、床で飛び散る
+    mainScreen.hp = 9;
+    var bk = shotLab.bucket(drone.X), gooN = 0, flowOk = false, dripFell = false, splat = false;
+    for(var i=0; i<420; i++){
+        mainScreen.invincible = 99;     //液体に当たって消えないように
+        mainScreen.updateShots();
+        var goos = enemyShots.filter(function(b){ return b.kind == "goo"; });
+        gooN = Math.max(gooN, goos.length);
+        if(goos.some(function(b){ return b.pour && b.seq >= 3; })) flowOk = true;
+        if(goos.some(function(b){ return b.big && !(b.hang > 0) && b.vy > 0.5; })) dripFell = true;
+        if(goos.some(function(b){ return b.small; })) splat = true;
+        if(i % 20 == 0) draw1();
+    }
+    var bucketOk = gooN > 5 && flowOk && dripFell && splat && bk.mode != null;
+    mainScreen.invincible = 0; shotLab.clear(); enemyShots = [];
+    check("試作の弾：分裂弾は割れ、ため弾は止まって狙い直し、跳ね弾は端で跳ね、ブーメラン弾は戻ってくる。ジャスト不可弾はジャストにならず、衝撃波では消えて「ジャスト不可」と出る。範囲攻撃は範囲の中だけ当たり、バケツは液体を流してしずくを垂らす",
+          splitOk && reaimOk && bounceOk && boomerOk && njOk && zoneOk && bucketOk && errors.length == lerr,
+          "分裂" + splitOk + " ため" + reaimOk + " 跳ね" + bounceOk + " ブーメラン" + boomerOk + " ジャスト不可" + njNoJust + "/" + njMixed + "/" + njBlast +
+          " 範囲" + zoneOk + " バケツ" + bucketOk + "(粒" + gooN + " 流れ" + flowOk + " しずく" + dripFell + " 飛び散り" + splat + ")");
+
+    // デバッグの「攻撃の試作」：砲台が全種類を順に出し、無敵。戻るとメニューへ
+    save.clearAll(); game.reset();
+    lerr = errors.length;
+    bossDebug.startLab();
+    var labKinds = {}, labHp = mainScreen.hp, lf = 0;
+    while(lf < 60*SHOT_LAB_SEC*shotLab.list.length && page.number == 1){
+        bot(); lf++; mainScreen.update();
+        for(var i=0; i<enemyShots.length; i++) labKinds[enemyShots[i].kind] = true;
+        if(shotLab.zones.length) labKinds.zone = true;
+        if(shotLab.buckets.length) labKinds.bucket = true;
+        if(lf % 10 == 0) draw1();
+    }
+    var labAll = shotLab.list.every(function(L){ return labKinds[L.id]; });
+    var labHpOk = mainScreen.hp == labHp, labEnemies = enemies.length;
+    // 左の一覧で攻撃を選ぶ：選んだ攻撃だけを繰り返す。マウスで一覧を押しても衝撃波は出ない。「自動で順番に」で戻る
+    var bucketI = shotLab.list.map(function(L){ return L.id; }).indexOf("bucket");
+    var rowB = shotLab.labRows()[bucketI + 1];
+    inputMode = "mouse"; MouseX = rowB.x + 20; MouseY = rowB.y + rowB.h/2; mainScreen.yaruki = YARUKI_MAX;
+    Click = 1; mainScreen.update(); Click = 0;
+    var pickOk = shotLab.labPick == bucketI && mainScreen.yaruki == YARUKI_MAX;     //衝撃波を出していない
+    var stayOk = true;
+    for(var i=0; i<60*SHOT_LAB_SEC*2; i++){ MouseX = 480; MouseY = 400; mainScreen.update(); if(shotLab.labIndex() != bucketI) stayOk = false; }
+    stayOk = stayOk && shotLab.buckets.length == 1;
+    var rowA = shotLab.labRows()[0];
+    shotLab.labPickAt(rowA.x + 5, rowA.y + 5);
+    var autoOk = shotLab.labPick == -1;
+    draw1();
+    bossDebug.finish("quit");
+    check("デバッグの「攻撃の試作」：全種類を出し、無敵で、雑魚敵は出ない。左の一覧で選んだ攻撃を繰り返す。戻るとメニュー",
+          labAll && labHpOk && labEnemies == 0 && pickOk && stayOk && autoOk && page.number == 0 && bossDebug.menu && !bossDebug.lab && errors.length == lerr,
+          Object.keys(labKinds).join(",") + " 体力" + labHpOk + " 敵" + labEnemies + " 選ぶ" + pickOk + "/" + stayOk + "/" + autoOk);
+    bossDebug.close(); shotLab.labPick = -1;
+    drone.X = CW/2; drone.Y = CH/2; MouseX = drone.X; MouseY = drone.Y;     //あとの確かめが、ドローン君がまんなかにいる前提なので
 
     // ジャスト衝撃波：当たる直前の弾があればはね返してやる気がたまる。遠い弾だけならふつうの衝撃波
     setup(2, { gun:1 }, ["gun",null,null], 1);
