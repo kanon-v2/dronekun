@@ -9,6 +9,8 @@
 //    ・幻影包囲(phantom)：短いワープでドローン君のまわりを跳び、止まった弾を置いていく。
 //      時が止まったように見えるあいだ(hold)は隙。時が動き出すと、置いた弾がドローン君へ一斉に飛ぶ
 //    ・攻撃の合間に削られすぎると、ワープでよける(RIVAL_DODGE)
+//  第二形態(RIVAL2_*)は分身の陣・分身突進・分身の輪舞(waltz：輪になって回り、まんなかへ撃つ)・
+//  時戻し(rewind → rstop：弾の輪を放って止め、逆向きに戻す)を足して使う
 //  体力が0になっても倒れず、捨てぜりふを残してワープで去る(撃退。報酬カプセルとパーツを落とす)。
 //  いる間は雑魚敵が出てこない(一騎打ち)。曲もライバルの曲になる。
 //  ボスと同じく boss の印を持つ(衝撃波で飛ばされない・凍らない・上の体力ゲージ)。mid の印で中ボスと見分ける。
@@ -80,20 +82,20 @@ const RIVAL_LINES = [                   //せりふ(現れたとき・本気に�
 //第二形態(WAVE8から)：第一形態(上の値のまま)の体力が0になると、時を止めて分身の力に目覚める
 const RIVAL2          = { name:"クロノ・ミラージュ", en:"CHRONO MIRAGE", title:"時を分かつ幻影" };
 const RIVAL2_FROM     = 1;          //第二形態がある段階(lv。1 = WAVE8から)
-const RIVAL2_HP_MUL   = 0.6;        //第二形態の体力(第一形態の体力に掛ける)
+const RIVAL2_HP_MUL   = 1.2;        //第二形態の体力(第一形態の体力に掛ける)
 const RIVAL2_TINT     = "70,35,125";    //第二形態と分身の体の色(紫がかった紺)
 const RIVAL2_GLOW     = "200,130,255";  //第二形態のまわりの光の色
 const RIVAL2_AWAKEN_T = 200;        //目覚めの演出の長さ(この間は時が止まる)
 const RIVAL2_SPLIT_AT = 60;         //目覚めの演出で、分身が回り出して体力が満ち始める時(ここから名乗る)
 const RIVAL2_FILL_T   = 80;         //体力が満ちる長さ
 const RIVAL2_PATTERNS = [null,      //攻撃の順番(Lv.2～4)。split 分身の陣・cross 分身突進・phantom 幻影包囲(分身が残る)・dash 突進
-    ["split","cross","phantom","split","dash"],
-    ["split","cross","phantom","cross","split","dash"],
-    ["cross","split","phantom","cross","split","dash"]
+    ["split","waltz","cross","rewind","phantom","split","dash"],      //waltz 分身の輪舞・rewind 時戻し
+    ["waltz","cross","rewind","split","phantom","cross","dash"],
+    ["cross","waltz","rewind","split","phantom","cross","waltz","rewind","dash"]
 ];
 const RIVAL2_REST     = [null,[75,55],[65,48],[55,40]];     //攻撃のあと、次の攻撃まで(Lv.2～4。ふだん・本気)
 const RIVAL2_CLONES   = [0,3,3,4];  //分身の数(本物のほかに。Lv.1～4)
-const RIVAL2_CLONE_HP = 0.04;       //分身の体力(第二形態の体力に対する割合。少し撃てば消える)
+const RIVAL2_CLONE_HP = 0.02;       //分身の体力(第二形態の体力に対する割合。少し撃てば消える)
 const RIVAL2_SPLIT_T  = 170;        //分身の陣：本物と分身が一緒に動き回って撃つ長さ
 const RIVAL2_SPLIT_R  = 210;        //分身の陣：ドローン君を囲む距離
 const RIVAL2_SPLIT_EVERY = 44;      //分身の陣：1体が撃つ間隔(1体ずつ順番にずらす)
@@ -101,7 +103,19 @@ const RIVAL2_SPLIT_N  = 3;          //分身の陣：1回に撃つ弾の数
 const RIVAL2_CROSS_R  = 270;        //分身突進：ドローン君を囲む距離
 const RIVAL2_CROSS_AIM = 34;        //分身突進：構えの長さ(1体目。合図 RIVAL_CUE を含まない)
 const RIVAL2_CROSS_GAP = 14;        //分身突進：1体ずつ飛び出すずれ(フレーム)
-const RIVAL2_FADE_T   = 20;         //分身が消える長さ
+const RIVAL2_WALTZ_T  = 240;        //分身の輪舞：本物と分身がドローン君を囲む輪になって回る長さ
+const RIVAL2_WALTZ_R  = [280,150];  //分身の輪舞：輪の半径(はじめ・いちばん縮んだとき。縮んでから広がる)
+const RIVAL2_WALTZ_SPIN = 0.018;    //分身の輪舞：輪の回る速さ(ラジアン/フレーム)
+const RIVAL2_WALTZ_EVERY = [40,30]; //分身の輪舞：1体が輪のまんなかへ撃つ間隔(ふだん・本気。1体ずつずらす)
+const RIVAL2_WALTZ_N  = 3;          //分身の輪舞：1回に撃つ弾の数(輪のまんなかへ向けた扇)
+const RIVAL2_REWIND_RINGS = [0,3,3,4];  //時戻し：自分のまわりへ放つ弾の輪の数(Lv.1～4)
+const RIVAL2_REWIND_N = [0,14,16,18];   //時戻し：1つの輪の弾の数
+const RIVAL2_REWIND_EVERY = 22;     //時戻し：輪を放つ間隔
+const RIVAL2_REWIND_SPEED = 2.6;    //時戻し：放つ弾の速さ(弾幕の倍率を掛ける)
+const RIVAL2_REWIND_FLY = 26;       //時戻し：最後の輪を放ってから、時を止めるまで
+const RIVAL2_REWIND_STOP = 45;      //時戻し：弾が止まっている長さ(この間は隙)。終わると弾が逆向きに戻ってくる
+const RIVAL2_REWIND_BACK = 1.15;    //時戻し：戻ってくる弾の速さ(放ったときの速さに掛ける)
+const RIVAL2_FADE_T   = 20;       //分身が消える長さ
 const RIVAL2_FLICKER  = 90;         //分身はこの間隔でちらつく(よく見ると本物と見分けられる)
 const RIVAL2_LINES    = ["まだだ…！ 時の分身を見せてやる！", "どれが本物か、見抜けるか！"];    //目覚めたとき・本気になったとき
 const RIVAL_CELL     = 3;              //ワープの粒子1つの大きさ(ゲームの px。ドローン君の WARP_CELL より粗く、軽く)
@@ -426,6 +440,25 @@ var rival = {
                 if(play) this.splitShot(_e, toMe);
                 if(--_e.count <= 0) this.rest(_e);
                 break;
+            case "waltz":
+                //分身の輪舞(第二形態)：分身と輪になって回り、輪のまんなかへ撃つ
+                if(this.waltzStep(_e, play)) this.rest(_e);
+                break;
+            case "rewind":
+                //時戻し(第二形態)：自分のまわりへ弾の輪を放ち、時を止める
+                _e.vx *= 0.85; _e.vy *= 0.85;
+                var el = RIVAL2_REWIND_RINGS[lv]*RIVAL2_REWIND_EVERY + RIVAL2_REWIND_FLY - _e.count;
+                if(play && el % RIVAL2_REWIND_EVERY == 0 && el < RIVAL2_REWIND_RINGS[lv]*RIVAL2_REWIND_EVERY) this.rewindRing(_e, el);
+                if(--_e.count <= 0) this.rewindStop(_e);
+                break;
+            case "rstop":
+                //時が止まり、放った弾が止まっている(この間は隙)。終わると弾が逆向きに戻ってくる
+                _e.vx *= 0.85; _e.vy *= 0.85;
+                if(--_e.count <= 0){
+                    this.rewindBack(_e);
+                    this.rest(_e);
+                }
+                break;
             case "aim":
                 this.aimStep(_e,_dx,_dy,_d);
                 break;
@@ -494,6 +527,60 @@ var rival = {
         if((_e.count + (_e.slot || 0)*Math.round(RIVAL2_SPLIT_EVERY/(RIVAL2_CLONES[_e.lv] + 1))) % RIVAL2_SPLIT_EVERY != 0) return;
         fireFan(_e.x, _e.y, _a, RIVAL2_SPLIT_N, 0.22, RIVAL_SHOT_SPEED*Math.min(1.3,danmaku()), "normal");
         sound.play("shot");
+    },
+    //分身の輪舞の1コマ(本物も分身も)：輪のまんなか(始めたときのドローン君の位置)のまわりを回り、輪が縮んでから広がる。
+    //1体ずつずらして、輪のまんなかへ扇に撃つ(弾は輪の中で交わる)。終わったら true
+    waltzStep:function(_e,_play){
+        var T = RIVAL2_WALTZ_T, age = T - _e.count, u = age/T;
+        var R = RIVAL2_WALTZ_R[0] - (RIVAL2_WALTZ_R[0] - RIVAL2_WALTZ_R[1])*Math.sin(Math.PI*u);
+        var a = _e.orbit + RIVAL2_WALTZ_SPIN*age;
+        var p = this.clamp(_e.wcx + Math.cos(a)*R, _e.wcy + Math.sin(a)*R*0.8);
+        var tx = (p.x - _e.x)*0.25, ty = (p.y - _e.y)*0.25, s = Math.hypot(tx,ty), mx = RIVAL_SPEED*1.5;
+        if(s > mx){ tx *= mx/s; ty *= mx/s; }
+        _e.vx += (tx - _e.vx)*0.3;
+        _e.vy += (ty - _e.vy)*0.3;
+        var every = RIVAL2_WALTZ_EVERY[_e.enraged ? 1 : 0];
+        var off = Math.round(every/(RIVAL2_CLONES[_e.lv] + 1))*(_e.slot || 0);
+        if(_play && age > 20 && _e.count > 20 && (_e.count + off) % every == 0){
+            fireFan(_e.x, _e.y, Math.atan2(_e.wcy - _e.y, _e.wcx - _e.x), RIVAL2_WALTZ_N, 0.16, RIVAL_SHOT_SPEED*Math.min(1.3,danmaku()), "normal");
+            sound.play("shot");
+        }
+        return --_e.count <= 0;
+    },
+    //時戻し：自分のまわりへ弾の輪を放つ(輪ごとに少し回す。あとで止めて戻すため印を付ける)
+    rewindRing:function(_e,_el){
+        var n = RIVAL2_REWIND_N[_e.lv], from = enemyShots.length;
+        fireRing(_e.x, _e.y, n, RIVAL2_REWIND_SPEED*Math.min(1.3,danmaku()), _el*0.013 + (_el/RIVAL2_REWIND_EVERY)*Math.PI/n, "normal");
+        for(var i=from; i<enemyShots.length; i++) enemyShots[i].rew = _e.id;
+        fx.ring(_e.x, _e.y, 40, RIVAL2_GLOW, 12, 3);
+        sound.play("shot");
+    },
+    //時戻し：時が止まり、放った弾が止まる(幻影包囲と同じく置いた弾として光らせる)
+    rewindStop:function(_e){
+        for(var i=0; i<enemyShots.length; i++){
+            var b = enemyShots[i];
+            if(b.rew != _e.id) continue;
+            b.rvx = b.vx; b.rvy = b.vy;
+            b.vx = 0; b.vy = 0;
+            b.held = _e.id;
+        }
+        _e.mode = "rstop";
+        _e.count = RIVAL2_REWIND_STOP;
+        popup(_e.x, _e.y - 44, "時よ、戻れ！", "rgb(150,80,220)");
+        sound.play("timeStop");
+    },
+    //時戻し：止まった弾が、来た道を逆向きに戻ってくる(よけた先の後ろから来る。もう一度かすれる)
+    rewindBack:function(_e){
+        for(var i=0; i<enemyShots.length; i++){
+            var b = enemyShots[i];
+            if(b.rew != _e.id || b.held != _e.id) continue;
+            b.vx = -b.rvx*RIVAL2_REWIND_BACK; b.vy = -b.rvy*RIVAL2_REWIND_BACK;
+            b.held = 0; b.rew = 0;
+            b.grazed = false;
+        }
+        _e.relT = 24;
+        fx.ring(_e.x, _e.y, 120, RIVAL2_GLOW, 20, 4);
+        sound.play("timeResume");
     },
     //ドローン君のまわりを、横へ跳ねながら動き回る(ときどき向きを急に変える)
     strafe:function(_e){
@@ -564,6 +651,14 @@ var rival = {
                 _e.mode = "aim";
                 _e.count = RIVAL2_CROSS_AIM + _e.delay + RIVAL_CUE;
                 break;
+            case "waltz":
+                _e.mode = "waltz";
+                _e.count = RIVAL2_WALTZ_T;
+                break;
+            case "rewind":
+                _e.mode = "rewind";
+                _e.count = RIVAL2_REWIND_RINGS[_e.lv]*RIVAL2_REWIND_EVERY + RIVAL2_REWIND_FLY;
+                break;
             case "aim":
             case "chain":
                 _e.mode = "aim";
@@ -595,8 +690,13 @@ var rival = {
     },
     nextAttack:function(_e){
         var list = (_e.form == 2 ? RIVAL2_PATTERNS : RIVAL_PATTERNS)[_e.lv], p = list[_e.cycle++ % list.length];
-        if(p == "split" || p == "cross"){
+        if(p == "split" || p == "cross" || p == "waltz"){
             this.surround(_e, p);
+        }else if(p == "rewind"){
+            //時戻し：弾が画面の外へ出て戻らなくならないよう、画面のまんなか寄りで使う(ドローン君に近すぎなければ)
+            var s = this.spot(_e, RIVAL_DIST), c = { x:(s.x + CW/2)/2, y:(s.y + CH/2 + 30)/2 };
+            if(Math.hypot(c.x - aimAt.X, c.y - aimAt.Y) >= RIVAL_DIST[0]*0.7) s = c;
+            this.warp(_e, s.x, s.y, RIVAL_WARP_T[_e.lv], "rewind");
         }else if(p == "shoot"){
             var s = this.spot(_e, RIVAL_DIST);
             this.warp(_e, s.x, s.y, RIVAL_WARP_T[_e.lv], "shoot");
@@ -618,16 +718,17 @@ var rival = {
     //どれが本物かは毎回変わる(本物を当てて撃つ。分身は少し撃てば消える)
     surround:function(_e,_kind){
         var n = RIVAL2_CLONES[_e.lv] + 1, real = Math.floor(Math.random()*n), a0 = Math.random()*Math.PI*2;
-        var R = _kind == "split" ? RIVAL2_SPLIT_R : RIVAL2_CROSS_R;
+        var R = _kind == "split" ? RIVAL2_SPLIT_R : _kind == "waltz" ? RIVAL2_WALTZ_R[0] : RIVAL2_CROSS_R;
         _e.chain = 0;
         var me = { x:_e.x, y:_e.y };
         for(var i=0; i<n; i++){
             var a = a0 + i*Math.PI*2/n;
-            var p = this.clamp(aimAt.X + Math.cos(a)*R, aimAt.Y + Math.sin(a)*R*0.75);
-            var o = { orbit:a, slot:i, delay:i*RIVAL2_CROSS_GAP };
+            var p = this.clamp(aimAt.X + Math.cos(a)*R, aimAt.Y + Math.sin(a)*R*(_kind == "waltz" ? 0.8 : 0.75));
+            //wcx・wcy：分身の輪舞の輪のまんなか(始めたときのドローン君の位置)
+            var o = { orbit:a, slot:i, delay:i*RIVAL2_CROSS_GAP, wcx:aimAt.X, wcy:aimAt.Y };
             if(i == real){
                 this.warp(_e, p.x, p.y, RIVAL_WARP_T[_e.lv], _kind);
-                _e.orbit = o.orbit; _e.slot = o.slot; _e.delay = o.delay;
+                for(var k in o) _e[k] = o[k];
             }else{
                 o.wx0 = me.x; o.wy0 = me.y;
                 this.spawnClone(_e, p.x, p.y, _kind, o);
@@ -663,6 +764,7 @@ var rival = {
         for(var i=0; i<enemies.length; i++) if(enemies[i].id == _c.owner) o = enemies[i];
         //本物が去る・いない・目覚め直す間は消える
         if(_c.mode != "fade" && (!o || o.dead || o.mode == "flee" || o.mode == "awaken")) this.fade(_c);
+        _c.enraged = !!(o && o.enraged);     //本物が本気なら分身も(撃つ間隔)
         var play = mainScreen.state == "play";
         switch(_c.mode){
             case "warp":
@@ -670,6 +772,7 @@ var rival = {
                 if(--_c.count <= 0){
                     fx.ring(_c.x, _c.y, 56, WARP_COLOR, 16, 3);
                     if(_c.next == "split"){ _c.mode = "split"; _c.count = RIVAL2_SPLIT_T; }
+                    else if(_c.next == "waltz"){ _c.mode = "waltz"; _c.count = RIVAL2_WALTZ_T; }
                     else{ _c.mode = "aim"; _c.count = RIVAL2_CROSS_AIM + _c.delay + RIVAL_CUE; }
                 }
                 break;
@@ -677,6 +780,9 @@ var rival = {
                 this.strafe(_c);
                 if(play) this.splitShot(_c, Math.atan2(_dy,_dx));
                 if(--_c.count <= 0) this.fade(_c);
+                break;
+            case "waltz":
+                if(this.waltzStep(_c, play)) this.fade(_c);
                 break;
             case "aim":
                 this.aimStep(_c,_dx,_dy,_d);
@@ -860,7 +966,7 @@ var rival = {
         var k = RIVAL_SCALE, f2 = _e.clone || this.second(_e);
         _e.look.tint = f2 ? RIVAL2_TINT : RIVAL_TINT;
         ctx.globalAlpha = _alpha;
-        enemyArt.halo(0, 0, 34 + Math.sin(_e.t*0.12)*3, f2 ? RIVAL2_GLOW : WARP_COLOR, _e.mode == "hold" ? 0.6 : 0.25);
+        enemyArt.halo(0, 0, 34 + Math.sin(_e.t*0.12)*3, f2 ? RIVAL2_GLOW : WARP_COLOR, (_e.mode == "hold" || _e.mode == "rstop") ? 0.6 : 0.25);
         this.drawBand(_e, k, false);
         if(_body) ctx.globalAlpha = _alpha*0.6;
         _e.look.draw(0, 0, k);
@@ -1088,9 +1194,10 @@ var rival = {
     drawAttack:function(_e){
         this.watch(_e);
         var W = _e.wfx;
-        //時が止まっている(幻影包囲の hold)：周りの色を抜き、置いた弾を光らせる
-        if(_e.mode == "hold" || _e.relT > 0){
-            var p = _e.mode == "hold" ? Math.min(1, (RIVAL_HOLD_T - _e.count)/8) : _e.relT/24;
+        //時が止まっている(幻影包囲の hold・時戻しの rstop)：周りの色を抜き、置いた弾を光らせる
+        var stopT = _e.mode == "rstop" ? RIVAL2_REWIND_STOP : RIVAL_HOLD_T, stopped = _e.mode == "hold" || _e.mode == "rstop";
+        if(stopped || _e.relT > 0){
+            var p = stopped ? Math.min(1, (stopT - _e.count)/8) : _e.relT/24;
             ctx.save();
             ctx.globalCompositeOperation = "saturation";
             ctx.fillStyle = "rgba(128,128,128," + (0.85*p) + ")";
@@ -1099,8 +1206,8 @@ var rival = {
             ctx.fillStyle = "rgba(15,25,55," + (0.2*p) + ")";
             ctx.fillRect(-40,-40,CW + 80,CH + 80);
             //止まった瞬間：色の反転した輪が広がる
-            if(_e.mode == "hold" && _e.count > RIVAL_HOLD_T - 20){
-                var u = (RIVAL_HOLD_T - _e.count)/20, r = 20 + (1 - (1 - u)*(1 - u))*700;
+            if(stopped && _e.count > stopT - 20){
+                var u = (stopT - _e.count)/20, r = 20 + (1 - (1 - u)*(1 - u))*700;
                 ctx.globalCompositeOperation = "difference";
                 ctx.fillStyle = "rgba(255,255,255," + (0.8*(1 - u)) + ")";
                 ctx.beginPath(); ctx.arc(_e.x,_e.y,r,0,Math.PI*2); ctx.fill();
@@ -1122,6 +1229,16 @@ var rival = {
             ctx.save();
             //明るい背景でも見えるよう、加算ではなくふつうに重ねる
             for(var i=3; i<_e.trail.length; i+=3) W.drawGlow(_e.trail[i].x, _e.trail[i].y, 0.22*(1 - i/_e.trail.length)*Math.min(1, sp/8));
+            ctx.restore();
+        }
+        //分身の輪舞：回っている輪を薄く描く(協力プレイのゲストには輪のまんなかが届かないので描かない)
+        if(_e.mode == "waltz" && _e.wcx != null){
+            var u = 1 - _e.count/RIVAL2_WALTZ_T, R = RIVAL2_WALTZ_R[0] - (RIVAL2_WALTZ_R[0] - RIVAL2_WALTZ_R[1])*Math.sin(Math.PI*u);
+            ctx.save();
+            ctx.strokeStyle = "rgba(" + RIVAL2_GLOW + "," + (0.35*Math.min(1, u*8, (1 - u)*8)) + ")";
+            ctx.lineWidth = 2;
+            ctx.setLineDash([10,12]);
+            ctx.beginPath(); ctx.ellipse(_e.wcx, _e.wcy, R, R*0.8, 0, 0, Math.PI*2); ctx.stroke();
             ctx.restore();
         }
         //突進の構え：狙っている間は薄く、合図で濃くなる

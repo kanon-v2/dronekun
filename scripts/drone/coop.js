@@ -13,7 +13,7 @@
 const COOP_TYPES  = ["bug","dasher","shooter","tank","spinner","bomber","kin","mdrone","heli","panzer","goldbug","carrier","queen","fortress","kai","canopy","pod","chrono","chronoClone"];
 const COOP_SHOTS  = ["normal","small","big","water","missile","dragon"];
 const COOP_PICKS  = ["part","yaruki","capsule"];
-const COOP_MODES  = ["enter","idle","aim","dash","spiral","triple","laserAim","laser","feint","stagger","down","revive","rain","wave","summon","warp","shoot","hold","flee","intro","awaken","split","stay","fade"];
+const COOP_MODES  = ["enter","idle","aim","dash","spiral","triple","laserAim","laser","feint","stagger","down","revive","rain","wave","summon","warp","shoot","hold","flee","intro","awaken","split","stay","fade","waltz","rewind","rstop"];
 const COOP_STATES = ["start","play","clear","over"];
 const COOP_LIMIT  = 12000;  //1回に送る状態の大きさの上限(バイト)。超えるときはゲストから遠いものから削る
 const COOP_HP_MUL = 2;      //協力プレイでの敵の体力の倍率

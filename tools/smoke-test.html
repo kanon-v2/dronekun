@@ -590,8 +590,8 @@ try{
     var rv2 = rv.form == 2 && rv.mode == "idle" && rv.maxHp == Math.round(rvMax1*RIVAL2_HP_MUL) && rv.hp == rv.maxHp && rv.sayText == RIVAL2_LINES[0];
     check("ライバルの第二形態：WAVE8から、第一形態を倒すと時が止まって目覚め、体力が満ちる", rvAwake && rv2 && errors.length == rvErr,
           "目覚め" + rvAwake + " 第二形態" + rv2 + " 体力" + Math.round(rv.hp) + "/" + rv.maxHp + "(第一形態" + rvMax1 + ")");
-    var rvModes2 = {}, rvClones = 0, rvCloneKinds = {}, rvClonePack = null, rvCloneParry = false;
-    for(var i=0; i<60*35; i++){
+    var rvModes2 = {}, rvClones = 0, rvCloneKinds = {}, rvClonePack = null, rvCloneParry = false, rvRewHeld = 0, rvRewBack = 0;
+    for(var i=0; i<60*50; i++){
         bot(); mainScreen.hp = 99;
         mainScreen.update(); if(i % 10 == 0) draw1();
         rv.hp = rv.maxHp; rv.hpMark = rv.hp;
@@ -599,6 +599,9 @@ try{
         var cl = enemies.filter(function(e){ return e.clone; });
         rvClones = Math.max(rvClones, cl.length);
         cl.forEach(function(c){ rvCloneKinds[c.mode] = true; });
+        //時戻し：止まった弾の数と、戻ってくる弾の数(放った向きの逆へ動く)
+        if(rv.mode == "rstop") rvRewHeld = Math.max(rvRewHeld, enemyShots.filter(function(b){ return b.rew == rv.id && b.held == rv.id; }).length);
+        rvRewBack = Math.max(rvRewBack, enemyShots.filter(function(b){ return b.rvx != null && !b.held && b.vx*b.rvx + b.vy*b.rvy < 0; }).length);
         //突進している分身を、ジャスト・カウンターで弾くと砕ける
         var cd = cl.filter(function(c){ return c.mode == "dash"; })[0];
         if(cd && !rvCloneParry){
@@ -607,9 +610,11 @@ try{
             rvCloneParry = cd.dead;
         }
     }
-    check("ライバルの第二形態：分身の陣・分身突進・幻影包囲(分身が残る)で、本物と分身が一緒に戦う。突進する分身は弾くと砕ける",
-          rvModes2.split && rvModes2.aim && rvModes2.hold && rvClones >= RIVAL2_CLONES[1] && rvCloneKinds.split && rvCloneKinds.dash && rvCloneKinds.stay && rvCloneParry && errors.length == rvErr,
+    check("ライバルの第二形態：分身の陣・分身突進・分身の輪舞・幻影包囲(分身が残る)で、本物と分身が一緒に戦う。突進する分身は弾くと砕ける",
+          rvModes2.split && rvModes2.aim && rvModes2.waltz && rvModes2.hold && rvClones >= RIVAL2_CLONES[1] && rvCloneKinds.split && rvCloneKinds.dash && rvCloneKinds.waltz && rvCloneKinds.stay && rvCloneParry && errors.length == rvErr,
           "本物" + Object.keys(rvModes2).join(",") + " 分身" + rvClones + "体 " + Object.keys(rvCloneKinds).join(",") + " 弾く" + rvCloneParry);
+    check("ライバルの第二形態：時戻し(弾の輪を放って時を止め、逆向きに戻す)を使う", rvModes2.rewind && rvModes2.rstop && rvRewHeld >= RIVAL2_REWIND_N[1] && rvRewBack >= RIVAL2_REWIND_N[1] && errors.length == rvErr,
+          "止まった弾" + rvRewHeld + " 戻る弾" + rvRewBack);
     check("ライバルの分身：協力プレイで種類・動きを送れる", rvClonePack && COOP_TYPES[rvClonePack.e[1]] == "chronoClone" && COOP_MODES[rvClonePack.e[6] & 31] == "dash", rvClonePack ? JSON.stringify(rvClonePack.e) : "なし");
     // 撃退：第二形態の体力が0になると去る(報酬カプセル・パーツ)。分身も消える。去ったら雑魚敵がまた出てくる
     while(rv.mode == "warp" || rv.mode == "awaken") mainScreen.update();
