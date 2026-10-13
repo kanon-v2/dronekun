@@ -242,6 +242,116 @@ try{
           "雨" + rainOk + "(集まる間は降らない" + gatherDry + " 粒" + acidN + " 煙" + puddle + " 雲の距離" + Math.round(rainD0) + "→" + Math.round(rainD1) + ")" +
           " 岩" + rockOk + "(ずれ" + rkHit.toFixed(1) + " 破片" + pebbleMax + ")" + " 花火 " + fwInfo.join(" ") + " 迎撃" + interceptOk);
 
+    // 画面の前後を使う攻撃
+    lerr = errors.length;
+    var drawDepth = function(){ shotLab.drawUnder(); shotLab.drawFront(); };
+    enemyShots = []; enemies = []; shotLab.clear();
+    mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.hp = 9;
+    // 奥からの砲撃：着くまでは当たらず、着いた瞬間に着く所の輪の中だけ当たり、破片が散る
+    shotLab.deep(drone.X, drone.Y); shotLab.deep(drone.X > CW/2 ? 60 : CW - 60, 60);
+    for(var i=0; i<DEEP_TIME - 1; i++){ shotLab.update(); if(i % 20 == 0) drawDepth(); }
+    var deepHp0 = mainScreen.hp;
+    shotLab.update();
+    var deepOk = deepHp0 == 9 && mainScreen.hp == 8 && enemyShots.length >= DEEP_SHARDS && shotLab.deeps.length == 0;
+    // 奥からの突進：着く直前に衝撃波を出すと弾き返す(被弾しない)。出さなければ被弾する
+    enemyShots = []; mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.hp = 9;
+    var ram1 = shotLab.ram();
+    for(var i=0; i<RAM_TIME - 3; i++){ shotLab.update(); if(i % 20 == 0) drawDepth(); }
+    mainScreen.yaruki = YARUKI_MAX; mainScreen.blast();
+    for(var i=0; i<10; i++) shotLab.update();
+    var parried = ram1.mode == "back" && mainScreen.hp == 9;
+    mainScreen.invincible = 0; mainScreen.guard = 0;
+    var ram2 = shotLab.ram();
+    for(var i=0; i<RAM_TIME + RAM_PASS + 2; i++){ shotLab.update(); if(i % 10 == 0) drawDepth(); }
+    var ramOk = parried && mainScreen.hp == 8 && shotLab.rams.length == 0;
+    // 立体の輪：手前の弾と奥の弾がある。奥を通る弾は重なっても当たらない。時間が来るとほどけて飛んでいく
+    enemyShots = []; mainScreen.invincible = 99;
+    var hp1 = shotLab.hoop(drone.X, drone.Y - 120, 0), hoopFront = 0, hoopBack = 0;
+    for(var i=0; i<HOOP_LIFE + 1; i++){
+        mainScreen.updateShots();
+        if(i == 150){
+            hoopFront = enemyShots.filter(function(b){ return b.kind == "hoop" && !b.behind; }).length;
+            hoopBack = enemyShots.filter(function(b){ return b.kind == "hoop" && b.behind; }).length;
+            drawDepth(); draw1();
+        }
+    }
+    var hoopFree = enemyShots.filter(function(b){ return b.kind == "hoop"; }).every(function(b){ return !b.ring && Math.hypot(b.vx,b.vy) > 0.5; });
+    mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.hp = 9;
+    enemyShots = [{ x:drone.X, y:drone.Y, vx:0, vy:0, r:5, kind:"hoop", behind:true }];
+    mainScreen.updateShots();
+    var behindSafe = mainScreen.hp == 9;
+    enemyShots = [{ x:drone.X, y:drone.Y, vx:0, vy:0, r:5, kind:"hoop", behind:false }];
+    mainScreen.updateShots();
+    var hoopOk = hoopFront > 0 && hoopBack > 0 && hoopFree && behindSafe && mainScreen.hp == 8 && shotLab.hoops.length == 0;
+    enemyShots = []; mainScreen.invincible = 99;
+    // 奥へ潜る敵：潜っている間は攻撃が効かず、別の場所から出てきて弾の輪を撃つ
+    var dv = shotLab.diver(300, 150), dvModes = {}, dvSafe = true, dvT = DIVER_TIMES;
+    for(var i=0; i<dvT.surface + dvT.dive + dvT.deep + dvT.rise + 2; i++){
+        mainScreen.updateEnemies();
+        dvModes[dv.dive.mode] = true;
+        if(dv.dive.mode == "deep"){
+            var dhp = dv.hp; mainScreen.hitEnemy(dv, 5);
+            if(dv.hp != dhp || !dv.phased || !dv.harmless) dvSafe = false;
+            if(dv.dive.t == 30){ draw1(); drawDepth(); }
+        }
+        if(dv.dive.mode == "surface" && dv.dive.t == 1) var dvRing = enemyShots.length;
+    }
+    var diverOk = dvModes.dive && dvModes.deep && dvModes.rise && dv.dive.mode == "surface" && dvSafe && !dv.phased &&
+                  Math.hypot(dv.x - 300, dv.y - 150) > 100 && dvRing >= DIVER_RING;
+    enemies = []; enemyShots = [];
+    // 手前を横切る影・ガラスの液体：時間が来ると消える
+    shotLab.veilStart();
+    for(var i=0; i<VEIL_TIME; i++){ shotLab.update(); if(i % 40 == 0) drawDepth(); }
+    var veilOk = shotLab.veil == null;
+    shotLab.glob(100, 70, 400, 300);
+    for(var i=0; i<GLOB_TIME; i++) shotLab.update();
+    var splatN = shotLab.splats.length;
+    for(var i=0; i<200; i++) shotLab.update();
+    var dripped = splatN == 1 && shotLab.splats[0].drips.some(function(D){ return D.len > 20; });
+    drawDepth();
+    for(var i=0; i<GLASS_LIFE; i++) shotLab.update();
+    var glassOk = dripped && shotLab.splats.length == 0;
+    mainScreen.invincible = 0; shotLab.clear(); enemyShots = [];
+    check("画面の前後を使う攻撃：奥からの砲撃は着く瞬間だけ当たる。奥からの突進は着く直前の衝撃波で弾ける。立体の輪は奥を通る弾が当たらない。潜る敵は奥で無敵になり別の所から出る。横切る影・ガラスの液体は時間で消える",
+          deepOk && ramOk && hoopOk && diverOk && veilOk && glassOk && errors.length == lerr,
+          "砲撃" + deepOk + " 突進" + ramOk + "(弾く" + parried + ") 輪" + hoopOk + "(手前" + hoopFront + " 奥" + hoopBack + " ほどける" + hoopFree + " 奥は当たらない" + behindSafe + ")" +
+          " 潜る" + diverOk + "(" + Object.keys(dvModes).join(",") + " 無敵" + dvSafe + " 輪" + dvRing + ") 影" + veilOk + " ガラス" + glassOk + (errors.length > lerr ? " " + errors.slice(lerr).join(" / ") : ""));
+
+    // 障害物：ドローン君を押し出し、画面の端に挟まれると被弾する。敵の弾もドローン君の弾も止まる
+    lerr = errors.length;
+    enemyShots = []; enemies = []; shotLab.clear(); arms.bullets = [];
+    mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.hp = 9;
+    drone.X = 400; drone.Y = 270; MouseX = 400; MouseY = 270;
+    shotLab.obstacles.push({ kind:"crate", x:395, y:240, w:80, h:60, vx:0, color:"#c8692e", crushed:false, t:0 });
+    drone.calcXY();
+    var pushed = drone.X <= 395 - drone.R + 0.5 && mainScreen.hp == 9;
+    // 弾を止める
+    fireShot(430, 270, 0, 0, "normal");
+    arms.bullets.push({ x:430, y:260, vx:0, vy:0, life:99, pierce:0, hit:[] });
+    shotLab.update();
+    var blocked = enemyShots.length == 0 && arms.bullets.length == 0;
+    shotLab.clear();
+    // 左へ動く壁に、左の端で挟まれる
+    drone.X = drone.R; drone.Y = 270; MouseX = drone.X; MouseY = drone.Y; popups = [];
+    shotLab.wall(-1, 60);   //すき間は上のほう(ドローン君の高さは壁)
+    for(var i=0; i<CW/OBST_WALL_SPEED + 40; i++){ shotLab.update(); drone.calcXY(); if(i % 60 == 0) draw1(); }
+    var crushed = mainScreen.hp == 8 && popups.some(function(p){ return p.text == "はさまれた！"; });
+    var wallGone = shotLab.obstacles.length == 0;
+    // すき間を通れば押されない
+    var wob0 = drone.wobble; drone.wobble = 0;     //ふらつきで位置が揺れないように
+    shotLab.clear(); mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.hp = 9;
+    drone.X = 300; drone.Y = 270; MouseX = 300; MouseY = 270;
+    shotLab.wall(-1, 270);
+    var gapOk = true;
+    for(var i=0; i<CW/OBST_WALL_SPEED + 40; i++){ shotLab.update(); drone.calcXY(); if(Math.abs(drone.X - 300) > 0.5) gapOk = false; }
+    gapOk = gapOk && mainScreen.hp == 9;
+    drone.wobble = wob0;
+    shotLab.clear(); enemyShots = []; arms.bullets = [];
+    drone.X = CW/2; drone.Y = CH/2; MouseX = drone.X; MouseY = drone.Y;
+    check("障害物：ドローン君を押し出し、画面の端に挟まれると被弾。すき間を通れば押されない。敵の弾もドローン君の弾も止まる",
+          pushed && blocked && crushed && wallGone && gapOk && errors.length == lerr,
+          "押し出す" + pushed + " 弾を止める" + blocked + " 挟まれる" + crushed + " 通り過ぎる" + wallGone + " すき間" + gapOk);
+
     // デバッグの「攻撃の試作」：砲台が全種類を順に出し、無敵。戻るとメニューへ
     save.clearAll(); game.reset();
     lerr = errors.length;
@@ -256,6 +366,13 @@ try{
         for(var i=0; i<enemyShots.length; i++){ if(enemyShots[i].fw) labKinds[enemyShots[i].fw] = true; }
         if(enemies.some(function(e){ return e.lab && e.intercept; })) labKinds.intercept = true;
         if(shotLab.labShot > 0) labKinds.shotDown = true;     //迎撃の的が、ドローン君の弾を撃ち落とした
+        if(shotLab.deeps.length) labKinds.deep = true;
+        if(shotLab.rams.length) labKinds.ram = true;
+        if(shotLab.hoops.length) labKinds.hoop = true;
+        if(enemies.some(function(e){ return e.labId == "diver"; })) labKinds.diver = true;
+        if(shotLab.veil) labKinds.veil = true;
+        if(shotLab.splats.length) labKinds.glass = true;
+        shotLab.obstacles.forEach(function(o){ labKinds[o.kind == "wall" ? "gate" : "drift"] = true; });
         if(lf % 10 == 0) draw1();
     }
     var labAll = shotLab.list.every(function(L){ return labKinds[L.id]; });

@@ -661,11 +661,13 @@ var mainScreen = {
             return;
         }
         this.yaruki -= YARUKI_COST;
+        shotLab.onBlast();      //奥からの突進を弾き返す(shotLab.js)
         var just = this.isJust();
         //ピンチを切り抜けられるよう、周りの弾はすぐ消して少しのあいだ無敵に
         //ジャストのときは、消す代わりに近い順に敵へはね返す
         var near = [];
         for(var i=enemyShots.length-1; i>=0; i--){
+            if(enemyShots[i].behind) continue;     //奥を通っている弾には届かない(shotLab.js)
             var d = Math.hypot(enemyShots[i].x - drone.X, enemyShots[i].y - drone.Y);
             if(d < BLAST_RADIUS){
                 //ジャストにならない弾ははね返らず、消えるだけ。当たりそうだった弾には「ジャスト不可」と出す(shotLab.js)
@@ -725,7 +727,7 @@ var mainScreen = {
         var tier = 0;
         for(var i=0; i<enemyShots.length && JUST_SHOTS; i++){
             var b = enemyShots[i];
-            if(shotLab.noJust(b)) continue;     //ジャストにならない弾(shotLab.js)
+            if(shotLab.noJust(b) || b.behind) continue;     //ジャストにならない弾・奥を通っている弾(shotLab.js)
             var t = this.hitTime(b.x,b.y,b.vx,b.vy,(b.r || 5) + HIT_CORE);
             if(t >= 0) tier = Math.max(tier, t <= JUST_PERFECT ? 2 : 1);
         }
@@ -1356,6 +1358,7 @@ var mainScreen = {
                 continue;
             }
             if(this.state == "over") continue;
+            if(b.behind) continue;     //画面の奥を通っている弾は当たらず、かすらない(shotLab.js の立体の輪)
             var d = Math.hypot(b.x - drone.X, b.y - drone.Y);
             var r = b.r || 5;
             if(d < r + HIT_CORE && this.canBeHit()){
@@ -1589,6 +1592,7 @@ var mainScreen = {
         }
         ctx.restore();
         if(this.slowPow > 0) this.drawSlowFx();
+        shotLab.drawFront();    //いちばん手前：通り過ぎる突進・横切る影・ガラスの液体(shotLab.js)
 
         //連鎖爆破などで画面全体がうっすら色づく
         if(this.tint){
@@ -1750,6 +1754,7 @@ var mainScreen = {
     },
 
     drawEnemy:function(_e){
+        if(_e.depth > 0 && shotLab.drawDeepEnemy(_e)) return;    //奥へ潜った敵(shotLab.js)
         var body = _e.flash > 0 ? "#fff" : null;
         //弾き返した突進(ジャスト・カウンター)：水色の光の尾を引く
         if(_e.countered){

@@ -1052,6 +1052,7 @@ var drone = {
         var top = page.number == 1 ? special.ceiling() : 0;
         this.X = Math.max(this.R, Math.min(this.X, CW - this.R));
         this.Y = Math.max(this.R, top, Math.min(this.Y, CH - this.R));
+        if(page.number == 1) shotLab.pushOut(this);    //障害物に押される(shotLab.js)
     },
     //強化レベルを反映
     applyStats: function(){
