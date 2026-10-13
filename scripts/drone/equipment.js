@@ -56,6 +56,41 @@ const WATER_PUSH  = 0.22;   //当たった敵を押し返す強さ
 const WET_TIME    = 180;    //濡れている時間(3秒)
 
 //------------------------------------------------------------------------------
+//  装備の性能表(説明に出す)：威力・攻撃間隔・速度・射程(弾の届く距離)
+//  dmg：1回のダメージ  cd：攻撃間隔(フレーム。WEAPONS の cd を使うときは省く)  fixed：賢さ・バフで縮まない間隔
+//  spd：弾の速さ(px/フレーム)  range：弾の届く距離(px)。Infinity は ∞、null は「-」(その値がない)
+//  値は arms.fire・update* の動きと合わせる(変えたらここも直す)
+//------------------------------------------------------------------------------
+const WEAPON_SPEC = {
+    gun:     function(_lv){ return { dmg:1, spd:SHOT_SPEED, range:SHOT_SPEED*60 }; },
+    missile: function(_lv){
+        //打ち上げてから速くなる(はじめ2・1フレームごとに+0.2・最高7)。200フレーム飛ぶ
+        var sp = 2, d = 0;
+        for(var i=0; i<200; i++){ sp = Math.min(7, sp + 0.2); d += sp; }
+        return { dmg:2, spd:7, range:d };
+    },
+    laser:   function(_lv){ return { dmg:_lv + 1, spd:Infinity, range:Infinity }; },
+    bug:     function(_lv){ return { dmg:1, cd:30, fixed:true, spd:3.2, range:Infinity }; },  //虫が噛む間隔。虫は画面のどこへでも飛んでいく
+    tesla:   function(_lv){ return { dmg:1, spd:Infinity, range:200 }; },     //連鎖した敵にもそれぞれ1
+    mine:    function(_lv){ return { dmg:3, spd:null, range:null }; },        //まく間隔。その場に置く
+    blade:   function(_lv){ return { dmg:_lv >= 3 ? 2 : 1, cd:20, fixed:true, spd:null, range:62 }; },  //同じ敵に当たる間隔・刃の回る半径
+    water:   function(_lv){ return { dmg:WATER_DMG, spd:WATER_SPEED, range:WATER_SPEED*WATER_LIFE }; },
+    emp:     function(_lv){ return { dmg:_lv, spd:null, range:[130,150,170][_lv-1] }; }  //自分のまわりの範囲
+};
+//性能表を1行の文字にする(_lv：装備のレベル1～3)。間隔は今の賢さ・バフ、威力は強化弾頭を入れた値
+function weaponSpecText(_id,_lv){
+    var lv = Math.max(1, Math.min(MAX_WEAPON_LEVEL, _lv || 1));
+    var s = WEAPON_SPEC[_id](lv);
+    var num = function(_v){ return String(Math.round(_v*100)/100); };
+    var val = function(_v,_unit){ return _v == null ? "-" : (_v == Infinity ? "∞" : num(_v) + _unit); };
+    var dmg = s.dmg == null ? null : s.dmg*(1 + BUFF_POWER*game.buff("power"));
+    var cd = s.cd != null ? s.cd*(s.fixed ? 1 : arms.rate()) : (WEAPONS[_id].cd[lv-1] > 0 ? WEAPONS[_id].cd[lv-1]*arms.rate() : null);
+    return "威力 " + val(dmg,"") + "　間隔 " + val(cd == null ? null : cd/60,"秒") +
+           "　速度 " + val(s.spd == null || s.spd == Infinity ? s.spd : Math.round(s.spd*60),"/秒") +
+           "　射程 " + val(s.range == null || s.range == Infinity ? s.range : Math.round(s.range),"");
+}
+
+//------------------------------------------------------------------------------
 //  シナジー(2つを同時に装備すると発動)
 //------------------------------------------------------------------------------
 const SYNERGIES = [

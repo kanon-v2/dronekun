@@ -96,7 +96,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 |---|---|
 | 能力の値・強化コスト・ショップのバフ | `common.js` の `MAX_LEVEL`・`STATS`(`statValues(レベル1の値, レベル20の値)` で作る。伸び方は `STAT_CURVE`)・`UPGRADE_COST_*`・`BUFFS`・`BUFF_*`(時止めワープのクールタイムは `BUFF_WARP_CD`、演出の時間は `timeStop.js` の `WARP_*`) |
 | 難易度・パーツの数 | `common.js` の `DIFFICULTIES`(敵の数は `count`・`extra`)、`mainScreen.js` の `PARTS_DROP_MUL`・`PARTS_REWARD`・`DANMAKU_*`・`ENEMY_HP_GROW`・`WAVE_ENEMY_*`(`waveEnemies()`) |
-| 装備の強さ・攻撃間隔・ショップの値段 | `equipment.js` の `WEAPONS`・`SLOT_COST`・`SHOP_*`、水鉄砲は `WATER_*`。追加の装備は `armsExtra.js` の `WEAPONS` と `FIRE_*`・`BURN_*`・`DISC_*`・`WELL_*`・`BARRIER_*`・`SNIPE_*`・`FREEZE_*`・`ICE_*` |
+| 装備の強さ・攻撃間隔・ショップの値段 | `equipment.js` の `WEAPONS`・`SLOT_COST`・`SHOP_*`、水鉄砲は `WATER_*`。説明に出す性能(威力・間隔・速度・射程)は `WEAPON_SPEC`(追加の装備の分は `armsExtra.js`。装備の動きを変えたらここも直す。文字にするのは `weaponSpecText`)。追加の装備は `armsExtra.js` の `WEAPONS` と `FIRE_*`・`BURN_*`・`DISC_*`・`WELL_*`・`BARRIER_*`・`SNIPE_*`・`FREEZE_*`・`ICE_*` |
 | シナジーの組み合わせ・色 | `equipment.js` の `SYNERGIES`・`SYN_COLOR`(追加の装備のものは `armsExtra.js`) |
 | 敵の種類・弾幕の増え方 | `mainScreen.js` の `ENEMY_TYPES`・`pickEnemyType()`・`danmaku()`・`HIT_CORE`・`GRAZE_RANGE`、敵が出てくる間隔は `SPAWN_*`、虫がときどき狙って撃つのは `BUG_SHOT_*`、虫・突進が倒れるときの撃ち返しは `REVENGE_*` |
 | 雑魚敵の見た目・色 | `enemyArt.js` の `enemyArt`・`ENEMY_COLOR`、ボスの動きは `QUEEN_*`・`FORT_*`・`KAI_*` |

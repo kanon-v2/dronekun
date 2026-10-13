@@ -768,8 +768,10 @@ var upgradeScreen = {
             var w = WEAPONS[hover];
             var lv = game.owned[hover];
             ctx.fillStyle = "#000";
+            var specW = this.drawSpec(hover,lv);
+            ctx.fillStyle = "#000";
             ctx.font = "bold 15px sans-serif";
-            ctx.fillText(w.name + "  Lv." + lv + "：" + w.lvText[lv-1],x,y);
+            ctx.fillText(w.name + "  Lv." + lv + "：" + w.lvText[lv-1],x,y,infoRect.width - 36 - specW);
             ctx.font = "13px sans-serif";
             ctx.fillStyle = "#444";
             ctx.fillText(w.desc,x,y + 18);
@@ -894,6 +896,11 @@ var upgradeScreen = {
         ctx.fillStyle = "#000";
         ctx.font = "bold 15px sans-serif";
         if(hover){
+            //性能は買ったあとのレベルのもの
+            var lvNext = Math.min(MAX_WEAPON_LEVEL, (game.owned[hover] || 0) + 1);
+            this.drawSpec(hover,lvNext,"Lv." + lvNext + "：");
+            ctx.fillStyle = "#000";
+            ctx.font = "bold 15px sans-serif";
             ctx.fillText(WEAPONS[hover].name,x,y);
             ctx.font = "13px sans-serif";
             ctx.fillStyle = "#444";
@@ -916,6 +923,17 @@ var upgradeScreen = {
             ctx.fillText("下の段：バフ。このストーリーの間ずっと効きます。重ねて買うと値段が上がります",x,y + 62);
         }
         ctx.fillStyle = "#000";
+    },
+
+    //説明欄の右上に、装備の性能(威力・間隔・速度・射程)を描く。描いた幅を返す
+    drawSpec:function(_id,_lv,_head){
+        var text = (_head || "") + weaponSpecText(_id,_lv);
+        ctx.font = "12px sans-serif";
+        ctx.fillStyle = "#246";
+        ctx.textAlign = "right";
+        ctx.fillText(text,infoRect.X + infoRect.width - 10,infoRect.Y + 16);
+        ctx.textAlign = "left";
+        return ctx.measureText(text).width;
     },
 
     //その装備の相性一覧(発動中は赤、相手を持っていれば黒、持っていなければ灰色)
@@ -967,29 +985,35 @@ var upgradeScreen = {
 
             var w = WEAPONS[id];
             var lv = game.owned[id] || 0;
-            drawWeaponIcon(id,cx - 28,r.Y + 22,56);
+            drawWeaponIcon(id,cx - 22,r.Y + 16,44);
             ctx.fillStyle = "#000";
             ctx.font = "bold 22px sans-serif";
-            ctx.fillText(w.name,cx,r.Y + 104);
+            ctx.fillText(w.name,cx,r.Y + 80);
             ctx.font = "bold 15px sans-serif";
             if(lv == 0){
                 ctx.fillStyle = "#c33";
-                ctx.fillText("NEW！",cx,r.Y + 130);
+                ctx.fillText("NEW！",cx,r.Y + 104);
             }else{
-                ctx.fillText("Lv." + lv + " → Lv." + (lv + 1),cx,r.Y + 130);
+                ctx.fillText("Lv." + lv + " → Lv." + (lv + 1),cx,r.Y + 104);
             }
 
             ctx.textAlign = "left";
             ctx.fillStyle = "#333";
             ctx.font = "14px sans-serif";
-            var lines = fillWrapText(w.desc,r.X + 16,r.Y + 160,r.width - 32,20);
+            var lines = fillWrapText(w.desc,r.X + 16,r.Y + 128,r.width - 32,20);
             ctx.fillStyle = "#000";
             ctx.font = "bold 14px sans-serif";
-            ctx.fillText("▶ " + w.lvText[lv],r.X + 16,r.Y + 172 + lines*20);
+            ctx.fillText("▶ " + w.lvText[lv],r.X + 16,r.Y + 140 + lines*20);
+            //性能(選んだあとのレベルのもの)
+            ctx.fillStyle = "#246";
+            ctx.font = "11px sans-serif";
+            ctx.fillText(weaponSpecText(id,lv + 1),r.X + 16,r.Y + 160 + lines*20,r.width - 32);
 
             //相性
             var list = synergiesOf(id);
-            var y = r.Y + 210 + lines*20;
+            var y = r.Y + 190 + lines*20;
+            //相性が多いときは行の間を詰めて、カードの中に収める
+            var lh = Math.min(19, Math.floor((r.Y + r.height - 12 - (y + 18))/Math.max(1, list.length - 1)));
             ctx.font = "bold 13px sans-serif";
             ctx.fillStyle = "#555";
             ctx.fillText("相性の良い装備",r.X + 16,y);
@@ -997,7 +1021,7 @@ var upgradeScreen = {
             for(var j=0; j<list.length; j++){
                 var p = partnerOf(list[j],id);
                 ctx.fillStyle = game.owned[p] ? "#c33" : "#777";
-                ctx.fillText((game.owned[p] ? "◆" : "◇") + WEAPONS[p].name + "「" + list[j].name + "」" + (game.owned[p] ? "所持" : ""),r.X + 16,y + 20 + j*19);
+                ctx.fillText((game.owned[p] ? "◆" : "◇") + WEAPONS[p].name + "「" + list[j].name + "」" + (game.owned[p] ? "所持" : ""),r.X + 16,y + 18 + j*lh);
             }
         }
         ctx.textAlign = "center";

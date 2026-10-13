@@ -983,6 +983,19 @@ try{
     check("ショップ：パーツで装備を買い、売り切れになる・同じWAVEでは品ぞろえが変わらず、次のWAVEで入れ替わる",
           noMax && bought && once && kept && restock, items.join(",") + " " + id0 + " Lv" + lv0 + "→" + game.owned[id0] + " -" + price0 + " " + [noMax,bought,once,kept,restock].join(""));
 
+    // 装備の性能表：すべての装備・レベルで威力・間隔・速度・射程が出る(∞・- の表記も)
+    var specBad = [];
+    WEAPON_IDS.forEach(function(id){
+        for(var lv=1; lv<=MAX_WEAPON_LEVEL; lv++){
+            var t = weaponSpecText(id,lv);
+            if(!/^威力 \S+　間隔 \S+　速度 \S+　射程 \S+$/.test(t) || /NaN|undefined|Infinity/.test(t)) specBad.push(id + lv + ":" + t);
+        }
+    });
+    var specLaser = weaponSpecText("laser",2), specBarrier = weaponSpecText("barrier",1);
+    check("装備の性能表：すべての装備で威力・間隔・速度・射程が出る(無限は∞・ないものは-)",
+          specBad.length == 0 && /速度 ∞　射程 ∞/.test(specLaser) && specBarrier == "威力 -　間隔 -　速度 -　射程 -",
+          specBad.join(" / ") + " " + specLaser + " / " + specBarrier);
+
     // ショップのバフ：買うと能力・ダメージに効き、セーブに残る。買える回数には上限があり、はじめからで消える
     setup(6, { gun:1 }, ["gun",null,null], 3); game.parts = 500;
     page.change(2); upgradeScreen.tab = "shop"; draw1();

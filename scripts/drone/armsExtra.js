@@ -64,6 +64,20 @@ Object.assign(WEAPONS, {
                cd:[66,58,50] }
 });
 WEAPON_IDS.push("fire","disc","gravity","barrier","sniper","freeze");
+//性能表(equipment.js の WEAPON_SPEC。値は fire2・update* の動きと合わせる)
+Object.assign(WEAPON_SPEC, {
+    fire:    function(_lv){ return { dmg:FIRE_DMG, spd:5.25, range:FIRE_RANGE[_lv-1] }; },    //炎の速さは4.5～6。燃えるとさらに削れる
+    disc:    function(_lv){
+        //行きはだんだん遅くなり、止まったところで戻る
+        var sp = DISC_SPEED, d = 0;
+        while(sp - DISC_BRAKE > 0.5){ sp -= DISC_BRAKE; d += sp; }
+        return { dmg:DISC_DMG, spd:DISC_SPEED, range:d };
+    },
+    gravity: function(_lv){ return { dmg:WELL_DMG, spd:4, range:4*50 }; },     //渦の中心で15フレームごとに削れる。最大50フレーム飛んで渦になる
+    barrier: function(_lv){ return { dmg:null, cd:null, spd:null, range:null }; },    //敵の弾を消すだけ
+    sniper:  function(_lv){ return { dmg:SNIPE_DMG[_lv-1], spd:Infinity, range:Infinity }; },
+    freeze:  function(_lv){ return { dmg:ICE_DMG, spd:ICE_SPEED, range:ICE_SPEED*34 }; }
+});
 Object.assign(FIRE_SE, { disc:"disc", gravity:"gravity", sniper:"snipe", freeze:"freeze" });
 
 SYNERGIES.push(
