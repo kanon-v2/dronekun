@@ -12,7 +12,8 @@ const KAI_RELAYS = [0.0, 0.34, 0.6, 0.79, 0.93, 1.04, 1.13, 1.2, 1.26, 1.31, 1.3
 //同じ効果音が短時間に重なりすぎないよう、最低この間隔(秒)をあける
 const SE_INTERVAL = {
     shot:0.045, typing:0.04, water:0.07, steam:0.08, hit:0.035, kill:0.03, blade:0.04, zap:0.06, explode:0.05,
-    part:0.025, graze:0.04, enemyShot:0.06, mine:0.08, bug:0.08, dash:0.1, bossShot:0.05, summon:0.1
+    part:0.025, graze:0.04, enemyShot:0.06, mine:0.08, bug:0.08, dash:0.1, bossShot:0.05, summon:0.1,
+    fwPop:0.035, fwBurst:0.08, fwLaunch:0.08
 };
 
 //BGMの曲データ
@@ -444,6 +445,10 @@ var sound = {
             case "freeze":  this.tone("triangle",2600,1300,0.12,0.06,S); this.tone("sine",3200,3200,0.08,0.03,S,now + 0.05); break;
             case "shatter": this.noise(0.14,0.08,"highpass",3000,5000,S); this.tone("triangle",3000,1600,0.1,0.05,S); break;
             case "explode": this.noise(0.5,0.35,"lowpass",1400,70,S); this.tone("sine",130,38,0.4,0.28,S); break;
+            //打ち上げ花火(shotLab.js)：ひゅるる → どーん → ぱちぱち
+            case "fwLaunch": this.tone("sine",450,1600,0.55,0.035,S); this.noise(0.4,0.025,"highpass",2500,5000,S); break;
+            case "fwBurst":  this.noise(0.7,0.3,"lowpass",1800,60,S); this.tone("sine",95,35,0.5,0.22,S); this.noise(0.5,0.04,"highpass",4000,2500,S,now + 0.15); break;
+            case "fwPop":    this.noise(0.04,0.09,"highpass",2200,4500,S); this.tone("square",1800,900,0.02,0.02,S,0,0,4000); break;
             //敵
             case "hit":       this.tone("square",240,170,0.03,0.04,S,0,0,1800); break;
             case "kill":      this.noise(0.14,0.13,"bandpass",2200,400,S); this.tone("square",520,120,0.1,0.05,S,0,0,2000); break;

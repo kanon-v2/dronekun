@@ -168,10 +168,79 @@ try{
     }
     var bucketOk = gooN > 5 && flowOk && dripFell && splat && bk.mode != null;
     mainScreen.invincible = 0; shotLab.clear(); enemyShots = [];
+    // 雨攻撃：雲が集まってから雲の下に硫酸の雨が降り、雲はドローン君へ寄ってきて、床に落ちた粒は煙になり、やがて晴れる
+    var rainFar = drone.X > CW/2 ? 100 : CW - 100;
+    shotLab.rain(rainFar);
+    var acidN = 0, gatherDry = true, puddle = false, rainD0 = Math.abs(rainFar - drone.X);
+    for(var i=0; i<RAIN_TIMES.gather + RAIN_TIMES.rain + RAIN_TIMES.clear + 2; i++){
+        mainScreen.invincible = 99;
+        mainScreen.updateShots();
+        var acids = enemyShots.filter(function(b){ return b.kind == "acid"; });
+        if(i < RAIN_TIMES.gather - 1 && acids.length) gatherDry = false;
+        acidN = Math.max(acidN, acids.length);
+        if(shotLab.puddles.length) puddle = true;
+        if(i == RAIN_TIMES.gather + 60) var rainD1 = Math.abs(shotLab.storm.x - drone.X);
+        if(i % 30 == 0) draw1();
+    }
+    var rainOk = gatherDry && acidN > 10 && puddle && rainD1 < rainD0 && shotLab.storm == null;
+    enemyShots = [];
+    // 岩投げ：山なりに飛んで、着く時刻にねらった所を通り、床で砕けて破片が飛び散る
+    var rk = shotLab.throwRock(200, 70, 330, 380), rkHit = 1e9, rkGone = false, pebbleN = 0;
+    for(var i=0; i<400 && !(rkGone && pebbleN == 0 && i > 300); i++){
+        mainScreen.invincible = 99;
+        mainScreen.updateShots();
+        if(rk.t == rk.eta) rkHit = Math.hypot(rk.x - 330, rk.y - 380);
+        if(enemyShots.indexOf(rk) < 0 && !rkGone){ rkGone = true; pebbleN = enemyShots.filter(function(b){ return b.kind == "pebble"; }).length; var pebbleMax = pebbleN; }
+        if(rkGone) pebbleN = enemyShots.filter(function(b){ return b.kind == "pebble"; }).length;
+    }
+    var rockOk = rkHit < 3 && rkGone && pebbleMax == ROCK_PIECES && rk.y > 300;
+    enemyShots = []; mainScreen.invincible = 0;
+    // 打ち上げ花火：玉はちょうど開く所で開き、種類ごとに星が動く(牡丹は輪・柳は尾を引いて垂れる・花雷ははじける・型物はドローン君の形に止まる)
+    var fwOk = {}, fwInfo = [];
+    ["botan","yanagi","hanarai","kata"].forEach(function(id){
+        enemyShots = [];
+        var sh = shotLab.firework(id, 100, CH + 10), at = null, stars = [], popped = false, droop = false, shapeErr = 0;
+        for(var i=0; i<FW_RISE + 60; i++){
+            mainScreen.invincible = 99;
+            if(enemyShots.indexOf(sh) >= 0) at = { x:sh.x, y:sh.y };
+            mainScreen.updateShots();
+            stars = enemyShots.filter(function(b){ return b.kind == "star"; });
+            if(stars.some(function(b){ return b.pop > 0 && b.r > FW_POP_R*0.6; })) popped = true;
+            if(stars.some(function(b){ return b.trail && b.trail.length >= FW_TYPES.yanagi.tail && b.fw == "yanagi" && b.vy > 0.3; })) droop = true;
+            if(id == "kata" && i == FW_RISE + 40){
+                for(var j=0; j<stars.length; j++){
+                    var P = FW_KATA_SHAPE[j];
+                    shapeErr = Math.max(shapeErr, Math.hypot(stars[j].x - (sh.tx + P[0]*FW_KATA_SCALE), stars[j].y - (sh.ty + P[1]*FW_KATA_SCALE)));
+                }
+            }
+        }
+        var arrived = at && Math.hypot(at.x - sh.tx, at.y - sh.ty) < 4 && enemyShots.indexOf(sh) < 0;
+        var ok = arrived;
+        if(id == "botan") ok = ok && stars.length >= FW_TYPES.botan.n;
+        if(id == "yanagi") ok = ok && droop;
+        if(id == "hanarai") ok = ok && popped;
+        if(id == "kata") ok = ok && stars.length > 0 && shapeErr < 2;
+        fwOk[id] = ok;
+        fwInfo.push(id + ok + (id == "kata" ? "(形のずれ" + shapeErr.toFixed(2) + ")" : ""));
+    });
+    var fireworkOk = fwOk.botan && fwOk.yanagi && fwOk.hanarai && fwOk.kata;
+    enemyShots = []; mainScreen.invincible = 0;
+    // 迎撃：範囲に入ったドローン君の弾を、1秒に INTERCEPT_PER_SEC 発まで撃ち落とす(範囲の外の弾は落とさない)
+    arms.bullets = [];
+    for(var i=0; i<8; i++) arms.bullets.push({ x:480 + 60 + i, y:100, vx:0, vy:0, life:999, pierce:0, hit:[] });
+    arms.bullets.push({ x:480, y:100 + INTERCEPT_RANGE + 20, vx:0, vy:0, life:999, pierce:0, hit:[] });
+    var ic = { x:480, y:100, r:15, intercept:{ cd:0, zap:0 } };
+    for(var i=0; i<60; i++) shotLab.enemyStep(ic);
+    var interceptOk = arms.bullets.length == 9 - INTERCEPT_PER_SEC && arms.bullets.some(function(b){ return b.y > 100 + INTERCEPT_RANGE; });
+    arms.bullets = [];
     check("試作の弾：分裂弾は割れ、ため弾は止まって狙い直し、跳ね弾は端で跳ね、ブーメラン弾は戻ってくる。ジャスト不可弾はジャストにならず、衝撃波では消えて「ジャスト不可」と出る。範囲攻撃は範囲の中だけ当たり、バケツは液体を流してしずくを垂らす",
           splitOk && reaimOk && bounceOk && boomerOk && njOk && zoneOk && bucketOk && errors.length == lerr,
           "分裂" + splitOk + " ため" + reaimOk + " 跳ね" + bounceOk + " ブーメラン" + boomerOk + " ジャスト不可" + njNoJust + "/" + njMixed + "/" + njBlast +
           " 範囲" + zoneOk + " バケツ" + bucketOk + "(粒" + gooN + " 流れ" + flowOk + " しずく" + dripFell + " 飛び散り" + splat + ")");
+    check("試作の攻撃：雨攻撃は雲が集まってから雲の下に降り、雲が寄ってきて、やがて晴れる。岩投げは狙った所を通って床で砕ける。打ち上げ花火は開く所で開き、牡丹・柳・花雷・型物で星の動きが違う。迎撃は範囲の弾を1秒に" + INTERCEPT_PER_SEC + "発まで撃ち落とす",
+          rainOk && rockOk && fireworkOk && interceptOk && errors.length == lerr,
+          "雨" + rainOk + "(集まる間は降らない" + gatherDry + " 粒" + acidN + " 煙" + puddle + " 雲の距離" + Math.round(rainD0) + "→" + Math.round(rainD1) + ")" +
+          " 岩" + rockOk + "(ずれ" + rkHit.toFixed(1) + " 破片" + pebbleMax + ")" + " 花火 " + fwInfo.join(" ") + " 迎撃" + interceptOk);
 
     // デバッグの「攻撃の試作」：砲台が全種類を順に出し、無敵。戻るとメニューへ
     save.clearAll(); game.reset();
@@ -183,10 +252,14 @@ try{
         for(var i=0; i<enemyShots.length; i++) labKinds[enemyShots[i].kind] = true;
         if(shotLab.zones.length) labKinds.zone = true;
         if(shotLab.buckets.length) labKinds.bucket = true;
+        if(shotLab.storm) labKinds.rain = true;
+        for(var i=0; i<enemyShots.length; i++){ if(enemyShots[i].fw) labKinds[enemyShots[i].fw] = true; }
+        if(enemies.some(function(e){ return e.lab && e.intercept; })) labKinds.intercept = true;
+        if(shotLab.labShot > 0) labKinds.shotDown = true;     //迎撃の的が、ドローン君の弾を撃ち落とした
         if(lf % 10 == 0) draw1();
     }
     var labAll = shotLab.list.every(function(L){ return labKinds[L.id]; });
-    var labHpOk = mainScreen.hp == labHp, labEnemies = enemies.length;
+    var labHpOk = mainScreen.hp == labHp, labEnemies = enemies.filter(function(e){ return !e.lab; }).length;
     // 左の一覧で攻撃を選ぶ：選んだ攻撃だけを繰り返す。マウスで一覧を押しても衝撃波は出ない。「自動で順番に」で戻る
     var bucketI = shotLab.list.map(function(L){ return L.id; }).indexOf("bucket");
     var rowB = shotLab.labRows()[bucketI + 1];

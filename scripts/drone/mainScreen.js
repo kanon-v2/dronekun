@@ -1198,6 +1198,7 @@ var mainScreen = {
             //凍った敵は動かず、攻撃もしない(冷凍。armsExtra.js。ボス・レア敵は凍らず遅くなるだけ)
             if(e.frozen > 0 && !e.boss && !e.rare && !e.countered && !e.pod) continue;
             e.face = Math.atan2(dy,dx);
+            if(shotLab.enemyStep(e)) continue;     //試作の能力(迎撃)と、攻撃の試作の的(shotLab.js)
 
             //レア敵・ボスの動きはbosses.js
             if(!special.update(e,dx,dy,d) && !forces.update(e,dx,dy,d)) switch(e.type){
