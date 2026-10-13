@@ -162,6 +162,22 @@ const GLOB_TIME     = 36;       //投げてからガラスに着くまで(フレ
 const GLASS_LIFE    = 420;      //張り付いてから消えるまで(フレーム)
 const GLASS_MAX     = 8;        //張り付いている数の上限
 
+//---- 核弾頭 ----
+//砲台が真上へ撃ち上げ、撃ったときのドローン君の位置へ、上から再突入の炎をまとって落ちてくる。落ちる所に大きな危険範囲と秒読み。
+//弾頭は敵として撃てる(撃ち落とせば空中で砕けるだけ)。着くと超高温の閃光で範囲の中が真っ白に焼け(一瞬時が止まる)、範囲の中にいれば被弾。
+//範囲の中の敵の弾は焼き消える。爆心はしばらく赤熱して(入ると被弾。冷えながら縮む)、まわりの空気が熱でゆらぎ、焦げ跡が残る
+const NUKE_LAUNCH   = 45;       //撃ち上げて画面の上へ消えるまで(フレーム)
+const NUKE_FALL     = 200;      //上から落ちてきて着くまで(フレーム)
+const NUKE_R        = 170;      //爆発の範囲(半径。px)
+const NUKE_HP       = 12;       //弾頭の体力(撃つ敵 shooter の何倍か)
+const NUKE_STOP     = 12;       //爆発の瞬間、真っ白のまま時を止める長さ(フレーム。ヒットストップ)
+const NUKE_FLASH    = 100;      //閃光(範囲の中だけ)が白 → 黄 → 橙と色を変えながら消えるまで(フレーム)
+const NUKE_FIRE     = 80;       //火の玉が縮んで消えるまで(フレーム)
+const NUKE_WAVE     = 50;       //衝撃波の輪が画面の外まで広がるまで(フレーム。見た目だけ)
+const NUKE_HEAT     = 130;      //爆心の赤熱が冷えて消えるまで(フレーム)
+const NUKE_HEAT_R   = 0.55;     //赤熱のはじめの大きさ(NUKE_R に掛ける。冷えながら縮む)
+const NUKE_HAZE     = 18;       //熱で空気がゆらぐ強さ(はじめの横ずれ。px)
+
 //---- 障害物が横切るギミック ----
 //障害物は動く四角い壁。ドローン君は通り抜けられずに押され(drone.calcXY から shotLab.pushOut)、画面の端に挟まると被弾する。
 //敵の弾もドローン君の飛んでいく弾も、障害物に当たると消える(隠れる盾にもなる)
@@ -231,6 +247,7 @@ var shotLab = {
         { id:"glass",  name:"手前：ガラス", note:"液体が画面のガラスに張り付いて垂れ、見えにくくなる" },
         { id:"gate",   name:"障害物：すき間の壁", note:"壁のすき間を通る。端に挟まれると被弾。弾も壁で止まる" },
         { id:"drift",  name:"障害物：コンテナ", note:"流れるコンテナは押してくるが、弾を防ぐ盾にもなる" },
+        { id:"nuke",   name:"核弾頭",       note:"落ちる所の範囲から逃げる。弾頭を撃ち落とせば爆発しない" },
         { id:"intercept", name:"迎撃(能力)", note:"近づいた弾を撃ち落とす(1秒に" + INTERCEPT_PER_SEC + "発まで)。数で押し切る" }
     ],
     zones:[],       //範囲攻撃 { shape:"circle"|"band", x, y, r, w, h, t }
@@ -246,6 +263,8 @@ var shotLab = {
     globs:[],       //ガラスへ飛んでくる液体の玉 { x0, y0, x, y, t }
     splats:[],      //ガラスに張り付いた液体 { x, y, t, blobs, drips }
     obstacles:[],   //障害物 { kind:"wall"|"crate", x, y, w, h, vx, edge, color, crushed }
+    nukes:[],       //核弾頭 { e:弾頭の敵, x0, y0, tx, ty, t, mode:"launch"|"fall" }
+    booms:[],       //核の爆発のあと { x, y, t }(衝撃波の輪・火の玉・きのこ雲・放射能の残り)
 
     //試作の攻撃を全部消す(WAVEの始め・クリア・攻撃の試作で次の種類へ移るとき)
     clear:function(){
@@ -256,6 +275,8 @@ var shotLab = {
         this.night = 0;
         this.deeps = []; this.rams = []; this.hoops = []; this.veil = null; this.globs = []; this.splats = [];
         this.obstacles = [];
+        for(var i=0; i<this.nukes.length; i++) this.nukes[i].e.dead = true;     //落ちている途中の弾頭(敵)も消す
+        this.nukes = []; this.booms = [];
     },
     //すき間の壁を出す(_dir：1 は左から右へ、-1 は右から左へ。_gapY：すき間のまんなか)
     wall:function(_dir,_gapY){
@@ -517,6 +538,40 @@ var shotLab = {
         fx.shake(2);
         sound.play("hit");
     },
+    //核弾頭を(_x,_y)から撃ち上げる。落ちる所は撃ったときのドローン君の位置
+    nuke:function(_x,_y){
+        var tg = nearestPlayer(_x,_y);
+        var e = makeEnemy("shooter");
+        e.x = _x; e.y = _y; e.vx = 0; e.vy = 0;
+        e.r = 13;
+        e.hp = e.maxHp = e.maxHp*NUKE_HP;
+        e.score = 0; e.parts = 0;
+        e.nuke = true;
+        e.lab = bossDebug.lab; e.labId = "nuke";
+        e.phased = true; e.harmless = true;     //撃ち上げている間は狙えない。体当たりもしない
+        enemies.push(e);
+        var n = { e:e, x0:_x, y0:_y, tx:tg.X, ty:tg.Y, t:0, mode:"launch" };
+        this.nukes.push(n);
+        fx.flare(_x, _y, 26, "255,190,90", 14);
+        fx.shake(3);
+        sound.play("nukeLaunch");
+        return n;
+    },
+    //核弾頭が着いて爆発する：超高温の閃光で範囲の中が真っ白に焼け、一瞬時が止まる。範囲の中は被弾、敵の弾は焼き消える
+    nukeBlast:function(n){
+        var ms = mainScreen;
+        if(ms.state != "over" && Math.hypot(drone.X - n.tx, drone.Y - n.ty) < NUKE_R + HIT_CORE && ms.canBeHit()) ms.damage();
+        for(var i=enemyShots.length-1; i>=0; i--){
+            var b = enemyShots[i];
+            if(Math.hypot(b.x - n.tx, b.y - n.ty) < NUKE_R){ fx.flare(b.x, b.y, 10, "255,200,120", 18); enemyShots.splice(i,1); }
+        }
+        this.booms.push({ x:n.tx, y:n.ty, t:0 });
+        ms.hitStop = Math.max(ms.hitStop, NUKE_STOP);
+        fx.shake(18);
+        battleBg.ripple(n.tx, n.ty, 30, 10, 80, "255,210,140");
+        sound.play("nuke");
+    },
+
     //衝撃波を出したとき(mainScreen.blast から)：着く直前の奥からの突進を弾き返す
     onBlast:function(){
         for(var i=0; i<this.rams.length; i++){
@@ -555,6 +610,62 @@ var shotLab = {
         this.night = Math.max(0, Math.min(1, this.night + (fw ? 0.04 : -0.012)));
         for(var i=this.puddles.length-1; i>=0; i--){ if(++this.puddles[i].t >= PUDDLE_LIFE) this.puddles.splice(i,1); }
         this.depthStep();
+        this.nukeStep();
+    },
+    //核弾頭：撃ち上げ → 上から落ちてくる → 着いたら爆発。撃ち落とされたら空中で砕ける
+    nukeStep:function(){
+        for(var i=this.nukes.length-1; i>=0; i--){
+            var n = this.nukes[i], e = n.e;
+            if(e.dead){
+                //撃ち落とした(爆発しない)
+                popup(e.x, e.y - 30, "撃墜！", "#c33", true);
+                fx.flare(e.x, e.y, 40, "255,220,120", 16);
+                fx.sparks(e.x, e.y, 14, "255,200,90", 3.5, 3);
+                this.nukes.splice(i,1);
+                continue;
+            }
+            n.t++;
+            if(n.mode == "launch"){
+                //真上へ加速して画面の上へ
+                var k = n.t/NUKE_LAUNCH;
+                e.x = n.x0; e.y = n.y0 - (n.y0 + 60)*k*k;
+                if(n.t >= NUKE_LAUNCH){
+                    n.mode = "fall"; n.t = 0;
+                    e.phased = false;
+                    sound.play("warning");
+                }
+            }else{
+                //再突入の炎をまとってまっすぐ落ちる(だんだん速く。空気にもまれて細かく震える)。燃えかすを散らす
+                var k = n.t/NUKE_FALL, y0 = -50;
+                e.x = n.tx + (Math.random() - 0.5)*1.2;
+                e.y = y0 + (n.ty - y0)*(0.6*k + 0.4*k*k);
+                if(n.t % 3 == 0) fx.sparks(e.x + (Math.random() - 0.5)*14, e.y - 6, 1, "255,170,80", 1.2, 2.2);
+                if(n.t >= NUKE_FALL){
+                    e.dead = true;
+                    this.nukes.splice(i,1);
+                    this.nukeBlast(n);
+                }
+            }
+        }
+        //爆発のあと：赤熱した爆心の中にいれば被弾。熱で火の粉が立ちのぼる
+        var ms = mainScreen;
+        for(var i=this.booms.length-1; i>=0; i--){
+            var B = this.booms[i];
+            B.t++;
+            var hr = this.heatR(B);
+            if(hr > 0 && B.t > 10 && ms.state != "over" && Math.hypot(drone.X - B.x, drone.Y - B.y) < hr + HIT_CORE && ms.canBeHit()) ms.damage();
+            if(hr > 0 && B.t % 2 == 0){
+                var a = Math.random()*Math.PI*2, d = Math.random()*hr;
+                effects.push({ x:B.x + Math.cos(a)*d, y:B.y + Math.sin(a)*d, vx:(Math.random() - 0.5)*0.6, vy:-0.8 - Math.random()*1.4,
+                               life:30 + Math.random()*20, maxLife:50, size:1.5 + Math.random()*1.5, glow:"255,150,60" });
+            }
+            if(B.t >= Math.max(NUKE_HEAT, NUKE_FLASH)) this.booms.splice(i,1);
+        }
+    },
+    //爆心の赤熱の大きさ(半径。0 ならもう冷えた)
+    heatR:function(B){
+        if(B.t >= NUKE_HEAT) return 0;
+        return NUKE_R*NUKE_HEAT_R*(1 - Math.pow(B.t/NUKE_HEAT, 1.5));
     },
     depthStep:function(){
         var ms = mainScreen, m = danmaku(), hitOk = ms.state != "over";
@@ -689,6 +800,7 @@ var shotLab = {
 
     //敵ごとの試作の能力(mainScreen.updateEnemies から)。true ならその敵のふだんの動きをしない
     enemyStep:function(e){
+        if(e.nuke) return true;     //核弾頭の動きは nukeStep
         if(e.intercept) this.interceptStep(e);
         if(e.dive) return this.diveStep(e);
         if(e.lab){
@@ -748,6 +860,12 @@ var shotLab = {
         return true;
     },
     //奥にいる敵を、消失点へ寄せて小さく薄く描く(mainScreen.drawEnemy から。描いたら true)
+    //試作の敵の絵(mainScreen.drawEnemy から。描いたら true)
+    drawEnemy:function(e){
+        if(e.nuke){ this.drawWarhead(e); return true; }
+        if(e.depth > 0) return this.drawDeepEnemy(e);
+        return false;
+    },
     drawDeepEnemy:function(e){
         var P = this.depthAt(e.x, e.y, e.depth);
         ctx.save();
@@ -1232,6 +1350,7 @@ var shotLab = {
             ctx.fillRect(0,0,CW,CH);
         }
         this.drawDepthUnder();
+        this.drawNukeUnder();
         //床に落ちた雨粒：じゅっと泡立って煙が上がる
         for(var i=0; i<this.puddles.length; i++){
             var P = this.puddles[i], k = P.t/PUDDLE_LIFE;
@@ -1423,6 +1542,303 @@ var shotLab = {
             ctx.setLineDash([]); ctx.lineDashOffset = 0; ctx.lineWidth = 1;
         }
     },
+    //---- 核弾頭の絵 ----
+    //放射能の印(三つ葉)
+    trefoil:function(_x,_y,_r,_col){
+        ctx.fillStyle = _col;
+        for(var k=0; k<3; k++){
+            var a = -Math.PI/2 + k*Math.PI*2/3 - Math.PI/6;
+            ctx.beginPath(); ctx.moveTo(_x,_y); ctx.arc(_x, _y, _r, a, a + Math.PI/3); ctx.closePath(); ctx.fill();
+        }
+        ctx.beginPath(); ctx.arc(_x, _y, _r*0.22, 0, Math.PI*2); ctx.fill();
+    },
+    //弾頭の胴体の形(先が下の円錐。_d だけ太らせる)
+    warheadShape:function(_d){
+        ctx.beginPath();
+        ctx.moveTo(-9 - _d, -21 - _d); ctx.lineTo(9 + _d, -21 - _d);
+        ctx.lineTo(10 + _d, -15); ctx.lineTo(12.5 + _d, -12);
+        ctx.lineTo(5 + _d, 19);
+        ctx.quadraticCurveTo(0, 25 + _d*1.2, -5 - _d, 19);
+        ctx.lineTo(-12.5 - _d, -12); ctx.lineTo(-10 - _d, -15);
+        ctx.closePath();
+    },
+    //弾頭：つや消しの黒い円錐(先が下)。落ちる間は先が白熱し、炎の膜をまとって炎と煙の尾を引く。撃ち上げは噴射の炎で上る
+    drawWarhead:function(e){
+        var n = this.nukeOf(e), up = e.phased, now = mainScreen.clock;
+        var k = n && !up ? n.t/NUKE_FALL : 0, heat = up ? 0 : 0.45 + 0.55*k;
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        if(up) ctx.rotate(Math.PI);
+        //煙の尾(しっぽ側へ伸びるひと続きの帯。遠いほど太く薄く、ゆらぐ)
+        var SN = 24, SL = 8, left = [], right = [];
+        for(var j=0; j<=SN; j++){
+            var sy = -18 - j*SL, sx = Math.sin(j*0.45 - now*0.06)*j*0.35, sw = 7 + j*0.9;
+            left.push([sx - sw, sy]); right.push([sx + sw, sy]);
+        }
+        var SG = ctx.createLinearGradient(0, -18, 0, -18 - SN*SL);
+        SG.addColorStop(0, "rgba(" + (up ? "215,215,220" : "70,62,64") + ",0.55)");
+        SG.addColorStop(1, "rgba(" + (up ? "215,215,220" : "70,62,64") + ",0)");
+        ctx.fillStyle = SG;
+        ctx.beginPath(); ctx.moveTo(left[0][0], left[0][1]);
+        for(var j=1; j<=SN; j++) ctx.lineTo(left[j][0], left[j][1]);
+        for(var j=SN; j>=0; j--) ctx.lineTo(right[j][0], right[j][1]);
+        ctx.closePath(); ctx.fill();
+        ctx.globalCompositeOperation = "lighter";
+        if(up){
+            //噴射の炎
+            var f = 26 + Math.random()*12;
+            ctx.fillStyle = "rgba(255,120,40,0.75)";
+            ctx.beginPath(); ctx.moveTo(-8,-21); ctx.quadraticCurveTo(-5,-21 - f*0.6, 0,-21 - f*1.4); ctx.quadraticCurveTo(5,-21 - f*0.6, 8,-21); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = "rgba(255,240,200,0.95)";
+            ctx.beginPath(); ctx.moveTo(-4,-21); ctx.quadraticCurveTo(-2,-21 - f*0.4, 0,-21 - f*0.8); ctx.quadraticCurveTo(2,-21 - f*0.4, 4,-21); ctx.closePath(); ctx.fill();
+        }else{
+            //再突入の炎：胴体のふちからしっぽ側へ流れる炎の舌
+            for(var j=0; j<5; j++){
+                var bx = -11 + j*5.5, L = (34 + 26*heat)*(0.65 + 0.35*Math.sin(now*0.6 + j*2.1)) + Math.random()*8;
+                var col = j == 2 ? "255,235,170" : "255,120,40";
+                ctx.fillStyle = "rgba(" + col + "," + (0.35 + 0.35*heat) + ")";
+                ctx.beginPath(); ctx.moveTo(bx - 4, -10); ctx.quadraticCurveTo(bx*1.2, -10 - L*0.5, bx*0.6 + Math.sin(now*0.3 + j)*3, -10 - L); ctx.quadraticCurveTo(bx*1.2 + 2, -10 - L*0.5, bx + 4, -10); ctx.closePath(); ctx.fill();
+            }
+            //先の前にできる衝撃波の光(白熱した空気の膜)
+            var G = ctx.createRadialGradient(0, 22, 2, 0, 18, 30 + 14*heat);
+            G.addColorStop(0, "rgba(255,255,240," + (0.9*heat) + ")");
+            G.addColorStop(0.35, "rgba(255,200,120," + (0.6*heat) + ")");
+            G.addColorStop(1, "rgba(255,90,30,0)");
+            ctx.fillStyle = G;
+            ctx.beginPath(); ctx.arc(0, 18, 30 + 14*heat, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = "rgba(255,220,170," + (0.5*heat) + ")"; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(-22,-14); ctx.quadraticCurveTo(0, 50, 22,-14); ctx.stroke();
+        }
+        ctx.globalCompositeOperation = "source-over";
+        //胴体：濃いふちどり → 暗い面 → 光の当たる左の面
+        ctx.fillStyle = "#121418"; this.warheadShape(2); ctx.fill();
+        ctx.fillStyle = "#2a2e35"; this.warheadShape(0); ctx.fill();
+        ctx.save();
+        this.warheadShape(0); ctx.clip();
+        ctx.fillStyle = "#454b56";
+        ctx.beginPath(); ctx.moveTo(-14,-22); ctx.lineTo(-3,-22); ctx.lineTo(-1,26); ctx.lineTo(-8,26); ctx.closePath(); ctx.fill();
+        //継ぎ目と、しっぽの黄と黒のしま
+        ctx.fillStyle = "#121418";
+        ctx.fillRect(-14, -3, 28, 1.2);
+        for(var j=0; j<6; j++){
+            ctx.fillStyle = j % 2 ? "#121418" : "#e9b815";
+            ctx.beginPath(); ctx.moveTo(-12 + j*4.5, -21); ctx.lineTo(-7.5 + j*4.5, -21); ctx.lineTo(-10.5 + j*4.5, -15); ctx.lineTo(-15 + j*4.5, -15); ctx.closePath(); ctx.fill();
+        }
+        //印(黄色い丸に黒い三つ葉)
+        ctx.fillStyle = "#e9b815";
+        ctx.beginPath(); ctx.arc(-0.5, 5, 5.2, 0, Math.PI*2); ctx.fill();
+        this.trefoil(-0.5, 5, 4.4, "#121418");
+        //先が熱で赤く → 白く焼ける
+        if(heat > 0){
+            var H = ctx.createRadialGradient(0, 24, 1, 0, 22, 14 + 18*heat);
+            H.addColorStop(0, "rgba(255,250,225," + heat + ")");
+            H.addColorStop(0.4, "rgba(255,160,60," + (0.85*heat) + ")");
+            H.addColorStop(1, "rgba(200,40,10,0)");
+            ctx.fillStyle = H;
+            ctx.fillRect(-15, -22, 30, 50);
+        }
+        ctx.restore();
+        //左上からの光
+        ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(-9.5,-11); ctx.lineTo(-4.5, 10); ctx.stroke();
+        //撃たれた瞬間は白っぽく光る(形と印は見えたまま)
+        if(e.flash > 0){
+            ctx.fillStyle = "rgba(255,255,255,0.5)";
+            this.warheadShape(0); ctx.fill();
+        }
+        ctx.restore();
+        ctx.lineWidth = 1;
+        //体力ゲージ(落ちている間はいつも出す。撃ち落とせるとわかるように)
+        if(!up){
+            var w = 40, y = e.y + 34;
+            ctx.fillStyle = "rgba(18,20,24,0.85)";
+            ctx.fillRect(e.x - w/2 - 1, y - 1, w + 2, 5);
+            ctx.fillStyle = "#ff4a2e";
+            ctx.fillRect(e.x - w/2, y, w*Math.max(0, e.hp)/e.maxHp, 3);
+        }
+    },
+    nukeOf:function(e){
+        for(var i=0; i<this.nukes.length; i++){ if(this.nukes[i].e == e) return this.nukes[i]; }
+        return null;
+    },
+    //0～1 の決まった乱数(_i 番目。爆発ごとの形を毎フレーム同じにするため)
+    nukeRnd:function(_i){
+        var v = Math.sin(_i*12.9898 + 78.233)*43758.5453;
+        return v - Math.floor(v);
+    },
+    //弾の下に描くもの：落ちる所の照準と秒読み・爆心の焦げ跡と赤熱
+    drawNukeUnder:function(){
+        var now = mainScreen.clock;
+        for(var i=0; i<this.booms.length; i++){
+            var B = this.booms[i], life = Math.max(NUKE_HEAT, NUKE_FLASH);
+            //焦げ跡(ふちがぎざぎざの黒い円。ゆっくり薄くなる)
+            var sa = 0.5*Math.min(1, B.t/6)*Math.pow(1 - B.t/life, 0.6);
+            ctx.fillStyle = "rgba(34,24,20," + sa + ")";
+            ctx.beginPath();
+            for(var j=0; j<=40; j++){
+                var a = j*Math.PI*2/40, rr = NUKE_R*(0.82 + 0.1*this.nukeRnd(j % 40 + i*50));
+                if(j == 0) ctx.moveTo(B.x + Math.cos(a)*rr, B.y + Math.sin(a)*rr); else ctx.lineTo(B.x + Math.cos(a)*rr, B.y + Math.sin(a)*rr);
+            }
+            ctx.fill();
+            //赤熱(冷えるほど 白 → 黄 → 赤 → 暗い赤。縮んでいく)
+            var hr = this.heatR(B);
+            if(hr <= 0) continue;
+            var temp = 1 - B.t/NUKE_HEAT;
+            ctx.fillStyle = "rgba(" + fwMix("60,10,6", "150,30,10", temp) + ",0.85)";
+            ctx.beginPath();
+            for(var j=0; j<=24; j++){
+                var a = j*Math.PI*2/24, rr = hr*(0.9 + 0.12*this.nukeRnd(j % 24 + i*50 + 7) + 0.03*Math.sin(now*0.2 + j));
+                if(j == 0) ctx.moveTo(B.x + Math.cos(a)*rr, B.y + Math.sin(a)*rr); else ctx.lineTo(B.x + Math.cos(a)*rr, B.y + Math.sin(a)*rr);
+            }
+            ctx.fill();
+            ctx.globalCompositeOperation = "lighter";
+            var G = ctx.createRadialGradient(B.x, B.y, 0, B.x, B.y, hr*1.25);
+            G.addColorStop(0, "rgba(" + fwMix("255,90,20", "255,250,220", temp) + "," + (0.95*temp + 0.05) + ")");
+            G.addColorStop(0.5, "rgba(255,110,30," + (0.6*temp) + ")");
+            G.addColorStop(1, "rgba(255,60,10,0)");
+            ctx.fillStyle = G;
+            ctx.beginPath(); ctx.arc(B.x, B.y, hr*1.25, 0, Math.PI*2); ctx.fill();
+            //地面のひび(光る割れ目)
+            ctx.strokeStyle = "rgba(255,190,90," + (0.8*temp) + ")"; ctx.lineWidth = 1.5 + temp*1.5; ctx.lineCap = "round";
+            ctx.beginPath();
+            for(var j=0; j<9; j++){
+                var a = j*Math.PI*2/9 + this.nukeRnd(j + i*50 + 20), L = hr*(1.1 + 0.4*this.nukeRnd(j + i*50 + 30));
+                ctx.moveTo(B.x, B.y);
+                for(var s=1; s<=4; s++){
+                    var aa = a + (this.nukeRnd(j*7 + s + i*50) - 0.5)*0.5;
+                    ctx.lineTo(B.x + Math.cos(aa)*L*s/4, B.y + Math.sin(aa)*L*s/4);
+                }
+            }
+            ctx.stroke();
+            ctx.lineCap = "butt"; ctx.lineWidth = 1;
+            ctx.globalCompositeOperation = "source-over";
+        }
+        for(var i=0; i<this.nukes.length; i++){
+            var n = this.nukes[i], cx = n.tx, cy = n.ty, R = NUKE_R;
+            var left = n.mode == "launch" ? NUKE_LAUNCH - n.t + NUKE_FALL : NUKE_FALL - n.t;
+            var k = 1 - left/(NUKE_LAUNCH + NUKE_FALL), pulse = 0.5 + 0.5*Math.sin(now*(0.1 + 0.3*k));
+            //範囲(着くのが近いほど濃く、速く脈打つ)
+            ctx.fillStyle = "rgba(255,40,30," + (0.05 + 0.1*k + 0.07*pulse*k) + ")";
+            ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2); ctx.fill();
+            //内側の目安の輪
+            ctx.strokeStyle = "rgba(220,30,30,0.22)"; ctx.lineWidth = 1;
+            ctx.setLineDash([3,6]);
+            ctx.beginPath(); ctx.arc(cx, cy, R/3, 0, Math.PI*2); ctx.moveTo(cx + R*2/3, cy); ctx.arc(cx, cy, R*2/3, 0, Math.PI*2); ctx.stroke();
+            ctx.setLineDash([]);
+            //ふち：二重の線と、ゆっくり回る目盛り
+            ctx.strokeStyle = "rgba(220,25,25,0.85)"; ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2); ctx.stroke();
+            ctx.strokeStyle = "rgba(220,25,25,0.4)"; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.arc(cx, cy, R + 6, 0, Math.PI*2); ctx.stroke();
+            ctx.strokeStyle = "rgba(220,25,25,0.6)";
+            ctx.beginPath();
+            for(var j=0; j<72; j++){
+                var a = j*Math.PI*2/72 + now*0.003, L = j % 6 == 0 ? 10 : 4;
+                ctx.moveTo(cx + Math.cos(a)*(R - 2), cy + Math.sin(a)*(R - 2));
+                ctx.lineTo(cx + Math.cos(a)*(R - 2 - L), cy + Math.sin(a)*(R - 2 - L));
+            }
+            ctx.stroke();
+            //外の4つのかぎ(逆に回る)
+            ctx.strokeStyle = "rgba(220,25,25," + (0.55 + 0.35*pulse) + ")"; ctx.lineWidth = 3.5;
+            for(var j=0; j<4; j++){
+                var a = j*Math.PI/2 - now*0.008;
+                ctx.beginPath(); ctx.arc(cx, cy, R + 14, a - 0.22, a + 0.22); ctx.stroke();
+            }
+            //縮んでくる輪(着く瞬間に範囲に重なる)
+            ctx.strokeStyle = "rgba(220,25,25," + (0.15 + 0.6*k) + ")"; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.arc(cx, cy, R + 14 + 150*(1 - k), 0, Math.PI*2); ctx.stroke();
+            //落ちてくる道筋(画面の上から範囲まで)
+            if(n.mode == "fall"){
+                ctx.strokeStyle = "rgba(220,25,25,0.3)"; ctx.lineWidth = 1;
+                ctx.setLineDash([2,6]); ctx.lineDashOffset = -now*0.8;
+                ctx.beginPath(); ctx.moveTo(cx, Math.max(0, n.e.y + 40)); ctx.lineTo(cx, cy - 34); ctx.stroke();
+                ctx.setLineDash([]); ctx.lineDashOffset = 0;
+            }
+            //まんなかの照準(すき間のある十字と小さな輪)
+            ctx.strokeStyle = "rgba(220,25,25,0.85)"; ctx.lineWidth = 2;
+            ctx.beginPath();
+            for(var j=0; j<4; j++){
+                var a = j*Math.PI/2;
+                ctx.moveTo(cx + Math.cos(a)*10, cy + Math.sin(a)*10); ctx.lineTo(cx + Math.cos(a)*30, cy + Math.sin(a)*30);
+            }
+            ctx.stroke();
+            ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI*2); ctx.stroke();
+            //秒読み(小数2けた)
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.font = "bold 11px sans-serif";
+            ctx.fillStyle = "rgba(200,20,20,0.9)";
+            ctx.fillText("着弾まで", cx, cy + 46);
+            ctx.font = "bold 26px Consolas, 'Courier New', monospace";
+            var sec = (Math.max(0, left)/60).toFixed(2);
+            ctx.lineWidth = 4; ctx.strokeStyle = "rgba(255,255,255,0.85)";
+            ctx.strokeText(sec, cx, cy + 66);
+            ctx.fillStyle = "#d01818";
+            ctx.fillText(sec, cx, cy + 66);
+            ctx.lineWidth = 1; ctx.textBaseline = "alphabetic";
+        }
+    },
+    //弾の上に描くもの：熱による空気のゆらぎ・火の玉・光の筋・横に伸びる光・衝撃波の輪
+    drawNukeOver:function(){
+        for(var i=0; i<this.booms.length; i++){
+            var B = this.booms[i];
+            //熱で空気がゆらぐ：爆心のまわりを細い帯に分けて、横へずらして描き直す(キャンバスを写す。getImageData は使わない)
+            if(B.t < NUKE_HEAT){
+                var amp = NUKE_HAZE*Math.pow(1 - B.t/NUKE_HEAT, 2), HR = NUKE_R*1.1, m = ctx.getTransform();
+                for(var dy=-HR; dy<HR; dy+=4){
+                    var y = B.y + dy, half = Math.sqrt(HR*HR - dy*dy), x = B.x - half, w = half*2;
+                    var off = Math.sin(y*0.09 + B.t*0.35)*amp*(1 - (dy*dy)/(HR*HR));
+                    if(Math.abs(off) < 0.3 || y < 0 || y + 4 > CH) continue;
+                    x = Math.max(0, x); w = Math.min(CW, B.x + half) - x;
+                    if(w <= 0) continue;
+                    ctx.drawImage(canvas, m.a*x + m.e, m.d*y + m.f, m.a*w, m.d*4, x + off, y, w, 4);
+                }
+            }
+            ctx.globalCompositeOperation = "lighter";
+            //火の玉(はじめは範囲いっぱいの白い光。縮みながら黄 → 橙へ)
+            if(B.t < NUKE_FIRE){
+                var k = B.t/NUKE_FIRE, R = NUKE_R*(1.05 - 0.6*k);
+                var G = ctx.createRadialGradient(B.x, B.y, 0, B.x, B.y, R);
+                G.addColorStop(0, "rgba(255,255,255," + (1 - 0.5*k) + ")");
+                G.addColorStop(0.3, "rgba(255,245,200," + (0.95*(1 - k)) + ")");
+                G.addColorStop(0.65, "rgba(255,160,60," + (0.7*(1 - k)) + ")");
+                G.addColorStop(1, "rgba(255,70,20,0)");
+                ctx.fillStyle = G;
+                ctx.beginPath(); ctx.arc(B.x, B.y, R, 0, Math.PI*2); ctx.fill();
+            }
+            //光の筋(放射状。少しずつ回りながら消える)
+            if(B.t < 50){
+                var k = B.t/50;
+                for(var j=0; j<16; j++){
+                    var a = j*Math.PI*2/16 + this.nukeRnd(j + i*50)*0.3 + B.t*0.004, L = NUKE_R*(0.9 + 0.3*this.nukeRnd(j + i*50 + 5))*(1 - 0.3*k), W = 0.06;
+                    ctx.fillStyle = "rgba(255,240,210," + (0.35*(1 - k)) + ")";
+                    ctx.beginPath(); ctx.moveTo(B.x, B.y);
+                    ctx.lineTo(B.x + Math.cos(a - W)*L, B.y + Math.sin(a - W)*L); ctx.lineTo(B.x + Math.cos(a + W)*L, B.y + Math.sin(a + W)*L);
+                    ctx.closePath(); ctx.fill();
+                }
+            }
+            //横一文字に伸びる光(まぶしさ)
+            if(B.t < 60){
+                var k = B.t/60, h = 10*(1 - k) + 2;
+                var w = NUKE_R*1.15, L = ctx.createLinearGradient(B.x - w, 0, B.x + w, 0);
+                L.addColorStop(0, "rgba(255,230,200,0)");
+                L.addColorStop(0.5, "rgba(255,250,235," + (0.9*(1 - k)) + ")");
+                L.addColorStop(1, "rgba(255,230,200,0)");
+                ctx.fillStyle = L;
+                ctx.fillRect(B.x - w, B.y - h/2, w*2, h);
+            }
+            ctx.globalCompositeOperation = "source-over";
+            //衝撃波の輪
+            if(B.t < NUKE_WAVE){
+                var k = B.t/NUKE_WAVE, R = NUKE_R*0.9 + 1000*Math.pow(k, 0.7);
+                ctx.strokeStyle = "rgba(255,255,255," + (0.8*(1 - k)) + ")"; ctx.lineWidth = 14*(1 - k) + 2;
+                ctx.beginPath(); ctx.arc(B.x, B.y, R, 0, Math.PI*2); ctx.stroke();
+                ctx.strokeStyle = "rgba(255,170,90," + (0.5*(1 - k)) + ")"; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.arc(B.x, B.y, R*0.88, 0, Math.PI*2); ctx.stroke();
+                ctx.lineWidth = 1;
+            }
+        }
+    },
     //障害物の絵(平らな塗り・濃いふちどり・左上からの光。雑魚敵の絵と同じ画風)
     drawObstacle:function(o,now){
         var x = Math.round(o.x), y = Math.round(o.y), w = o.w, h = o.h, ink = "#1f2328";
@@ -1559,6 +1975,28 @@ var shotLab = {
             ctx.beginPath(); ctx.arc(x - R*0.35, y - R*0.35, R*0.25, 0, Math.PI*2); ctx.fill();
         }
         for(var i=0; i<this.splats.length; i++) this.drawSplat(this.splats[i]);
+        //核の閃光(爆発の範囲の中だけ)：はじめ(時が止まっている間も)は真っ白。そのあと焼けたように明るく飛ばしたまま、白 → 黄 → 橙と冷めて消える
+        for(var i=0; i<this.booms.length; i++){
+            var B = this.booms[i];
+            if(B.t >= NUKE_FLASH) continue;
+            var f = 1 - B.t/NUKE_FLASH, R = NUKE_R*1.12;
+            var col = f > 0.5 ? fwMix("255,236,170", "255,255,255", (f - 0.5)/0.35) : fwMix("255,140,60", "255,236,170", f/0.5);
+            var A = f > 0.85 ? 1 : 0.95*Math.pow(f/0.85, 1.4);
+            ctx.globalCompositeOperation = "lighter";
+            var G = ctx.createRadialGradient(B.x, B.y, 0, B.x, B.y, R);
+            G.addColorStop(0, "rgba(255,190,120," + (0.55*f) + ")");
+            G.addColorStop(0.88, "rgba(255,190,120," + (0.55*f) + ")");
+            G.addColorStop(1, "rgba(255,190,120,0)");
+            ctx.fillStyle = G;
+            ctx.beginPath(); ctx.arc(B.x, B.y, R, 0, Math.PI*2); ctx.fill();
+            ctx.globalCompositeOperation = "source-over";
+            G = ctx.createRadialGradient(B.x, B.y, 0, B.x, B.y, R);
+            G.addColorStop(0, "rgba(" + col + "," + A + ")");
+            G.addColorStop(0.88, "rgba(" + col + "," + A + ")");
+            G.addColorStop(1, "rgba(" + col + ",0)");
+            ctx.fillStyle = G;
+            ctx.beginPath(); ctx.arc(B.x, B.y, R, 0, Math.PI*2); ctx.fill();
+        }
     },
     //手前を横切る影：大きなドローンの影絵(ふちは薄く重ねてぼかす)。後ろの弾は小さな光の輪だけ見える
     drawVeil:function(){
@@ -1767,6 +2205,7 @@ var shotLab = {
     //弾の上に描くもの：バケツ・雨雲・迎撃の砲身
     drawOver:function(){
         this.drawStorm();
+        this.drawNukeOver();
         for(var i=0; i<enemies.length; i++){
             if(enemies[i].intercept && !enemies[i].dead && !enemies[i].intercept.quiet) this.drawIntercept(enemies[i]);
         }
@@ -1935,6 +2374,11 @@ var shotLab = {
                 //コンテナが左右から流れてくる。砲台の弾をコンテナの陰でよけられる
                 if(T % 45 == 0) this.crate(Math.random() < 0.5 ? 1 : -1, 140 + Math.random()*(CH - 200));
                 if(T % 32 == 0){ fireFan(x, y, aim, 5, 0.18, 2.6*m, "normal"); shot = true; }
+                break;
+            case "nuke":
+                //核弾頭を1発。落ちてくる間も、砲台は弾を撃って逃げ道をじゃまする
+                if(T == 40) this.nuke(x, y);
+                if(T > 90 && T < 280 && T % 45 == 0){ fireFan(x, y, aim, 3, 0.3, 2.2*m, "normal"); shot = true; }
                 break;
             case "intercept":
                 //砲台の代わりに、迎撃する的を置く(撃たない。ドローン君の弾を撃ち落とす)

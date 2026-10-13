@@ -599,6 +599,20 @@ var sound = {
                 break;
             //着地(ドンっ)：低いうなりを含む重い衝撃(heavyBoom)
             case "bossImpact": this.heavyBoom(S); break;
+            //核弾頭の打ち上げ(ごおっと遠ざかる噴射音)
+            case "nukeLaunch":
+                this.noise(1.1,0.3,"bandpass",250,1600,S);
+                this.tone("sawtooth",60,110,0.9,0.08,S,0,0.05,500);
+                break;
+            //核弾頭(shotLab.js)：重い衝撃 → 長く続く轟き → 耳鳴り(キーン)が残る
+            case "nuke":
+                this.heavyBoom(S);
+                this.noise(0.25,0.5,"highpass",3000,800,S);
+                this.noise(3.2,0.4,"lowpass",900,60,S);
+                this.tone("sine",70,28,3,0.4,S,0,0.02);
+                this.tone("sine",3900,3700,2.6,0.035,S,now + 0.35,0.3);
+                this.tone("sine",3960,3760,2.4,0.02,S,now + 0.4,0.3);
+                break;
             case "summon":    this.tone("triangle",600,1400,0.12,0.06,S); this.tone("triangle",700,1600,0.12,0.05,S,now + 0.1); break;
             case "bossShot":  this.tone("square",300,160,0.08,0.05,S,0,0,1400); break;
             case "beamCharge":this.tone("sawtooth",120,900,1.1,0.06,S,0,0.05,1800); break;

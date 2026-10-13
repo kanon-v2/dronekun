@@ -1754,7 +1754,7 @@ var mainScreen = {
     },
 
     drawEnemy:function(_e){
-        if(_e.depth > 0 && shotLab.drawDeepEnemy(_e)) return;    //奥へ潜った敵(shotLab.js)
+        if(shotLab.drawEnemy(_e)) return;    //奥へ潜った敵・核弾頭(shotLab.js)
         var body = _e.flash > 0 ? "#fff" : null;
         //弾き返した突進(ジャスト・カウンター)：水色の光の尾を引く
         if(_e.countered){

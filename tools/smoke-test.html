@@ -373,6 +373,7 @@ try{
         if(shotLab.veil) labKinds.veil = true;
         if(shotLab.splats.length) labKinds.glass = true;
         shotLab.obstacles.forEach(function(o){ labKinds[o.kind == "wall" ? "gate" : "drift"] = true; });
+        if(shotLab.nukes.length) labKinds.nuke = true;
         if(lf % 10 == 0) draw1();
     }
     var labAll = shotLab.list.every(function(L){ return labKinds[L.id]; });
@@ -396,6 +397,45 @@ try{
           Object.keys(labKinds).join(",") + " 体力" + labHpOk + " 敵" + labEnemies + " 選ぶ" + pickOk + "/" + stayOk + "/" + autoOk);
     bossDebug.close(); shotLab.labPick = -1;
     drone.X = CW/2; drone.Y = CH/2; MouseX = drone.X; MouseY = drone.Y;     //あとの確かめが、ドローン君がまんなかにいる前提なので
+
+    // 核弾頭(攻撃の試作)：落ちる所の範囲にいれば被弾し、爆心が赤熱する。範囲の外へ逃げれば無傷。撃ち落とせば爆発しない
+    setup(7, { gun:1 }, ["gun",null,null], 1);
+    page.change(1); MouseIn = true;
+    while(mainScreen.state != "play") mainScreen.update();
+    var nerr = errors.length;
+    //敵がいなくなってWAVEクリアにならないよう、動かない的を1体だけ置く
+    function nukeKeep(){
+        var k = makeEnemy("bug"); k.x = CW - 30; k.y = 30; k.vx = k.vy = 0; k.speed = 0; k.shotT = null; k.hp = k.maxHp = 1e9;
+        enemies = [k];
+    }
+    function nukeRun(_away){
+        nukeKeep(); enemyShots = []; mainScreen.toSpawn = 0; shotLab.clear();
+        drone.X = CW/2; drone.Y = CH/2 + 60; MouseX = drone.X; MouseY = drone.Y;
+        var n = shotLab.nuke(CW/2, 70), h0 = mainScreen.hp;
+        n.e.hp = n.e.maxHp = 1e9;      //機関銃で撃ち落とされないように
+        if(_away){ MouseX = 60; MouseY = CH - 60; }
+        for(var i=0; i<NUKE_LAUNCH + NUKE_FALL + 5 && shotLab.booms.length == 0; i++){
+            mainScreen.invincible = 0; mainScreen.update(); if(i % 20 == 0) draw1();
+        }
+        return { n:n, hit:mainScreen.hp < h0, boom:shotLab.booms.length > 0 };
+    }
+    var nIn = nukeRun(false);
+    var nFall = shotLab.booms.length > 0 && shotLab.heatR(shotLab.booms[0]) > 0 && nIn.n.e.dead;
+    for(var i=0; i<30; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
+    var nOut = nukeRun(true);
+    // 撃ち落とす：落ちてきたところで弾頭を倒すと、爆発しない
+    nukeKeep(); enemyShots = []; shotLab.clear(); mainScreen.hitStop = 0;
+    var nd = shotLab.nuke(CW/2, 70);
+    for(var i=0; i<NUKE_LAUNCH + 20; i++) mainScreen.update();
+    var ndTarget = !nd.e.phased && enemies.indexOf(nd.e) >= 0;
+    mainScreen.hitEnemy(nd.e, 1e9);
+    for(var i=0; i<NUKE_FALL; i++){ mainScreen.update(); if(i % 40 == 0) draw1(); }
+    var ndOk = ndTarget && nd.e.dead && shotLab.nukes.length == 0 && shotLab.booms.length == 0;
+    shotLab.clear();
+    drone.X = CW/2; drone.Y = CH/2; MouseX = drone.X; MouseY = drone.Y;     //あとの確かめが、ドローン君がまんなかにいる前提なので
+    check("核弾頭(攻撃の試作)：範囲の中は被弾して爆心が赤熱する、外へ逃げれば無傷、撃ち落とせば爆発しない",
+          nIn.hit && nIn.boom && nFall && nOut.boom && !nOut.hit && ndOk && errors.length == nerr,
+          "中" + nIn.hit + "/" + nIn.boom + " 残り" + nFall + " 外" + nOut.boom + "/" + !nOut.hit + " 撃墜" + ndTarget + "/" + ndOk);
 
     // ジャスト衝撃波：当たる直前の弾があればはね返してやる気がたまる。遠い弾だけならふつうの衝撃波
     setup(2, { gun:1 }, ["gun",null,null], 1);
