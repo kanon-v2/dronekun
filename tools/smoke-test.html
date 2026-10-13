@@ -919,6 +919,32 @@ try{
     while(rv3.mode == "warp") mainScreen.update();
     mainScreen.hitEnemy(rv3, 99999, "gun");
     check("ライバル：WAVE3は第二形態がなく、倒すとそのまま去る", rv3.mode == "flee" && (rv3.form || 1) == 1 && errors.length == rvErr, rv3.mode);
+    // WAVE13からの第二形態は、近づいたドローン君の弾を1秒に RIVAL2_INTERCEPT_PER_SEC 発まで撃ち落とす(WAVE8はしない。ワープ中もしない)
+    var rv8Int = !!rv.intercept;
+    setup(13, { gun:3 }, ["gun",null,null], 6);
+    page.change(1);
+    var rv13 = rival.make(); enemies.push(rv13);
+    for(var i=0; i<RIVAL_INTRO_T + 2; i++) mainScreen.update();
+    while(rv13.mode == "warp") mainScreen.update();
+    var rv13Before = !!rv13.intercept;
+    mainScreen.hitEnemy(rv13, 99999, "gun");
+    for(var i=0; i<RIVAL2_AWAKEN_T + 2; i++) mainScreen.update();
+    var rvShots = function(){
+        arms.bullets = [];
+        for(var i=0; i<8; i++) arms.bullets.push({ x:rv13.x + 50 + i, y:rv13.y, vx:0, vy:0, life:999, pierce:0, hit:[] });
+        arms.bullets.push({ x:rv13.x, y:rv13.y + RIVAL2_INTERCEPT_RANGE + 20, vx:0, vy:0, life:999, pierce:0, hit:[] });
+        rv13.intercept.cd = 0;
+        for(var i=0; i<60; i++) shotLab.enemyStep(rv13);
+        return 9 - arms.bullets.length;
+    };
+    var rv13Down = rv13.intercept ? rvShots() : -1;
+    rv13.harmless = true;
+    var rv13Warp = rv13.intercept ? rvShots() : -1;
+    rv13.harmless = false; arms.bullets = [];
+    var rv13Clone = enemies.some(function(e){ return e.clone && e.intercept; });
+    check("ライバルの第二形態：WAVE13からはドローン君の弾を1秒に" + RIVAL2_INTERCEPT_PER_SEC[2] + "発まで撃ち落とす(WAVE8・第一形態・ワープ中・分身はしない)",
+          !rv8Int && !rv13Before && rv13.form == 2 && rv13Down == RIVAL2_INTERCEPT_PER_SEC[2] && rv13Warp == 0 && !rv13Clone && errors.length == rvErr,
+          "W8" + rv8Int + " 第一形態" + rv13Before + " 撃ち落とした" + rv13Down + " ワープ中" + rv13Warp + " 分身" + rv13Clone);
 
     // 3. 全シナジー
     SYNERGIES.forEach(function(s){
@@ -973,10 +999,14 @@ try{
     var hpUp = mainScreen.maxHp == armor0 + BUFF_PLATE*maxPlate;
     save.load();
     var keptBuff = game.buff("power") == 1 && game.buff("plate") == maxPlate;
+    //倒れて次の周を始めても、買ったバフは残る(周をまたいで残る記録から読み直しても)
+    game.keepProgress(); save.writeMeta();
+    game.newRun(DEFAULT_DIFF); save.loadMeta(); game.useKept();
+    var nextRunBuff = game.buff("power") == 1 && game.buff("plate") == maxPlate;
     game.reset();
-    check("ショップのバフ：能力・ダメージに効き、上限まで買え、セーブに残り、はじめからで消える",
-          statsUp && dmgUp && hpUp && keptBuff && game.buff("power") == 0 && spent == 30 + 30 + 40 + 70,
-          "使ったパーツ" + spent + " " + [statsUp,dmgUp,hpUp,keptBuff].join(""));
+    check("ショップのバフ：能力・ダメージに効き、上限まで買え、セーブに残り、次の周にも引き継ぎ、はじめからで消える",
+          statsUp && dmgUp && hpUp && keptBuff && nextRunBuff && game.buff("power") == 0 && spent == 30 + 30 + 40 + 70,
+          "使ったパーツ" + spent + " " + [statsUp,dmgUp,hpUp,keptBuff,nextRunBuff].join(""));
 
     // ショップの時止めワープ：被弾の瞬間に自動で時が止まってワープし、BUFF_WARP_CD 秒は使えない(その間はふつうに被弾)
     setup(6, { gun:1 }, ["gun",null,null], 3); game.parts = 500;

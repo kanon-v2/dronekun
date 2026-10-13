@@ -760,12 +760,14 @@ var shotLab = {
         return true;
     },
     //迎撃：範囲に入ったドローン君の弾のうち、いちばん近いものを撃ち落とす(1秒に INTERCEPT_PER_SEC 発まで)
+    //  I.range・I.per で範囲・1秒の数を変えられる。I.color は線の色、I.quiet なら範囲の輪と砲身を描かない(ライバル)
     interceptStep:function(e){
         var I = e.intercept;
         if(I.zap > 0) I.zap--;
         if(I.cd > 0){ I.cd--; return; }
+        if(e.harmless) return;      //ワープ中・演出中などは撃ち落とさない
         var lists = [arms.bullets, arms.missiles, arms.drops, arms.shards, arms.wells];
-        var best = INTERCEPT_RANGE, pick = null, from = null;
+        var best = I.range || INTERCEPT_RANGE, pick = null, from = null;
         for(var j=0; j<lists.length; j++){
             for(var i=0; i<lists[j].length; i++){
                 var p = lists[j][i];
@@ -776,10 +778,10 @@ var shotLab = {
         }
         if(!pick) return;
         from.splice(from.indexOf(pick), 1);
-        I.cd = Math.round(60/INTERCEPT_PER_SEC);
+        I.cd = Math.round(60/(I.per || INTERCEPT_PER_SEC));
         I.zap = 8;
         I.ang = Math.atan2(pick.y - e.y, pick.x - e.x);
-        fx.line(e.x + Math.cos(I.ang)*e.r, e.y + Math.sin(I.ang)*e.r, pick.x, pick.y, "255,70,60", 2.5, 8);
+        fx.line(e.x + Math.cos(I.ang)*e.r, e.y + Math.sin(I.ang)*e.r, pick.x, pick.y, I.color || "255,70,60", 2.5, 8);
         fx.sparks(pick.x, pick.y, 5, "255,170,60", 3, 2);
         sound.play("block");
         if(bossDebug.lab) this.labShot++;
@@ -1263,7 +1265,7 @@ var shotLab = {
         //迎撃する敵の範囲(点線の輪)と、次に撃ち落とせるかのランプ
         for(var i=0; i<enemies.length; i++){
             var e = enemies[i];
-            if(!e.intercept || e.dead) continue;
+            if(!e.intercept || e.dead || e.intercept.quiet) continue;
             var ready = !(e.intercept.cd > 0);
             ctx.strokeStyle = ready ? "rgba(220,60,50,0.45)" : "rgba(120,120,130,0.35)"; ctx.lineWidth = 1.5;
             ctx.setLineDash([5,6]); ctx.lineDashOffset = -mainScreen.clock*0.5;
@@ -1766,7 +1768,7 @@ var shotLab = {
     drawOver:function(){
         this.drawStorm();
         for(var i=0; i<enemies.length; i++){
-            if(enemies[i].intercept && !enemies[i].dead) this.drawIntercept(enemies[i]);
+            if(enemies[i].intercept && !enemies[i].dead && !enemies[i].intercept.quiet) this.drawIntercept(enemies[i]);
         }
         for(var i=0; i<this.buckets.length; i++){
             var k = this.buckets[i];

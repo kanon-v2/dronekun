@@ -81,7 +81,7 @@ const RIVAL_LINES = [                   //せりふ(現れたとき・本気に�
 //第二形態(WAVE8から)：第一形態(上の値のまま)の体力が0になると、時を止めて分身の力に目覚める
 const RIVAL2          = { name:"クロノ・ミラージュ", en:"CHRONO MIRAGE", title:"時を分かつ幻影" };
 const RIVAL2_FROM     = 1;          //第二形態がある段階(lv。1 = WAVE8から)
-const RIVAL2_HP_MUL   = 1.2;        //第二形態の体力(第一形態の体力に掛ける)
+const RIVAL2_HP_MUL   = 2;       //第二形態の体力(第一形態の体力に掛ける)
 const RIVAL2_TINT     = "70,35,125";    //第二形態と分身の体の色(紫がかった紺)
 const RIVAL2_GLOW     = "200,130,255";  //第二形態のまわりの光の色
 const RIVAL2_AWAKEN_T = 300;        //目覚めの演出の長さ(この間は時が止まる)。撃破 → 鼓動 → 時間停止と力の集まり → 覚醒 → 名乗り
@@ -119,6 +119,9 @@ const RIVAL2_REWIND_SPEED = 2.6;    //時戻し：放つ弾の速さ(弾幕の�
 const RIVAL2_REWIND_FLY = 26;       //時戻し：最後の輪を放ってから、時を止めるまで
 const RIVAL2_REWIND_STOP = 45;      //時戻し：弾が止まっている長さ(この間は隙)。終わると弾が逆向きに戻ってくる
 const RIVAL2_REWIND_BACK = 1.15;    //時戻し：戻ってくる弾の速さ(放ったときの速さに掛ける)
+const RIVAL2_INTERCEPT_FROM = 2;    //第二形態でドローン君の弾を撃ち落とす(迎撃)段階(lv。2 = WAVE13から)
+const RIVAL2_INTERCEPT_PER_SEC = [0,0,3,4];   //迎撃：1秒に撃ち落とせる数(Lv.1～4)
+const RIVAL2_INTERCEPT_RANGE = 130; //迎撃：撃ち落とす範囲(体の中心から。px)
 const RIVAL2_FADE_T   = 20;       //分身が消える長さ
 const RIVAL2_FLICKER  = 90;         //分身はこの間隔でちらつく(よく見ると本物と見分けられる)
 const RIVAL2_LINES    = ["まだだ…！ 時の分身を見せてやる！", "どれが本物か、見抜けるか！"];    //目覚めたとき・本気になったとき
@@ -350,6 +353,9 @@ var rival = {
         if(age >= RIVAL2_SPLIT_AT) _e.hp = _e.maxHp*Math.min(1, (age - RIVAL2_SPLIT_AT)/RIVAL2_FILL_T);
         if(--_e.count <= 0){
             _e.form = 2;
+            //WAVE13からは、近づいたドローン君の弾を撃ち落とす(迎撃。shotLab.js。本物だけで、分身はしない)
+            if(_e.lv >= RIVAL2_INTERCEPT_FROM)
+                _e.intercept = { cd:0, zap:0, per:RIVAL2_INTERCEPT_PER_SEC[_e.lv], range:RIVAL2_INTERCEPT_RANGE, color:RIVAL2_GLOW, quiet:true };
             _e.hp = _e.maxHp;
             _e.hpMark = _e.hp;
             _e.mode = "idle";

@@ -367,7 +367,7 @@ var game = {
     buffs:{},               //ショップで買ったバフの数 {power:1, ...}
     diff:DEFAULT_DIFF,      //この周の難易度(DIFFICULTIES の番号)
     reach:{},               //難易度ごとの、出撃できるいちばん先のWAVE {0:5, ...}(周をまたいで残る)
-    kept:null,              //前の周の最後の装備 { owned, slots, slotCount }(周をまたいで残る。次の周はこの装備から)
+    kept:null,              //前の周の最後の装備とショップのバフ { owned, slots, slotCount, buffs }(周をまたいで残る。次の周はこの装備から)
     //すべてをはじめに戻す(周をまたいで残るパーツ・能力・見たストーリーも消える)
     reset:function(){
         this.seen = {};
@@ -377,7 +377,7 @@ var game = {
         for(var i=0; i<STATS.length; i++) this.level[STATS[i].key] = 1;
         this.newRun(DEFAULT_DIFF);
     },
-    //新しい周を始める：WAVE1・初期装備に戻す。パーツ・能力・見たストーリーは残す(startRun・協力プレイの startGame で前の装備・進み具合から始める。ショップのバフは毎回はじめから)
+    //新しい周を始める：WAVE1・初期装備に戻す。パーツ・能力・見たストーリーは残す(startRun・協力プレイの startGame で前の装備・ショップのバフ・進み具合から始める)
     //パーツを手に入れる(この周で集めた数も数える。ゲームオーバー画面に出す)
     gainParts:function(_n){
         this.parts += _n;
@@ -408,15 +408,16 @@ var game = {
     keepProgress:function(){
         var d = this.diffIndex();
         this.reach[d] = Math.max(this.reach[d] || 1, Math.min(FINAL_WAVE, this.wave));
-        this.kept = JSON.parse(JSON.stringify({ owned:this.owned, slots:this.slots, slotCount:this.slotCount }));
+        this.kept = JSON.parse(JSON.stringify({ owned:this.owned, slots:this.slots, slotCount:this.slotCount, buffs:this.buffs }));
     },
-    //前の周の最後の装備から始める
+    //前の周の最後の装備・ショップのバフから始める
     useKept:function(){
         if(!this.kept || !this.kept.owned) return;
         var k = JSON.parse(JSON.stringify(this.kept));
         this.owned = k.owned;
         this.slots = k.slots || ["gun",null,null];
         this.slotCount = k.slotCount || 1;
+        this.buffs = k.buffs || {};     //前の作りの記録にはないので、そのときは買っていないまま
     },
     //能力の現在値
     stat:function(_key){

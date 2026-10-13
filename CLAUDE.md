@@ -71,7 +71,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 - クリックは `Click == 1` が1コマだけ立つ。ボタンは `drawRect` の `clicked()` / `button()` を使う。
 - タッチ操作(`common.js`)：戦闘中・対戦の戦闘中・タイトル画面は、どこをドラッグしても指の動いた分だけドローン君の目標が動く(`isTouchDrag()`)。タイトル画面では、ボタンの上を触ったときだけタップとして押し(`startScreen.touchUI()`)、押し終わったら目標を元に戻す(`tapAt()`・`endTap()`。目標がボタンへ飛ばないように)。それ以外の画面はタップ。
 - セーブは `localStorage`。この周の進み具合は `dronekun_save`(強化画面に入ったときに自動セーブ。倒れる・クリアすると消える)、周をまたいで残るもの(パーツ・能力・見たストーリー・難易度ごとの出撃できるいちばん先のWAVE `game.reach`・最後の装備 `game.kept`)は `dronekun_meta`(`save.writeMeta`・`loadMeta`。タイトルに入るたびに読み直す)、ハイスコア `dronekun_best`・クリア済み `dronekun_cleared`。前の作り(能力はレベル5まで)のセーブは、はじめて読むときに `dronekun_meta` へ移す(能力は `OLD_LEVEL_MAP` で近い強さのレベルに)。
-- 周回(ローグライト)：タイトルの「出撃」で難易度(`DIFFICULTIES`。イージー・ノーマル・ハード・ベリーハード、いつでも4つとも選べる)を選び、WAVE1から始める(`startScreen.startRun` → `game.newRun`)。倒れてもパーツ・能力・装備は残り(`game.keepProgress`・`useKept`)、ショップのバフは毎回はじめから。2周目からは強化画面から始まり、その難易度でいちばん先のWAVE(`game.reachOf`)から出撃する。強化画面の「出撃先」・タイトルの「始めるWAVEを選択」(`startScreen.waveSel`。`startRun` に始めるWAVEを渡す)で、難易度ごとにクリア済みのWAVEの次までから選び直せる(協力プレイと同じ窓。`upgradeScreen.js` の `sortieButton`・`drawSortie`)。難易度は敵の体力・弾・WAVEの敵の数・出てくる間隔・撃ち返し・落とすパーツに掛かる(`difficulty()`。協力プレイはホストが選んだ難易度 `coop.diff`、対戦はいつもノーマル)。`game.reset()` は残るものまで全部消す(テスト用)。
+- 周回(ローグライト)：タイトルの「出撃」で難易度(`DIFFICULTIES`。イージー・ノーマル・ハード・ベリーハード、いつでも4つとも選べる)を選び、WAVE1から始める(`startScreen.startRun` → `game.newRun`)。倒れてもパーツ・能力・装備・ショップのバフは残る(`game.keepProgress`・`useKept`。`game.kept` に装備とバフを覚える)。2周目からは強化画面から始まり、その難易度でいちばん先のWAVE(`game.reachOf`)から出撃する。強化画面の「出撃先」・タイトルの「始めるWAVEを選択」(`startScreen.waveSel`。`startRun` に始めるWAVEを渡す)で、難易度ごとにクリア済みのWAVEの次までから選び直せる(協力プレイと同じ窓。`upgradeScreen.js` の `sortieButton`・`drawSortie`)。難易度は敵の体力・弾・WAVEの敵の数・出てくる間隔・撃ち返し・落とすパーツに掛かる(`difficulty()`。協力プレイはホストが選んだ難易度 `coop.diff`、対戦はいつもノーマル)。`game.reset()` は残るものまで全部消す(テスト用)。
 - 画面右下のボタン(`sound.js` の `sound.buttons`)：BGM・SEはいつでも、「かすり範囲」「当たり判定」「ポインタ」の表示/非表示は戦闘中だけ出す(`when`。かすり範囲・当たり判定は対戦では出さない)。表示の設定は `common.js` の `viewOpt`(`localStorage` の `dronekun_view`。戦闘画面の方眼の設定もここに覚える)。ポインタを隠すのは戦闘中だけ(メニューでは操作に要るので出す)。
 - 全20WAVE(`FINAL_WAVE`)。5WAVEごとにボス(WAVE5・10は女王蜂・移動要塞、WAVE15は天蓋母艦、WAVE20はドローン君改。`bossTypeFor`)。WAVE15(`REVEAL_WAVE`)のボス後に真実が明かされ、WAVE16からは人間の兵器が敵になる。何周もして能力(最大レベル `MAX_LEVEL` = 20)を上げて先へ進む前提なので、WAVEごとの敵の伸びは大きめ(`DANMAKU_*`・`ENEMY_HP_GROW`)、落とすパーツは少なめ(`PARTS_DROP_MUL`)。
 
@@ -113,7 +113,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 | ドローン君の色・振り向き・傾き | `common.js` の `FLAT_COLOR`・`FLAT_YAWS`・`FLAT_ELEVS`・`TURN_*`・`TILT_*` |
 | 画面の細かさの上限・重いときに下げる条件 | `common.js` の `RENDER_MAX`・`RENDER_FPS_LOW`・`RENDER_DROP_SEC` |
 
-難易度は「プレイヤーを弱くする方向」と「敵の弾幕を増やす方向」で上げてきた経緯がある。敵の体力を上げる調整は控えめにする。
+難易度は「プレイヤーを弱くする方向」と「敵の弾幕を増やす方向」で上げてきた経緯がある。
 
 ## ドローン君の絵
 
@@ -158,6 +158,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 - 第二形態(WAVE8から。`lv` が `RIVAL2_FROM` 以上。`RIVAL2_*`)：第一形態(強さは `RIVAL_*` のまま)の体力が0になると、倒れずに目覚める(`rival.awaken`。`mode` の `awaken`、`form` 1.5 → 2)。登場と同じく時が止まり(`rival.introStep` → `awakenStep`)、分身が体のまわりを回って重なり、体力が満ちて(第一形態の体力×`RIVAL2_HP_MUL`)、名前「クロノ・ミラージュ」で名乗る。色は紫がかった紺(`RIVAL2_TINT`)。
   - 分身(種類 `chronoClone`。`clone` の印、`owner` が本物の番号)：本物と同じ姿の敵で、少し撃てば消える(`RIVAL2_CLONE_HP`。点・パーツなし。体力ゲージを出さず、ときどきちらつくのが見分ける手がかり)。本物が去る・目覚め直すと消える(`fade`)。動きは `rival.cloneUpdate`、絵は `rival.drawClone`。
   - 攻撃(`RIVAL2_PATTERNS`)：分身の陣(`split`。本物と分身がひとつの場所から散ってドローン君を囲み、一緒に動き回って順番に撃つ。どれが本物かは毎回変わる)・分身突進(`cross`。囲んで1体ずつずらして突進。分身もジャスト・カウンターで弾けて砕ける `rival.parryClone`)・分身の輪舞(`waltz`。始めたときのドローン君の位置 `wcx`・`wcy` を囲む輪になって回り、輪が縮んでから広がる。1体ずつずらして輪のまんなかへ撃つ。`RIVAL2_WALTZ_*`)・時戻し(`rewind` → `rstop`。画面のまんなか寄りで弾の輪を何重かに放ち、時を止めて弾を止め(隙)、来た道を逆向きに戻す。弾の印は `rew`。`RIVAL2_REWIND_*`)・幻影包囲(跳んだ跡に分身 `stay` が残り、時が動き出すと消える)・突進。
+  - 迎撃(WAVE13から。`RIVAL2_INTERCEPT_*`)：第二形態の本物は、近づいたドローン君の飛んでいく弾を撃ち落とす(`shotLab.js` の迎撃 `e.intercept` を使う。`per`・`range` で数と範囲、`quiet` で範囲の輪と砲身を描かず、撃ち落とす紫の線だけ出す)。ワープ中など `harmless` の間と分身はしない。
   - 協力プレイ：分身は `packEnemy` の p1(突進の向き)・p2(動き＋残り×32)で届く。`form` はボスの状態 `b` の9番目。
 - 体力が0になっても倒れない(`special.revive` → `rival.retreat`。第二形態があるときは第二形態を倒したとき)：捨てぜりふを残してほどけて消える(撃退。報酬カプセル・パーツ・スコア)。せりふは吹き出しで出す(`RIVAL_LINES`。現れたとき・本気になったとき・去るとき)。
 - ボスと同じ `boss` の印を持つ(衝撃波で飛ばされない・凍らない・上の体力ゲージ「RIVAL」)。`mid` の印で中ボスと見分ける。種類は `chrono`(`rival` は対戦の相手の印なので使わない)。
