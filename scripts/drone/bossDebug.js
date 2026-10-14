@@ -6,6 +6,7 @@
 //  セーブ・ハイスコアは変えない(始める前の状態を覚えておき、終わったら戻す)。
 //  時止めワープ「オン」：試作の能力(timeStop.js)を、ボス戦・武器試用で試す
 //  途中でメニューへ戻るのは右下の「DEBUG：戻る」(sound.js の debugBack)
+//  BGM・最終局面：曲の鳴らし方の試し聞き(bgmTrial.js)。選んだ案で、メニューの曲もこのあと遊ぶ曲も鳴る
 //------------------------------------------------------------------------------
 const BOSS_DEBUG_WAVES = [5,10,15,20];
 const BOSS_DEBUG_GEAR = ["弱い","標準","最強"];
@@ -168,12 +169,11 @@ var bossDebug = {
         for(var i=0; i<RIVAL_WAVES.length; i++) out.push(new drawRect(CW/2 + (i - 1.5)*GS*4.1, GS*5.4 + BOSS_DEBUG_WAVES.length*GS*1.45, GS*3.9, GS*1.25));
         return out;
     },
-    //メニューの下のボタン：ストーリー確認・武器試用・装備・無敵・閉じる・(下の段に)時止めワープ
+    //メニューの下のボタン：ストーリー確認・武器試用・装備・無敵・閉じる・(下の段に)時止めワープ・攻撃の試作・BGMの案・最終局面の曲
     tools:function(){
         var out = [];
         for(var i=0; i<5; i++) out.push(new drawRect(CW/2 + (i - 2)*116, GS*12.8, 110, 36));
-        out.push(new drawRect(CW/2 - 95, GS*14.1, 180, 32));
-        out.push(new drawRect(CW/2 + 95, GS*14.1, 180, 32));
+        for(var i=0; i<4; i++) out.push(new drawRect(CW/2 + (i - 1.5)*146, GS*14.1, 140, 32));
         return out;
     },
     //武器試用：装備の一覧(WEAPON_IDS の順)
@@ -226,6 +226,13 @@ var bossDebug = {
         if(t[4].clicked()){ this.close(); return; }
         if(t[5].clicked()){ this.toggleWarp(); return; }
         if(t[6].clicked()){ this.startLab(); return; }
+        if(t[7].clicked()){ bgmTrial.next(); this.msg = "BGM：" + bgmTrial.name() + "(このあと遊ぶ曲もこの案で鳴ります)"; sound.play("click"); return; }
+        if(t[8].clicked()){
+            bgmTrial.toggleFinale();
+            this.msg = bgmTrial.finale ? "ドローン君改の第二形態で「原点回帰」が流れます" : "ドローン君改の第二形態は今の曲です";
+            sound.play("click");
+            return;
+        }
     },
     updateTrial:function(){
         var a = this.armButtons();
@@ -271,9 +278,12 @@ var bossDebug = {
             for(var i=0; i<rr.length; i++) rr[i].button("ライバル W" + RIVAL_WAVES[i]);
             var t = this.tools();
             var labels = ["ストーリー確認", "武器試用", "装備「" + BOSS_DEBUG_GEAR[this.gear] + "」", "無敵「" + (this.god ? "オン" : "オフ") + "」", "閉じる",
-                          "時止めワープ「" + (this.warp ? "オン" : "オフ") + "」", "攻撃の試作"];
-            ctx.font = "bold 14px sans-serif";
-            for(var i=0; i<t.length; i++) t[i].button(labels[i]);
+                          "時止めワープ「" + (this.warp ? "オン" : "オフ") + "」", "攻撃の試作",
+                          "BGM「" + bgmTrial.short() + "」", "最終局面「" + (bgmTrial.finale ? "原点回帰" : "今の曲") + "」"];
+            for(var i=0; i<t.length; i++){
+                ctx.font = i < 5 ? "bold 14px sans-serif" : "bold 13px sans-serif";
+                t[i].button(labels[i]);
+            }
         }
         if(this.msg){
             ctx.textAlign = "center";

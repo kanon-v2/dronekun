@@ -12,6 +12,7 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
 </script>
 <script src="scripts/drone/common.js"></script>
 <script src="scripts/drone/sound.js"></script>
+<script src="scripts/drone/bgmTrial.js"></script>
 <script src="scripts/drone/equipment.js"></script>
 <script src="scripts/drone/armsExtra.js"></script>
 <script src="scripts/drone/bosses.js"></script>
@@ -1168,6 +1169,33 @@ try{
     var hpN = mainScreen.hp; mainScreen.state = "play"; mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.damage();
     check("時止めワープ：オフなら、いつもどおりダメージを受ける", !bossDebug.warp && !timeStop.active && mainScreen.hp == hpN - 1);
     tap(backBtn());
+    //BGMの試し聞き(bgmTrial.js)：案を順に選べ、どの案でも曲の音符を止まらずに作れる。最終局面で原点回帰に替わる
+    var bgmNames = [], bgmErr = errors.length, keepSnd = { ctx:sound.ctx, bgmGain:sound.bgmGain, noiseBuf:sound.noiseBuf };
+    var oac = new OfflineAudioContext(2, 44100, 44100);
+    sound.ctx = oac; sound.bgmGain = oac.createGain(); sound.bgmGain.connect(oac.destination);
+    sound.noiseBuf = oac.createBuffer(1, 4410, 44100);
+    var bgmSteps = function(_name){
+        sound.trackName = _name; sound.track = TRACKS[_name]; sound.bpm = TRACKS[_name].bpm; sound.step = 0; sound.bar = 0; sound.arpIndex = 0;
+        var st = 60/sound.bpm/4;
+        for(var k=0; k<16*32; k++){
+            try{ sound.playStep(k*st*0.01, st); }catch(e){ errors.push(_name + ":" + bgmTrial.v() + " " + e.message); return; }
+            sound.step++; if(sound.step >= 16){ sound.step = 0; sound.bar++; }
+        }
+    };
+    for(var i=0; i<bgmTrial.list.length; i++){
+        if(i > 0) tap(bossDebug.tools()[7]);
+        bgmNames.push(bgmTrial.v());
+        ["title","heroic","battle","boss","kai2","revolt"].forEach(bgmSteps);
+    }
+    tap(bossDebug.tools()[7]);    //今の音に戻る
+    tap(bossDebug.tools()[8]);    //最終局面「原点回帰」
+    var finaleOn = bgmTrial.trackFor("kai2") == "finale" && bgmTrial.trackFor("boss") == "boss";
+    bgmSteps("finale");
+    tap(bossDebug.tools()[8]);
+    sound.ctx = keepSnd.ctx; sound.bgmGain = keepSnd.bgmGain; sound.noiseBuf = keepSnd.noiseBuf; sound.track = null; sound.trackName = null;
+    check("BGMの試し聞き：案を順に選べ、どの案・原点回帰でも曲を鳴らせる",
+          bgmNames.join(",") == "orig,d,f,h,i" && bgmTrial.v() == "orig" && finaleOn && !bgmTrial.finale && errors.length == bgmErr,
+          bgmNames.join(",") + " " + errors.slice(bgmErr).join(" "));
     tap(bossDebug.tools()[4]);    //閉じる
     bossDebug.god = false; bossDebug.gear = 1;
     check("閉じるでメニューを閉じる", !bossDebug.menu);

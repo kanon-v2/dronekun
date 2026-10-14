@@ -36,6 +36,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 |---|---|
 | `common.js` | キャンバス・ページ管理(`page`)・マウス/タッチ入力・矩形ボタン(`drawRect`)・能力(`STATS`)・進行状況(`game`)・セーブ(`save`)・ドローン君(`drone`)と見た目(`DroneLook`) |
 | `sound.js` | BGM・効果音。Web Audio API で合成(音声ファイルなし)。曲データは `TRACKS` |
+| `bgmTrial.js` | BGMの試し聞き(開発用)。デバッグのメニューの「BGM」「最終局面」で選ぶと、`sound.music`・`sound.playStep` を包んで、曲の鳴らし方を試作の案(案D 和の怪談風・案F 尺八が主役・案H 管弦と篠笛・案I カリンバ)に替える。曲の並び(`TRACKS`)はそのまま。「最終局面：原点回帰」はドローン君改の第二形態の曲(`kai2`)の代わりに `finale`(今の音で作ったアレンジ)を流す。選んだものは覚えない。案は試聴ページ(Artifact)で作ったもの |
 | `equipment.js` | 装備(`WEAPONS`)・シナジー(`SYNERGIES`)・戦闘中の装備の動作(`arms`)・シナジー演出(`fx`) |
 | `armsExtra.js` | 追加の装備(火炎放射・円盤・重力弾・バリア・狙撃・冷凍)とそのシナジー。`WEAPONS`・`SYNERGIES`・`arms` に足す(`arms` から `fire2`・`update2`・`draw2` などを呼ぶ)。敵の状態「燃える」「凍る」もここ |
 | `bosses.js` | レア敵・ボス(女王蜂・移動要塞・天蓋母艦・ドローン君改)。`special` |
@@ -173,6 +174,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
   - ストーリー確認：戦闘なしで全ストーリーを順に流す。終わるとメニューへ戻る。
   - 時止めワープ「オン」(ショップのバフと同じ能力。`timeStop.js`)：クールタイムなしで、ボス戦・武器試用で、被弾する瞬間に時が止まり(ダメージなし)、クリック・タップした場所へ、体が粒子にほどけて飛び、組み上がる。そのあと `WARP_GUARD` の間は無敵。協力プレイ・対戦では働かない。粒子はドローン君の今のコマを別のキャンバスに写して小さく切って描く(`getImageData` は使わない)。
   - 攻撃の試作：画面の上の砲台が、試作の弾・攻撃(`shotLab.js`)を `SHOT_LAB_SEC` 秒ずつ順に出す。左の一覧を押すと、その攻撃だけを繰り返す(「自動で順番に」で戻る。`shotLab.labPickAt`)(雑魚敵なし・無敵。弾の速さ・数は `SHOT_LAB_WAVE` のもの)。
+  - BGM「今の音／案D／案F／案H／案I」・最終局面「今の曲／原点回帰」(`bgmTrial.js`)：押すとすぐ、流れている曲がその案で鳴り直す。このあと遊ぶ曲(タイトルから始めるふつうの周も)もその案で鳴る。
   - 途中でメニューへ戻るのは、右下の「DEBUG：戻る」(`sound.buttons` の `debugBack`)。
 - `common.js` の `DEBUG = true` で、マウス座標などを左上に表示。
 - 画面上部の中央に、フレームレート(1秒あたりの描画回数)を常に表示している(`draw.js` の `fps`)。`FPS_WARN` 未満でオレンジ、`FPS_BAD` 未満で赤。
