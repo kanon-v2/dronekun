@@ -13,6 +13,7 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
 <script src="scripts/drone/common.js"></script>
 <script src="scripts/drone/sound.js"></script>
 <script src="scripts/drone/bgmTrial.js"></script>
+<script src="scripts/drone/bgmFull.js"></script>
 <script src="scripts/drone/equipment.js"></script>
 <script src="scripts/drone/armsExtra.js"></script>
 <script src="scripts/drone/bosses.js"></script>
@@ -1276,13 +1277,38 @@ try{
         ["title","heroic","battle","boss","kai2","revolt"].forEach(bgmSteps);
     }
     tap(bossDebug.tools()[7]);    //今の音に戻る
+    //本格版(bgmFull.js)：楽譜に書き間違いがなく、どの曲も全部の区切り(最初と最後の小節)を鳴らせる
+    var fullErr = errors.length, fullWarn = bgmFull.checkAll().length, fullSecs = 0;
+    bgmTrial.pick = 1;
+    for(var id in BGM_FULL){
+        var FS = bgmFull.prepSong(id), seen = {};
+        sound.trackName = id; sound.track = TRACKS[id]; sound.bpm = FS.bpm; sound.step = 0; sound.bar = 0;
+        //区切りごとに最初と最後(フィル)の小節だけ鳴らす(音の部品を作りすぎて、あとの確認が遅くならないように)
+        var fst = 60/FS.bpm/4, fbars = [], at = 0;
+        FS.intro.concat(FS.loop).forEach(function(sk){ fbars.push(at, at + FS.sec[sk].bars - 1); at += FS.sec[sk].bars; });
+        fbars.push(at);     //くり返しの頭へ戻る
+        for(var fb=0; fb<fbars.length; fb++){
+            sound.bar = fbars[fb];
+            seen[bgmFull.locate(id, sound.bar).id] = 1;
+            for(sound.step=0; sound.step<16; sound.step++){
+                try{ sound.playStep(sound.step*fst*0.01, fst); }catch(e){ errors.push(id + ":full " + e.message); break; }
+            }
+        }
+        fullSecs += Object.keys(seen).length;
+    }
+    bgmTrial.pick = 0;
+    check("BGMの本格版：楽譜に書き間違いがなく、全曲の全部の区切りを鳴らせる",
+          fullWarn == 0 && errors.length == fullErr && fullSecs == 45 && bgmTrial.list[1].v == "full",
+          BGM_FULL_WARN.join(" ") + " 区切り" + fullSecs + " " + errors.slice(fullErr).join(" "));
     tap(bossDebug.tools()[8]);    //最終局面「原点回帰」
     var finaleOn = bgmTrial.trackFor("kai2") == "finale" && bgmTrial.trackFor("boss") == "boss";
     bgmSteps("finale");
-    tap(bossDebug.tools()[8]);
+    tap(bossDebug.tools()[8]);    //最終局面「Lyria」(録音の曲。music/monarch.js を読み込み始める)
+    var monarchOn = bgmTrial.trackFor("kai2") == "monarch" && bgmTrial.finaleName() == "Lyria" && TRACKS.monarch && typeof monarch.tick == "function";
+    tap(bossDebug.tools()[8]);    //今の曲に戻る
     sound.ctx = keepSnd.ctx; sound.bgmGain = keepSnd.bgmGain; sound.noiseBuf = keepSnd.noiseBuf; sound.track = null; sound.trackName = null;
-    check("BGMの試し聞き：案を順に選べ、どの案・原点回帰でも曲を鳴らせる",
-          bgmNames.join(",") == "orig,d,f,h,i" && bgmTrial.v() == "orig" && finaleOn && !bgmTrial.finale && errors.length == bgmErr,
+    check("BGMの試し聞き：案を順に選べ、どの案・原点回帰でも曲を鳴らせる。最終局面は Lyria の曲も選べる",
+          bgmNames.join(",") == "orig,full,d,f,h,i" && bgmTrial.v() == "orig" && finaleOn && monarchOn && !bgmTrial.finale && errors.length == bgmErr,
           bgmNames.join(",") + " " + errors.slice(bgmErr).join(" "));
     tap(bossDebug.tools()[4]);    //閉じる
     bossDebug.god = false; bossDebug.gear = 1;

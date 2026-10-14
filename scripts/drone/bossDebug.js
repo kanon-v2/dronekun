@@ -229,7 +229,7 @@ var bossDebug = {
         if(t[7].clicked()){ bgmTrial.next(); this.msg = "BGM：" + bgmTrial.name() + "(このあと遊ぶ曲もこの案で鳴ります)"; sound.play("click"); return; }
         if(t[8].clicked()){
             bgmTrial.toggleFinale();
-            this.msg = bgmTrial.finale ? "ドローン君改の第二形態で「原点回帰」が流れます" : "ドローン君改の第二形態は今の曲です";
+            this.msg = bgmTrial.finale ? "ドローン君改の第二形態で「" + bgmTrial.finaleName() + "」が流れます" : "ドローン君改の第二形態は今の曲です";
             sound.play("click");
             return;
         }
@@ -279,7 +279,7 @@ var bossDebug = {
             var t = this.tools();
             var labels = ["ストーリー確認", "武器試用", "装備「" + BOSS_DEBUG_GEAR[this.gear] + "」", "無敵「" + (this.god ? "オン" : "オフ") + "」", "閉じる",
                           "時止めワープ「" + (this.warp ? "オン" : "オフ") + "」", "攻撃の試作",
-                          "BGM「" + bgmTrial.short() + "」", "最終局面「" + (bgmTrial.finale ? "原点回帰" : "今の曲") + "」"];
+                          "BGM「" + bgmTrial.short() + "」", "最終局面「" + bgmTrial.finaleName() + "」"];
             for(var i=0; i<t.length; i++){
                 ctx.font = i < 5 ? "bold 14px sans-serif" : "bold 13px sans-serif";
                 t[i].button(labels[i]);

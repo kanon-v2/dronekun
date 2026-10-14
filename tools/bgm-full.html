@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<!--
+  BGM「本格版」(scripts/drone/bgmFull.js)の試聴ページ。ブラウザで直接開く。
+  コーラス入りの試作曲(tools/bgm-choir-demo.js)も並ぶ。曲を選ぶと前奏から流れ、いまの区切り・小節を出す。区切りの名前を押すとそこから流す。
+  #check：楽譜の書き間違いと、強い拍で和音に合わない音・ハモりとぶつかる音を書き出す(ヘッドレスEdgeの --dump-dom で読む)
+-->
+<html lang="ja"><head><meta charset="UTF-8"><base href="../"><title>BGM 本格版</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{margin:0;padding:16px;font-family:sans-serif;background:#16181d;color:#e8e8e8}
+#Bigbox{display:none}
+h1{font-size:20px;margin:0 0 12px}
+button{font-size:15px;margin:3px;padding:8px 12px;border-radius:6px;border:1px solid #556;background:#2a2e38;color:#eee;cursor:pointer}
+button.on{background:#3d6fd8;border-color:#7fa4f0}
+#now{margin:12px 0;font-size:16px;min-height:1.4em}
+.secs button{font-size:13px;padding:5px 9px}
+pre{white-space:pre-wrap;font-size:13px}
+</style></head>
+<body><div id="Bigbox"><canvas id="Canvas"></canvas></div>
+<h1>BGM 本格版(今の音で作り込んだ曲)</h1>
+<div id="songs"></div>
+<div>
+  <button id="ab">聞き比べ：本格版</button>
+  <button id="stop">止める</button>
+</div>
+<div id="now"></div>
+<div class="secs" id="secs"></div>
+<pre id="result"></pre>
+<script src="scripts/drone/common.js"></script>
+<script src="scripts/drone/sound.js"></script>
+<script src="scripts/drone/bgmTrial.js"></script>
+<script src="scripts/drone/bgmFull.js"></script>
+<script src="tools/bgm-choir-demo.js"></script>
+<script>
+var NAMES = { title:"タイトル", unease:"不安(ストーリー)", heroic:"序盤の戦闘", battle:"中盤の戦闘", boss:"ボス戦",
+              kai2:"ドローン君改 第二形態", rival:"ライバル", revolt:"人間との戦い", shop:"強化画面",
+              omen:"試作：怪談風(コーラス)", confront:"試作：対峙(コーラス)" };
+var full = true;
+bgmTrial.pick = 1;
+function play(_id,_bar){
+    sound.unlock();
+    var go = function(){
+        sound.trackName = null;
+        sound.music(_id);
+        if(_bar) sound.bar = _bar;
+        show();
+    };
+    if(sound.ready()) go(); else setTimeout(function wait(){ if(sound.ready()) go(); else setTimeout(wait, 50); }, 50);
+}
+function show(){
+    var bs = document.querySelectorAll("#songs button");
+    for(var i=0; i<bs.length; i++) bs[i].className = bs[i].dataset.id == sound.trackName ? "on" : "";
+    var box = document.getElementById("secs");
+    box.innerHTML = "";
+    var S = BGM_FULL[sound.trackName];
+    if(!S) return;
+    var at = 0, add = function(_k,_label){
+        var b = document.createElement("button"), bar = at;
+        b.textContent = _label + _k + "(" + S.sec[_k].bars + ")";
+        b.onclick = function(){ play(sound.trackName, bar); };
+        box.appendChild(b);
+        at += S.sec[_k].bars;
+    };
+    S.intro.forEach(function(k){ add(k, "前奏 "); });
+    S.loop.forEach(function(k){ add(k, ""); });
+}
+(function(){
+    var box = document.getElementById("songs");
+    for(var id in BGM_FULL){
+        var b = document.createElement("button");
+        b.textContent = NAMES[id] || id;
+        b.dataset.id = id;
+        b.onclick = function(){ play(this.dataset.id); };
+        box.appendChild(b);
+    }
+    document.getElementById("stop").onclick = function(){ sound.music(null); show(); };
+    document.getElementById("ab").onclick = function(){
+        full = !full;
+        bgmTrial.pick = full ? 1 : 0;
+        this.textContent = "聞き比べ：" + (full ? "本格版" : "今の曲");
+        if(sound.trackName) play(sound.trackName);
+    };
+    setInterval(function(){
+        var el = document.getElementById("now");
+        if(!sound.trackName){ el.textContent = ""; return; }
+        if(!full){ el.textContent = (NAMES[sound.trackName] || sound.trackName) + "(今の曲)"; return; }
+        var L = bgmFull.locate(sound.trackName, sound.bar);
+        el.textContent = (NAMES[sound.trackName] || sound.trackName) + "　区切り " + L.id + "　" + (L.bar + 1) + " / " + L.sec.bars + " 小節";
+    }, 100);
+})();
+
+//------------------------------------------------------------ #check
+if(location.hash == "#check"){
+    var out = bgmFull.checkAll().slice();
+    var nm = ["C","C#","D","Eb","E","F","F#","G","Ab","A","Bb","B"];
+    for(var id in BGM_FULL){
+        var S = BGM_FULL[id];
+        for(var k in S.sec){
+            var C = S.sec[k];
+            [["lead", C._lead], ["harm", C._harm]].forEach(function(p){
+                if(!p[1]) return;
+                p[1].forEach(function(evs, st){
+                    if(!evs) return;
+                    evs.forEach(function(e){
+                        var ch = C._ch[st], rel = ((e.n - ch.root) % 12 + 12) % 12;
+                        var tone = ch.iv.indexOf(rel) >= 0;
+                        var tension = rel == 2 || (rel == 9 && ch.iv.indexOf(3) < 0) || (rel == 11 && ch.iv.indexOf(10) < 0 && ch.iv.indexOf(3) < 0);
+                        var strong = st % 8 == 0 || e.len >= 4;
+                        if(!tone && strong) out.push(id + "." + k + "." + p[0] + " 小節" + (Math.floor(st/16)+1) + " 拍" + ((st%16)/4+1) +
+                            " " + nm[e.n%12] + " / " + ch.name + (tension ? "(テンション)" : "(外れ)") + " 長さ" + e.len);
+                    });
+                });
+            });
+            //ハモりとメロディが同時に鳴るときの音程(短2度・長7度・増4度)
+            if(C._lead && C._harm){
+                var sounding = function(arr, st){
+                    for(var j=st; j>=0; j--){ if(arr[j]) for(var q=0; q<arr[j].length; q++){ var e = arr[j][q]; if(e.pos <= st && e.pos + e.len > st) return e; } }
+                    return null;
+                };
+                for(var st=0; st<C.bars*16; st++){
+                    if(!C._lead[st] && !C._harm[st]) continue;
+                    var a = sounding(C._lead, st), b = sounding(C._harm, st);
+                    if(!a || !b) continue;
+                    var iv = Math.abs(a.n - b.n) % 12;
+                    if(iv == 1 || iv == 11 || iv == 6) out.push(id + "." + k + " ぶつかり 小節" + (Math.floor(st/16)+1) + " " + nm[a.n%12] + "-" + nm[b.n%12]);
+                }
+            }
+        }
+    }
+    document.getElementById("result").textContent = "CHECK\n" + out.join("\n") + "\nEND";
+}
+</script>
+</body></html>
