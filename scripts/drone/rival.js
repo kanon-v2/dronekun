@@ -263,6 +263,7 @@ var rival = {
         if(this.done || mainScreen.toSpawn > 0 || enemies.length > 0) return false;
         this.done = true;
         enemies.push(this.make());
+        drone.look.setFace("surprise", 110);    //ドローン君はライバルの登場に驚く(時が止まっている間も驚いた顔)
         return true;
     },
     make:function(){

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<!--
+    ドローン君の表情(common.js の DRONE_FACES)を並べて見る
+    ・表情ごとに、正面を大きく、その下に左・右・見上げる・見下ろす・色違い(ライバルの色)を並べる
+    ・#still で撮影用に止める。#art=O でクラシックの見た目(目は変わらず、記号だけ出る)
+    ゲームと同じ common.js の DroneLook で描いている
+-->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<base href="../">
+<title>ドローン君の表情</title>
+<style>
+body{ margin:0; background:#e4e1da; overflow:hidden; }
+#Canvas{ width:100%; display:block; }
+</style>
+</head>
+<body>
+<div id="Bigbox"><canvas id="Canvas" width="960" height="540"></canvas></div>
+<script src="scripts/drone/common.js"></script>
+<script>
+var still = location.hash.indexOf("still") >= 0;
+var names = Object.keys(DRONE_FACES);
+//ポーズ：[水平の向き, 高さ, 色]
+var POSES = [[45,0], [-45,0], [0,-1], [0,1], [0,0,"40,50,120"]];
+var cells = names.map(function(n){
+    var list = [];
+    for(var i=0; i<=POSES.length; i++){
+        var lk = new DroneLook();
+        lk.setMood(n);
+        var p = POSES[i - 1] || [0,0];
+        lk.yaw = p[0]; lk.elev = p[1]; lk.tint = p[2] || null;
+        list.push(lk);
+    }
+    return { name:n, looks:list };
+});
+var frame = 0;
+function step(){
+    frame++;
+    cells.forEach(function(c){ c.looks.forEach(function(lk){ lk.t++; lk.faceAge++; }); });
+}
+function draw(){
+    ctx.fillStyle = "#e4e1da"; ctx.fillRect(0,0,CW,CH);
+    for(var i=0; i<cells.length; i++){
+        var c = cells[i], x = (i % 4)*240, y = Math.floor(i/4)*270;
+        ctx.fillStyle = "#f6f4ef"; ctx.fillRect(x + 6, y + 6, 228, 258);
+        ctx.fillStyle = "#222"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "left";
+        ctx.fillText(DRONE_FACES[c.name].name + "  " + c.name, x + 16, y + 28);
+        c.looks[0].draw(x + 120, y + 112, 3);
+        for(var k=1; k<c.looks.length; k++) c.looks[k].draw(x - 12 + k*42, y + 222, 1);
+    }
+}
+droneSkin.onReady(function(){
+    if(still){ for(var i=0; i<20; i++) step(); draw(); return; }
+    (function loop(){ step(); draw(); requestAnimationFrame(loop); })();
+});
+</script>
+</body>
+</html>

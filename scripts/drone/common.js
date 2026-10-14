@@ -617,7 +617,8 @@ var FLAT_COLOR = {
 //  胴体の箱の形は向きによって変えず、目・棒・後ろのふたなどの部品を、箱のまわりの円周上の角度として持ち、
 //  向き(_yaw 度。正で左を向く)に合わせて横へすべらせる。裏に回った部品は描かない
 //  _pitch：-1(見上げる)～1(見下ろす)。見下ろすと上面、見上げると底面が帯になって見え、目が上下に動く
-function drawFlatDrone(_g,_yaw,_pitch){
+//  _face：表情(DRONE_FACES の名前。省略するとふつう)
+function drawFlatDrone(_g,_yaw,_pitch,_face){
     var C = FLAT_COLOR, g = _g;
     var L = 2, R = 38, T = 17, B = 38, CX = 20;     //胴体の左・右・上・下
     var band = Math.abs(_pitch)*5;                  //上面・底面の見える厚み
@@ -692,7 +693,7 @@ function drawFlatDrone(_g,_yaw,_pitch){
         g.fillRect(h.x - hw/2 + 1.5*h.z, hy + 1.5, 1.4*h.z, 1.4);
         g.fillRect(h.x + hw/2 - 2.9*h.z, hy + 1.5, 1.4*h.z, 1.4);
     }
-    //目(黒い縁・白い枠・黒い中・左上のハイライト)。横を向くほど細くなる
+    //目(黒い縁・白い枠・黒い中・左上のハイライト)。横を向くほど細くなる。形は表情で変わる(drawFlatEye)
     var ey = (faceT + faceB)/2 - 1 + _pitch*1.5;
     [26,-26].forEach(function(_a){
         var e = at(_a,18);
@@ -700,10 +701,7 @@ function drawFlatDrone(_g,_yaw,_pitch){
         g.save();
         g.translate(e.x, ey);
         g.scale(e.z, 1);
-        g.fillStyle = C.eye;   g.fillRect(-4.5,-4.5,9,9);
-        g.fillStyle = C.frame; g.fillRect(-3.3,-3.3,6.6,6.6);
-        g.fillStyle = C.eye;   g.fillRect(-2.1,-2.1,4.2,4.2);
-        g.fillStyle = C.glint; g.fillRect(-2.1,-2.1,1.4,1.4);
+        drawFlatEye(g, _face || "normal", _a > 0 ? -1 : 1);
         g.restore();
     });
     g.restore();
@@ -719,7 +717,113 @@ function drawFlatDrone(_g,_yaw,_pitch){
     g.stroke();
 }
 
-//標準(E)のシートを、等倍・2倍・4倍それぞれの大きさで直接描く(縮めないので、どの大きさでもくっきり)
+//------------------------------------------------------------------------------
+//  ドローン君の表情(標準の見た目だけ目の形が変わる。汗・星などの記号はどの見た目でも出る)
+//  ・pri：大きいほど優先(優先の高い表情が出ている間は、低い表情に上書きされない)
+//  ・fx：まわりに出す記号(DroneLook.drawFaceFx)
+//  ・blink：この表情のときもまばたきする
+//------------------------------------------------------------------------------
+var DRONE_FACES = {
+    normal:  { name:"ふつう", pri:0, blink:true },
+    blink:   { name:"まばたき", pri:0 },
+    happy:   { name:"よろこび", pri:2, fx:"sparkle" },
+    fierce:  { name:"本気", pri:1, blink:true },
+    sad:     { name:"あせり", pri:1, fx:"sweat", blink:true },
+    surprise:{ name:"おどろき", pri:3, fx:"bang" },
+    hurt:    { name:"いたい", pri:4 },
+    dizzy:   { name:"ふらふら", pri:5, fx:"stars" }
+};
+const BLINK_MIN = 150;      //まばたきの間隔のいちばん短いとき(フレーム)
+const BLINK_MAX = 330;      //同じくいちばん長いとき
+const BLINK_LEN = 7;        //目を閉じている長さ(フレーム)
+const FACE_FRAME_MAX = 600; //覚えておく表情のコマの数の上限(超えたら忘れて作り直す)
+
+//表情ごとの目。(0,0)が目のまんなかで、ふつうの目は±4.5の四角。_side：-1 画面の左の目、1 右の目
+//  まゆ(まぶた)の傾きは、内側(顔のまんなか側)を +x にそろえて描く(左右の目で向きが逆になる)
+function drawFlatEye(_g,_face,_side){
+    var C = FLAT_COLOR, g = _g;
+    //白い線を黒でふちどって描く(はみ出す端も黒で囲むよう、黒は角を四角に伸ばす)
+    function lines(_pts){
+        for(var p=0; p<2; p++){
+            g.beginPath();
+            for(var i=0; i<_pts.length; i++){
+                var s = _pts[i];
+                for(var j=0; j<s.length; j+=2) j ? g.lineTo(s[j],s[j + 1]) : g.moveTo(s[j],s[j + 1]);
+            }
+            g.lineJoin = "miter";
+            g.lineCap = p ? "butt" : "square";
+            g.strokeStyle = p ? C.frame : C.eye;
+            g.lineWidth = p ? 1.3 : 3.3;
+            g.stroke();
+        }
+    }
+    function open(_big){
+        var o = _big ? 5.5 : 4.5, w = _big ? 4.3 : 3.3, p = _big ? 1.4 : 2.1;
+        g.fillStyle = C.eye;   g.fillRect(-o,-o,o*2,o*2);
+        g.fillStyle = C.frame; g.fillRect(-w,-w,w*2,w*2);
+        g.fillStyle = C.eye;   g.fillRect(-p,-p,p*2,p*2);
+        g.fillStyle = C.glint; g.fillRect(-p,-p,1.4,1.4);
+    }
+    //まぶた：_y0 が外側、_y1 が内側の高さ。上を胴体の色でかくし、ふちに黒い線
+    function lid(_y0,_y1){
+        g.save();
+        g.scale(-_side,1);
+        g.fillStyle = C.body;
+        g.beginPath(); g.moveTo(-6,-6.5); g.lineTo(6,-6.5); g.lineTo(6,_y1); g.lineTo(-6,_y0); g.closePath(); g.fill();
+        g.strokeStyle = C.eye; g.lineWidth = 1.5; g.lineCap = "butt";
+        g.beginPath(); g.moveTo(-5.2,_y0 + (_y1 - _y0)*0.07); g.lineTo(5.2,_y1 - (_y1 - _y0)*0.07); g.stroke();
+        g.restore();
+    }
+    switch(_face){
+        case "blink":
+            g.fillStyle = C.eye;   g.fillRect(-4.5,-1.6,9,3.2);
+            g.fillStyle = C.frame; g.fillRect(-3.3,-0.5,6.6,1);
+            break;
+        case "happy":       //にっこり(^ ^)
+            lines([[-3.6,1.9, 0,-2.1, 3.6,1.9]]);
+            break;
+        case "hurt":        //ぎゅっと(> <)。とがった先が内側
+            var s = -_side;
+            lines([[-2.9*s,-3.3, 2.7*s,0, -2.9*s,3.3]]);
+            break;
+        case "dizzy":       //目を回す(× ×)
+            lines([[-3,-3, 3,3], [-3,3, 3,-3]]);
+            break;
+        case "fierce":      //きりっ(内側が下がったまぶた)
+            open(false);
+            lid(-4.6,-0.6);
+            break;
+        case "sad":         //あせり(内側が上がったまぶた)
+            open(false);
+            lid(-1.2,-4.4);
+            break;
+        case "surprise":    //目を丸く(大きな白目に小さな黒目)
+            open(true);
+            break;
+        default:
+            open(false);
+    }
+}
+
+//表情のついたコマ(標準の見た目だけ)。使ったコマだけ、その大きさで直接描いて覚える
+var faceFrames = {}, faceFrameCount = 0;
+function faceFrame(_sheets,_lv,_col,_row,_face){
+    var key = "face" + _sheets.id + "/" + _lv + "|" + _col + "," + _row + "|" + _face;
+    var c = faceFrames[key];
+    if(c) return c;
+    if(++faceFrameCount > FACE_FRAME_MAX){ faceFrames = {}; faceFrameCount = 1; }
+    var k = 1 << _lv, mid = (_sheets.elevs - 1)/2;
+    c = document.createElement("canvas");
+    c.width = c.height = DRONE_SIZE*k;
+    c._key = key;       //色違い(tintedImage)の覚えに使う
+    var g = c.getContext("2d");
+    g.scale(k,k);
+    drawFlatDrone(g, _col*360/_sheets.yaws, (_row - mid)/mid, _face);
+    faceFrames[key] = c;
+    return c;
+}
+
+//標準(E)のシート(ふつうの顔)を、等倍・2倍・4倍それぞれの大きさで直接描く(縮めないので、どの大きさでもくっきり)
 function buildFlatSheets(){
     var list = [], mid = (FLAT_ELEVS - 1)/2;
     for(var lv=0; lv<3; lv++){
@@ -963,12 +1067,42 @@ var DroneLook = function(){
     this.tiltV = 0;
     this.t = Math.random()*100;
     this.tint = null;   //色違いにするときの色("r,g,b")
+    //表情(DRONE_FACES)：mood がふだんの顔、face は faceT フレームのあいだだけ出す顔
+    this.mood = "normal";
+    this.face = "normal";
+    this.faceT = 0;
+    this.faceAge = 0;   //今の顔になってからのフレーム数(記号が出てくる動きに使う)
+    this.lastFace = "normal";
+    this.blinks = false;    //ときどきまばたきするか(自分のドローン君)
+    this.blinkT = BLINK_MIN;
 };
 DroneLook.prototype = {
+    //しばらく _face の顔にする(_frames フレーム)。優先の高い顔が出ている間は変えない
+    setFace:function(_face,_frames){
+        if(this.faceT > 0 && DRONE_FACES[this.face].pri > DRONE_FACES[_face].pri) return;
+        this.face = _face;
+        this.faceT = _frames;
+    },
+    setMood:function(_face){ this.mood = _face; },
+    resetFace:function(){ this.mood = this.face = "normal"; this.faceT = 0; },
+    //今出す顔
+    shownFace:function(){
+        var f = this.faceT > 0 ? this.face : this.mood;
+        if(this.blinks && this.blinkT <= 0 && DRONE_FACES[f].blink) return "blink";
+        return f;
+    },
     //_dir：移動方向から決めた向き　_speedX：横の速さ　_speedY：縦の速さ(渡すと、動く向きそのものに向く)
     update:function(_dir,_speedX,_speedY){
         this.t++;
         this.shown = _dir;
+        //表情：しばらく出す顔の残り・まばたき(ときどき続けて2回)
+        if(this.faceT > 0) this.faceT--;
+        if(this.blinks && --this.blinkT <= -BLINK_LEN){
+            this.blinkT = Math.random() < 0.2 ? 12 : BLINK_MIN + Math.random()*(BLINK_MAX - BLINK_MIN);
+        }
+        var sf = this.faceT > 0 ? this.face : this.mood;
+        if(sf != this.lastFace){ this.lastFace = sf; this.faceAge = 0; }
+        else this.faceAge++;
         var ty = DIR_YAW[_dir], te = DIR_ELEV[_dir];
         if(_speedY !== undefined && _dir >= 1 && _dir <= 4){
             var s = Math.hypot(_speedX,_speedY);
@@ -1006,7 +1140,12 @@ DroneLook.prototype = {
         var col = ((Math.round(this.yaw/360*sh.yaws) % sh.yaws) + sh.yaws) % sh.yaws;
         var row = Math.max(0, Math.min(sh.elevs - 1, Math.round((this.elev + 1)/2*(sh.elevs - 1))));
         var img = sh[lv], sx = col*f, sy = row*f;
-        if(this.tint){ img = tintedFrame(sh[lv], col, row, f, this.tint); sx = sy = 0; }
+        //表情のついた顔(標準の見た目だけ。ほかの見た目は目を変えず、記号だけ出す)
+        var face = this.shownFace();
+        if(face != "normal" && sh.id == "E"){
+            img = faceFrame(sh, lv, col, row, face); sx = sy = 0;
+            if(this.tint) img = tintedImage(img, this.tint);
+        }else if(this.tint){ img = tintedFrame(sh[lv], col, row, f, this.tint); sx = sy = 0; }
         var bob = Math.sin(this.t*0.08)*1.5;
         var s = DRONE_SIZE*k;
         //回っている間は、少し横に縮む
@@ -1017,11 +1156,77 @@ DroneLook.prototype = {
         if(pix) ctx.translate(Math.round(_x), Math.round(_y + bob*k));
         else ctx.translate(_x, _y + bob*k);
         ctx.rotate(this.tilt);
+        ctx.save();
         ctx.scale(squash, 1);
         ctx.imageSmoothingEnabled = smooth;
         ctx.drawImage(img, sx, sy, f, f, -s/2, -s/2, s, s);
         ctx.restore();
+        var fx = DRONE_FACES[face].fx;
+        if(fx){
+            ctx.scale(k,k);
+            this.drawFaceFx(fx);
+        }
+        ctx.restore();
         ctx.imageSmoothingEnabled = false;
+    },
+    //表情の記号(機体の傾きにはついていくが、振り向きでは回らない)。40×40の絵のまんなかが(0,0)
+    //  胴体は x -18～18・y -3～18、プロペラの上は y -15 くらい
+    drawFaceFx:function(_fx){
+        var g = ctx, t = this.t, age = this.faceAge;
+        var ink = FLAT_COLOR.line;
+        function star(_x,_y,_r,_col){
+            g.beginPath();
+            for(var i=0; i<8; i++){
+                var a = i*Math.PI/4 - Math.PI/2, r = i % 2 ? _r*0.32 : _r;
+                g.lineTo(_x + Math.cos(a)*r, _y + Math.sin(a)*r);
+            }
+            g.closePath();
+            g.fillStyle = _col; g.fill();
+            g.strokeStyle = ink; g.lineWidth = 0.7; g.stroke();
+        }
+        switch(_fx){
+            case "sweat":       //汗のしずくが、顔の右上からつるっと流れる
+                var p = (t % 56)/56, x = 17, y = -2 + p*7;
+                g.globalAlpha = Math.min(1, (1 - p)*3);
+                g.beginPath();
+                g.moveTo(x, y - 4.6);
+                g.lineTo(x + 2.3, y - 0.8);
+                g.arc(x, y, 2.4, -0.35, Math.PI + 0.35);
+                g.closePath();
+                g.fillStyle = "#9fdcff"; g.fill();
+                g.strokeStyle = ink; g.lineWidth = 0.8; g.stroke();
+                g.fillStyle = "#ffffff"; g.fillRect(x - 1.2, y - 0.6, 0.9, 1.4);
+                g.globalAlpha = 1;
+                break;
+            case "sparkle":     //まわりにきらきら(交互にまたたく)
+                var pts = [[-20,-7,3.4,0], [19,-12,3,2.1], [22,1,2,4.2]];
+                for(var i=0; i<pts.length; i++){
+                    var q = Math.sin(t*0.18 + pts[i][3]), r = pts[i][2]*(0.55 + 0.45*Math.abs(q))*Math.min(1, age/8);
+                    if(r > 0.3) star(pts[i][0], pts[i][1], r, q > 0 ? "#fff6b0" : "#ffffff");
+                }
+                break;
+            case "stars":       //頭の上を星が回る
+                var list = [];
+                for(var i=0; i<3; i++){
+                    var a = t*0.12 + i*Math.PI*2/3;
+                    list.push({ x:Math.cos(a)*13, y:-18 + Math.sin(a)*3.5, z:Math.sin(a) });
+                }
+                list.sort(function(a,b){ return a.z - b.z; });
+                for(var i=0; i<list.length; i++) star(list[i].x, list[i].y, 2.4 + list[i].z*0.5, "#ffe066");
+                break;
+            case "bang":        //「！」が右上にぴょこっと出る
+                var sc = Math.min(1, age/5)*(1 + 0.35*Math.max(0, 1 - age/12));
+                g.save();
+                g.translate(18, -14);
+                g.scale(sc, sc);
+                g.rotate(0.2);
+                g.fillStyle = "#ffffff"; g.strokeStyle = ink; g.lineWidth = 0.8;
+                g.beginPath(); g.moveTo(-1.8,-7); g.lineTo(1.8,-7); g.lineTo(0.9,1.2); g.lineTo(-0.9,1.2); g.closePath();
+                g.fill(); g.stroke();
+                g.fillRect(-1.3,2.6,2.6,2.6); g.strokeRect(-1.3,2.6,2.6,2.6);
+                g.restore();
+                break;
+        }
     }
 };
 
@@ -1117,6 +1322,7 @@ var drone = {
         this.look.draw(this.X, this.Y);
     }
 }
+drone.look.blinks = true;   //自分のドローン君はときどきまばたきする
 
 //------------------------------------------------------------------------------
 //  ポインタ
