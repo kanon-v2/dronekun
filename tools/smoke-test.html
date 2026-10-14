@@ -29,6 +29,7 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
 <script src="scripts/drone/timeStop.js"></script>
 <script src="scripts/drone/rival.js"></script>
 <script src="scripts/drone/shotLab.js"></script>
+<script src="scripts/drone/finaleSync.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="scripts/drone/coop.js"></script>
 <script src="scripts/drone/versus.js"></script>
@@ -849,6 +850,61 @@ try{
     });
     check("ドローン君改の第二形態を描ける(停止・復活・Lv.4/5・回るレーザー・突進の構え)", k2Drawn == 20 && errors.length == k2DErr, k2Drawn + "コマ");
 
+    // 最終局面の試作(finaleSync.js)：Lyria を選ぶと、第二形態が曲の時刻で動く(曲の時刻は fakeT で進める)
+    setup(FINAL_WAVE, { gun:1 }, ["gun",null,null], 1);
+    page.change(1); MouseIn = true;
+    for(var i=0; i<3000 && (mainScreen.state != "play" || mainScreen.bossFreeze); i++) mainScreen.update();
+    var fsErr = errors.length;
+    var fb = enemies.filter(function(e){ return e.type == "kai"; })[0];
+    enemies = [fb]; enemyShots = [];
+    fb.form = 2; fb.phase = 4; fb.mode = "idle"; fb.maxHp = fb.hp = 3000; fb.look.tint = KAI2_TINT;
+    bgmTrial.finale = bgmTrial.finales.map(function(f){ return f.v; }).indexOf("monarch");
+    //曲の時刻を _from から _to まで1コマ1/60秒で進める(_each：毎コマ呼ぶ)
+    var fsRun = function(_from,_to,_each){
+        for(finaleSync.fakeT = _from; finaleSync.fakeT < _to; finaleSync.fakeT += 1/60){
+            mainScreen.invincible = 10; mainScreen.update();
+            if(_each) _each();
+        }
+    };
+    var fsShots = 0;
+    fsRun(FS_START, FS_START + 3, function(){ fsShots = Math.max(fsShots, enemyShots.length); });
+    var fsBeat = fsShots > 0 && fb.fsSec.name == "storm" && battleBg.night > 0.5 && finaleSync.live();
+    draw1();
+    fb.hp = 1; fsRun(FS_START + 3, FS_START + 3.1);
+    var fsGate = fb.hp >= fb.maxHp*FS_GATE && !fb.dead;
+    var fsDeep = 0;
+    fsRun(72, 82.4, function(){ fsDeep = Math.max(fsDeep, shotLab.deeps.length); });
+    var fsSink = fb.fsMode == "sink" && fb.phased && fb.harmless && fsDeep > 0;
+    draw1();
+    fsRun(82.5, 83.95, function(){ MouseX = drone.X; MouseY = drone.Y; });
+    var fsHush = fb.fsMode == "hush" && enemyShots.length == 0 && fb.fsLocked && battleBg.far > 0.8 && monarch.startAt == FS_START;
+    draw1();
+    drone.X = fb.fsTx; drone.Y = fb.fsTy; MouseX = drone.X; MouseY = drone.Y;
+    var fsHp0 = fb.hp;
+    mainScreen.blast();
+    fsRun(83.95, 84.05);
+    var fsRes = finaleSync.result;
+    var fsParry = fsRes == "perfect" && fb.fsScale > 2 && fb.harmless && fb.fsDropped && fb.fsMode == null && fsHp0 - fb.hp >= Math.round(fb.maxHp*FS_PARRY_DMG[1]) - 1;
+    fsRun(84.05, 88);
+    var fsGiant = fb.fsScale > 1.3 && fb.fsSec.name == "drop";
+    draw1();
+    fsRun(106.5, 107.9);
+    var fsBreath = fb.fsMode == "breath";
+    fsRun(107.9, 108.2);
+    var fsRelease = fb.fsMode == null && fb.mode != "fs" && enemyShots.length > 0;
+    //合わせなければ当たる
+    fb.hp = fb.maxHp;
+    fsRun(82.5, 83.9);
+    drone.X = fb.fsTx; drone.Y = fb.fsTy;
+    var fsHpMe = mainScreen.hp;
+    finaleSync.fakeT = 84.01; mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.update();
+    var fsHit = finaleSync.result == "hit" && mainScreen.hp < fsHpMe;
+    finaleSync.fakeT = null; bgmTrial.finale = 0;
+    check("最終局面の試作：曲の時刻で撃ち、奥へ下がり、無音で迫る突進をジャストで弾き、サビで大きくなる",
+          fsBeat && fsGate && fsSink && fsHush && fsParry && fsGiant && fsBreath && fsRelease && fsHit && errors.length == fsErr,
+          "拍" + fsBeat + "(" + fsShots + ") 体力" + fsGate + " ため" + fsSink + "(" + fsDeep + ") 無音" + fsHush + " 弾く" + fsParry + "(" + fsRes + ") 巨大" + fsGiant +
+          " 息つぎ" + fsBreath + " 放つ" + fsRelease + " 当たる" + fsHit);
+
     // かすりコンボ：かするとコンボが増えて威力が上がり、時間切れ・被弾で途切れる
     setup(2, { gun:1 }, ["gun",null,null], 1);
     page.change(1); MouseIn = true;
@@ -1210,6 +1266,16 @@ try{
     draw1();
     tap(backBtn());
     check("無敵・「DEBUG：戻る」で中断してメニューへ", godOk && page.number == 0 && bossDebug.menu && !bossDebug.active);
+    //「改・第二形態」：WAVE20が始まると、すぐ復活して第二形態になる(無敵のまま)
+    tap(bossDebug.rivalRows()[RIVAL_WAVES.length]);
+    var k2Go = page.number == 1 && game.wave == FINAL_WAVE && bossDebug.kai2, k2b = null;
+    for(var i=0; i<4000 && !(k2b && k2b.form == 2); i++){
+        mainScreen.update();
+        k2b = enemies.filter(function(e){ return e.type == "kai"; })[0];
+    }
+    var k2Ok = k2Go && k2b && k2b.form == 2 && k2b.hp == k2b.maxHp && !bossDebug.kai2;
+    tap(backBtn());
+    check("デバッグ「改・第二形態」：第二形態から戦える", k2Ok && page.number == 0 && bossDebug.menu && !bossDebug.kai2, "始まる" + k2Go + " 第二形態" + (k2b && k2b.form));
     //武器試用：選んだ装備で、尽きずに出てくる雑魚敵と戦う(無敵。与えたダメージを数える)
     bossDebug.god = false;    //武器試用は無敵の設定によらず無敵
     tap(bossDebug.tools()[1]);

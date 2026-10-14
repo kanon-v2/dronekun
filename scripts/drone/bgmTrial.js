@@ -63,6 +63,7 @@ var monarch = {
     buf:null,       //読み込んだ曲(AudioBuffer)
     loading:false,
     src:null,       //流している音
+    startAt:0,      //曲のどこから流し始めるか(秒。finaleSync.js が決める)
     load:function(){
         if(this.buf || this.loading) return;
         this.loading = true;
@@ -96,8 +97,18 @@ var monarch = {
         s.loopEnd = BGM_MONARCH.loopEnd;
         g.gain.value = MONARCH_VOL;
         s.connect(g); g.connect(sound.bgmGain);     //BGMの音量・消音・こもらせ(ジャスト衝撃波)がそのまま効く
-        s.start(_t);
+        s.start(_t, this.startAt);
         this.src = s;
+        this.at = _t - this.startAt;
+    },
+    //曲のどこを鳴らしているか(秒。元の曲の時刻で、くり返しの分は戻す)。流していなければ -1
+    //スピーカーから出るまでの遅れを引き、画面と耳がそろうようにする(finaleSync.js が曲に合わせて攻撃するため)
+    pos:function(){
+        if(!this.src) return -1;
+        var ac = sound.ctx, p = ac.currentTime - this.at - (ac.outputLatency || ac.baseLatency || 0);
+        var A = BGM_MONARCH.loopStart, B = BGM_MONARCH.loopEnd;
+        if(p >= B) p = A + (p - A) % (B - A);
+        return p;
     },
     stop:function(){
         if(!this.src) return;

@@ -65,6 +65,9 @@ const JUST_SPREAD_ALPHA = 0.4;  //伝わっていく輪の色の濃さ(遠いほ
 
 var battleBg = {
     t:0,                //背景の時間(フレーム)
+    far:0,              //奥の空と街が遠ざかって暗くなる割合(0～1。最終局面の試作 finaleSync.js が決める)
+    night:0,            //夜の戦場の色を重ねる濃さ(0～1。finaleSync.js)
+    light:null,         //夜の地面を照らす光 { x, y, a:濃さ, r:半径 }(finaleSync.js)
     last:0,             //前に描いた時刻(ミリ秒)
     sky:null,           //空を描いておくキャンバス
     skyCtx:null,
@@ -144,6 +147,9 @@ var battleBg = {
         this.ripples = [];
         this.glows = [];
         this.auraI = null;
+        this.far = 0;
+        this.night = 0;
+        this.light = null;
     },
 
     //------------------------------------------------------------------ 描く
@@ -205,7 +211,39 @@ var battleBg = {
         var w = CW*BG_SCALE, h = CH*BG_SCALE;
         var ox = (CW - w)/2 - (drone.X - CW/2)*BG_PARALLAX;
         var oy = (CH - h)/2 - (drone.Y - CH/2)*BG_PARALLAX*0.5;
+        if(this.far > 0.001){
+            //遠ざかる：消失点へ向かって小さくなり、まわりは夜の色
+            var z = 1 - FS_FAR*this.far, vx = DEPTH_VP.x, vy = DEPTH_VP.y;
+            ctx.fillStyle = "#0c0814";
+            ctx.fillRect(0,0,CW,CH);
+            ox = vx + (ox - vx)*z; oy = vy + (oy - vy)*z; w *= z; h *= z;
+        }
         ctx.drawImage(this.sky, ox, oy, w, h);
+        if(this.far > 0.001){
+            ctx.fillStyle = "rgba(12,8,20," + (FS_FAR_DIM*this.far) + ")";
+            ctx.fillRect(0,0,CW,CH);
+            //縮んだ空のふちが見えないよう、まわりほど暗くする
+            var g = ctx.createRadialGradient(DEPTH_VP.x, DEPTH_VP.y, CH*0.3, DEPTH_VP.x, DEPTH_VP.y, CW*0.62);
+            g.addColorStop(0, "rgba(12,8,20,0)");
+            g.addColorStop(1, "rgba(12,8,20," + (0.9*this.far) + ")");
+            ctx.fillStyle = g;
+            ctx.fillRect(0,0,CW,CH);
+        }
+        if(this.night > 0.001){
+            //夜の戦場：方眼紙の白を隠し、光る物が照らす所だけ明るい
+            ctx.fillStyle = "rgba(14,8,26," + this.night + ")";
+            ctx.fillRect(0,0,CW,CH);
+            var L = this.light;
+            if(L){
+                var lg = ctx.createRadialGradient(L.x, L.y, 0, L.x, L.y, L.r);
+                lg.addColorStop(0, "rgba(150,50,220," + L.a + ")");
+                lg.addColorStop(1, "rgba(150,50,220,0)");
+                ctx.globalCompositeOperation = "lighter";
+                ctx.fillStyle = lg;
+                ctx.fillRect(L.x - L.r, L.y - L.r, L.r*2, L.r*2);
+                ctx.globalCompositeOperation = "source-over";
+            }
+        }
     },
     //ストーリー画面の空を描く関数は、いつもの ctx に描くので、描く先を一時的に入れかえる
     paintSky:function(_name){

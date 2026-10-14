@@ -571,10 +571,10 @@ var special = {
 
         //ブレード：いつも周りを回っていて、触れると被弾
         _e.bladeA += 0.05 + Math.min(ph,4)*0.015;
-        var nB = this.kaiBlades(_e);
+        var nB = this.kaiBlades(_e), bR = this.bladeR(_e);
         for(var k=0; k<nB; k++){
             var a = _e.bladeA + k*Math.PI*2/nB;
-            var bx = _e.x + Math.cos(a)*64, by = _e.y + Math.sin(a)*64;
+            var bx = _e.x + Math.cos(a)*bR, by = _e.y + Math.sin(a)*bR;
             if(Math.hypot(drone.X - bx, drone.Y - by) < 12 + HIT_CORE && mainScreen.canBeHit()) mainScreen.damage();
         }
 
@@ -641,6 +641,10 @@ var special = {
     //ブレードの数(協力プレイのゲストも同じ数え方)
     kaiBlades:function(_e){
         return KAI2_BLADES[_e.phase || 1] || 3;
+    },
+    //ブレードが回る半径(最終局面の試作でサビの間に大きくなる分を掛ける。finaleSync.js)
+    bladeR:function(_e){
+        return 64*(_e.fsScale || 1);
     },
     //(_x,_y)がレーザーに当たっているか(第二形態は何本も等間隔に出る)
     laserHit:function(_e,_x,_y){
@@ -1324,13 +1328,13 @@ var special = {
             ctx.stroke();
             ctx.lineWidth = 1;
         }
-        //ブレード(赤黒い刃が回る。倒れている間は出さない)
-        if(_e.mode == "down" || _e.mode == "revive") return;
-        var nB = this.kaiBlades(_e);
+        //ブレード(赤黒い刃が回る。倒れている間・最終局面の試作で奥にいる間は出さない)
+        if(_e.mode == "down" || _e.mode == "revive" || _e.mode == "fs") return;
+        var nB = this.kaiBlades(_e), bR = this.bladeR(_e);
         for(var k=0; k<nB; k++){
             var a = _e.bladeA + k*Math.PI*2/nB;
             ctx.save();
-            ctx.translate(_e.x + Math.cos(a)*64, _e.y + Math.sin(a)*64);
+            ctx.translate(_e.x + Math.cos(a)*bR, _e.y + Math.sin(a)*bR);
             ctx.rotate(a + _e.bladeA*3);
             ctx.fillStyle = _e.form == 2 ? "#5a1478" : "#7a1018";
             ctx.beginPath();
