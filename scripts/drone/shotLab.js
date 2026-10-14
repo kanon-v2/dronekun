@@ -212,11 +212,39 @@ SHOT_KINDS.shell    = { r:5 };      //花火の玉(光る頭と火の粉の尾)
 SHOT_KINDS.star     = { r:3.5 };    //花火の星(色は種類ごと。花雷ははじけると大きくなる)
 SHOT_KINDS.hoop     = { r:5 };      //立体の輪の弾(手前は水色に白い芯、奥は暗く小さい。奥の間 b.behind は当たらない)
 
+//---- 空戦(ドッグファイト)の試作：戦闘機 ----
+//戦闘機は機首の向き(e.fighter.ang)を持ち、曲がれる速さに限りがある。ドローン君の後ろ(動いてきた向きの逆)へ回り込もうとする。
+//ドローン君の向きは、動いた向きを覚えておく(止まっても変わらない。shotLab.head)
+const FIGHT_HP          = 10;       //体力(射撃する敵の体力に掛ける)
+const FIGHT_R           = 13;       //当たり判定(px)
+const FIGHT_TURN        = 0.05;     //曲がる速さ(ラジアン/フレーム)
+const FIGHT_SPEED       = [1,4.6];      //速さの下限・上限(px/フレーム。付きたい位置から遠いほど速い)
+const FIGHT_TAIL_DIST   = 130;      //ドローン君の後ろのどこへ付こうとするか(px)
+const FIGHT_RANGE       = 280;      //後ろを取る・ロックオンできる距離(px)
+const FIGHT_REAR        = 0.55;     //後ろとみなす角度(真後ろから左右へ。ラジアン)
+const FIGHT_NOSE        = 0.35;     //機首の前とみなす角度(左右へ。ラジアン)
+const FIGHT_GUN_EVERY   = 7;        //後ろを取った戦闘機が機銃を撃つ間隔(フレーム)
+const FIGHT_GUN_SPEED   = 4.2;      //機銃の弾の速さ(danmaku() を掛ける)
+const FIGHT_BACK_MUL    = 3;        //後ろの取り合い：後ろを取っている間、戦闘機へのダメージに掛ける
+const FIGHT_EVADE_AFTER = 45;       //後ろを取られ続けると、急旋回で振り切ろうとするまで(フレーム)
+const FIGHT_EVADE_T     = 50;       //急旋回の長さ(フレーム)
+const FIGHT_HEAD_TURN   = 0.15;     //ドローン君の向きが動いた向きへ寄る速さ(ラジアン/フレーム)
+const FIGHT_HEAD_MIN    = 1;        //この速さ(px/フレーム)より速く動いたときだけ向きを変える
+//ロックオン：機首(ドローン君は向き)の前に相手を入れ続けるとロックが完成する。外れるとロックが減っていく
+const LOCK_CONE         = 0.5;      //戦闘機がロックできる角度(機首から左右へ。ラジアン)
+const LOCK_CONE_PLAYER  = 0.6;      //ドローン君がロックできる角度(向きから左右へ。ラジアン。ドローン君は急に曲がれるぶん広め)
+const LOCK_ENEMY_T      = 75;       //戦闘機がドローン君をロックするまで(フレーム)
+const LOCK_PLAYER_T     = 50;       //ドローン君が戦闘機をロックするまで(フレーム)
+const LOCK_DECAY        = 1;        //外れている間にロックが減る速さ(1フレームあたり)
+const LOCK_MISSILES     = 2;        //戦闘機がロックしたときに撃つ追尾ミサイルの数
+const LOCK_STRIKE       = 0.34;     //ドローン君がロックしたときの一撃(戦闘機の最大体力に対する割合)
+const LOCK_COOL         = 60;       //撃ったあと、次のロックを始めるまで(フレーム)
+
 //デバッグの「攻撃の試作」
-const SHOT_LAB_WAVE = 7;            //弾の速さ・数はこのWAVEのもの(ボス・ライバルのWAVEは選ばない)
+const SHOT_LAB_WAVE = 7;           //弾の速さ・数はこのWAVEのもの(ボス・ライバルのWAVEは選ばない)
 const SHOT_LAB_SEC  = 7;            //1種類を出す秒数(自動で順番に切り替えるとき。選んだ攻撃もこの長さで繰り返す)
 const LAB_LIST_Y    = 84;           //左の一覧の上の端(px)
-const LAB_ROW_H     = 15;           //一覧の1行の高さ(px)
+const LAB_ROW_H     = 14;          //一覧の1行の高さ(px)
 const LAB_LIST_W    = 190;          //一覧の幅(px)
 
 var shotLab = {
@@ -248,7 +276,9 @@ var shotLab = {
         { id:"gate",   name:"障害物：すき間の壁", note:"壁のすき間を通る。端に挟まれると被弾。弾も壁で止まる" },
         { id:"drift",  name:"障害物：コンテナ", note:"流れるコンテナは押してくるが、弾を防ぐ盾にもなる" },
         { id:"nuke",   name:"核弾頭",       note:"落ちる所の範囲から逃げる。弾頭を撃ち落とせば爆発しない" },
-        { id:"intercept", name:"迎撃(能力)", note:"近づいた弾を撃ち落とす(1秒に" + INTERCEPT_PER_SEC + "発まで)。数で押し切る" }
+        { id:"intercept", name:"迎撃(能力)", note:"近づいた弾を撃ち落とす(1秒に" + INTERCEPT_PER_SEC + "発まで)。数で押し切る" },
+        { id:"tail",   name:"空戦：後ろの取り合い", note:"後ろを取るとダメージ" + FIGHT_BACK_MUL + "倍。取られると機銃を撃たれる" },
+        { id:"lock",   name:"空戦：ロックオン", note:"向きを合わせ続けるとロックして一撃。ロックされたら振り切る" }
     ],
     zones:[],       //範囲攻撃 { shape:"circle"|"band", x, y, r, w, h, t }
     buckets:[],     //バケツ { x, y, side, mode, t, tilt, pour, seq, drop }
@@ -265,6 +295,7 @@ var shotLab = {
     obstacles:[],   //障害物 { kind:"wall"|"crate", x, y, w, h, vx, edge, color, crushed }
     nukes:[],       //核弾頭 { e:弾頭の敵, x0, y0, tx, ty, t, mode:"launch"|"fall" }
     booms:[],       //核の爆発のあと { x, y, t }(衝撃波の輪・火の玉・きのこ雲・放射能の残り)
+    head:-Math.PI/2,    //空戦：ドローン君の向き(動いた向きを覚える。ラジアン)
 
     //試作の攻撃を全部消す(WAVEの始め・クリア・攻撃の試作で次の種類へ移るとき)
     clear:function(){
@@ -508,6 +539,24 @@ var shotLab = {
         enemies.push(e);
         return e;
     },
+    //空戦の戦闘機を出す(_kind："tail" 後ろの取り合い・"lock" ロックオン)
+    fighter:function(_kind,_x,_y){
+        var e = makeEnemy("shooter");
+        e.x = _x; e.y = _y; e.vx = 0; e.vy = 0;
+        e.r = FIGHT_R;
+        e.hp = e.maxHp = e.maxHp*FIGHT_HP;
+        e.score = 0; e.parts = 0;
+        e.lab = bossDebug.lab; e.labId = _kind;
+        e.fighter = { kind:_kind, ang:Math.atan2(CH/2 - _y, CW/2 - _x), spd:FIGHT_SPEED[1], trail:[],
+                      six:false, sixT:0, onSix:false, evade:0, evDir:1, gun:0,
+                      lock:0, beep:0, cool:0, pLock:0, pCool:0 };
+        enemies.push(e);
+        return e;
+    },
+    //2つの向きの差(0～π)
+    angGap:function(_a,_b){
+        return Math.abs(Math.atan2(Math.sin(_a - _b), Math.cos(_a - _b)));
+    },
     //手前を横切る影
     veilStart:function(){
         this.veil = { t:0, dir:Math.random() < 0.5 ? 1 : -1, y:CH*(0.35 + Math.random()*0.3) };
@@ -611,6 +660,7 @@ var shotLab = {
         for(var i=this.puddles.length-1; i>=0; i--){ if(++this.puddles[i].t >= PUDDLE_LIFE) this.puddles.splice(i,1); }
         this.depthStep();
         this.nukeStep();
+        if(drone.Speed > FIGHT_HEAD_MIN) this.head = turnTo(this.head, Math.atan2(drone.SpeedY, drone.SpeedX), FIGHT_HEAD_TURN);
     },
     //核弾頭：撃ち上げ → 上から落ちてくる → 着いたら爆発。撃ち落とされたら空中で砕ける
     nukeStep:function(){
@@ -801,6 +851,7 @@ var shotLab = {
     //敵ごとの試作の能力(mainScreen.updateEnemies から)。true ならその敵のふだんの動きをしない
     enemyStep:function(e){
         if(e.nuke) return true;     //核弾頭の動きは nukeStep
+        if(e.fighter) return this.fighterStep(e);
         if(e.intercept) this.interceptStep(e);
         if(e.dive) return this.diveStep(e);
         if(e.lab){
@@ -859,10 +910,100 @@ var shotLab = {
         }
         return true;
     },
+    //空戦の戦闘機：ドローン君の後ろへ回り込む。後ろを取られ続けると急旋回で振り切る(いつも true：ふだんの動きをしない)
+    fighterStep:function(e){
+        var F = e.fighter, ms = mainScreen, m = danmaku(), play = ms.state == "play";
+        var tg = nearestPlayer(e.x, e.y), h = this.head;
+        var toD = Math.atan2(tg.Y - e.y, tg.X - e.x), d = Math.hypot(tg.X - e.x, tg.Y - e.y);
+        //位置関係：戦闘機がドローン君の後ろで機首を向けている(onSix)／ドローン君が戦闘機の後ろにいる(six)
+        var onSix = d < FIGHT_RANGE && this.angGap(toD + Math.PI, h + Math.PI) < FIGHT_REAR && this.angGap(F.ang, toD) < FIGHT_NOSE;
+        var dd = Math.hypot(drone.X - e.x, drone.Y - e.y), fromE = Math.atan2(drone.Y - e.y, drone.X - e.x);
+        var six = dd < FIGHT_RANGE && this.angGap(fromE, F.ang + Math.PI) < FIGHT_REAR;
+        var tail = F.kind == "tail";
+        if(tail && six && !F.six){ popup(e.x, e.y - 26, "後ろを取った！", "#e0a800"); sound.play("comboUp"); this.labCount.six++; }
+        if(tail && onSix && !F.onSix && play){ popup(tg.X, tg.Y - 30, "後ろを取られた！", "#d33"); sound.play("error"); this.labCount.tailed++; }
+        F.six = six; F.onSix = onSix;
+        //後ろを取られ続けたら、左右どちらかへ急旋回して振り切る
+        F.sixT = six ? F.sixT + 1 : 0;
+        if(F.sixT >= FIGHT_EVADE_AFTER && F.evade <= 0){ F.evade = FIGHT_EVADE_T; F.evDir = Math.random() < 0.5 ? 1 : -1; F.sixT = 0; }
+        //行きたい向き：ドローン君の後ろ(FIGHT_TAIL_DIST)。着いたらドローン君へ機首を向ける
+        var goal, spd;
+        if(F.evade > 0){
+            F.evade--;
+            goal = F.ang + F.evDir*1.2;
+            spd = FIGHT_SPEED[1];
+        }else{
+            var px = tg.X - Math.cos(h)*FIGHT_TAIL_DIST, py = tg.Y - Math.sin(h)*FIGHT_TAIL_DIST;
+            var pd = Math.hypot(px - e.x, py - e.y);
+            goal = pd > 50 ? Math.atan2(py - e.y, px - e.x) : toD;
+            spd = Math.max(FIGHT_SPEED[0], Math.min(FIGHT_SPEED[1], pd*0.025 + drone.Speed));
+        }
+        //画面の端に近いと内側へ向き直る
+        var M = 50;
+        if(e.x < M || e.x > CW - M || e.y < M || e.y > CH - M) goal = turnTo(goal, Math.atan2(CH/2 - e.y, CW/2 - e.x), 0.9);
+        F.ang = turnTo(F.ang, goal, FIGHT_TURN*(F.evade > 0 ? 1.6 : 1));
+        F.spd += (spd - F.spd)*0.05;
+        var sp = 1;
+        if(e.slow > 0){ e.slow--; sp = 0.4; }       //EMP
+        e.vx = Math.cos(F.ang)*F.spd; e.vy = Math.sin(F.ang)*F.spd;
+        e.x += e.vx*sp; e.y += e.vy*sp;
+        e.face = F.ang;
+        F.trail.unshift({ x:e.x, y:e.y });
+        if(F.trail.length > 18) F.trail.pop();
+        var nx = e.x + Math.cos(F.ang)*e.r, ny = e.y + Math.sin(F.ang)*e.r;
+        if(tail){
+            //後ろの取り合い：後ろを取ったら機首の向きへ機銃
+            if(onSix && play && ++F.gun % FIGHT_GUN_EVERY == 0){
+                fireShot(nx, ny, F.ang + (Math.random() - 0.5)*0.08, FIGHT_GUN_SPEED*m, "small");
+                sound.play("enemyShot");
+            }
+            return true;
+        }
+        //ロックオン：戦闘機 → ドローン君(機首の前に入れ続ける)
+        if(F.cool > 0) F.cool--;
+        else if(d < FIGHT_RANGE && this.angGap(F.ang, toD) < LOCK_CONE && play){
+            F.lock++;
+            //警告音はロックが進むほど速くなる
+            if(--F.beep <= 0){ sound.play("mine"); F.beep = Math.round(18 - 13*F.lock/LOCK_ENEMY_T); }
+            if(F.lock >= LOCK_ENEMY_T){
+                for(var i=0; i<LOCK_MISSILES; i++){
+                    var a = F.ang + (i % 2 ? 1 : -1)*(0.5 + 0.2*Math.floor(i/2));
+                    enemyShots.push({ x:nx, y:ny, vx:Math.cos(a)*2.5, vy:Math.sin(a)*2.5, r:5, kind:"missile",
+                                      homing:true, turn:0.045, speed:3.6, life:170, grazed:false });
+                }
+                popup(tg.X, tg.Y - 30, "ミサイル！", "#d33", true);
+                sound.play("missile");
+                F.lock = 0; F.cool = LOCK_COOL;
+                this.labCount.locked++;
+            }
+        }else F.lock = Math.max(0, F.lock - LOCK_DECAY);
+        //ロックオン：ドローン君 → 戦闘機(向きの前に入れ続ける)。できたら一撃
+        if(F.pCool > 0) F.pCool--;
+        else if(dd < FIGHT_RANGE && this.angGap(h, fromE + Math.PI) < LOCK_CONE_PLAYER){
+            if(++F.pLock >= LOCK_PLAYER_T){
+                F.pLock = 0; F.pCool = LOCK_COOL;
+                this.labCount.lock++;
+                fx.line(drone.X, drone.Y, e.x, e.y, "110,210,255", 3, 12);
+                fx.flare(e.x, e.y, 40, "110,210,255", 14);
+                fx.shake(4);
+                popup(e.x, e.y - 28, "LOCK！", "#1a8fd0", true);
+                sound.play("snipe");
+                ms.hitEnemy(e, e.maxHp*LOCK_STRIKE, "skill");
+            }
+        }else F.pLock = Math.max(0, F.pLock - LOCK_DECAY);
+        return true;
+    },
+    //戦闘機へのダメージ(mainScreen.hitEnemy から)：後ろの取り合いで後ろを取っている間は FIGHT_BACK_MUL 倍
+    fighterHit:function(e,_dmg){
+        if(e.fighter.kind != "tail" || !e.fighter.six) return _dmg;
+        if(Math.random() < 0.3) fx.sparks(e.x, e.y, 3, "255,210,60", 2, 2);
+        return _dmg*FIGHT_BACK_MUL;
+    },
     //奥にいる敵を、消失点へ寄せて小さく薄く描く(mainScreen.drawEnemy から。描いたら true)
     //試作の敵の絵(mainScreen.drawEnemy から。描いたら true)
     drawEnemy:function(e){
         if(e.nuke){ this.drawWarhead(e); return true; }
+        if(e.fighter){ this.drawFighter(e); return true; }
         if(e.depth > 0) return this.drawDeepEnemy(e);
         return false;
     },
@@ -876,6 +1017,107 @@ var shotLab = {
         ctx.restore();
         ctx.globalAlpha = 1;
         return true;
+    },
+    //空戦の戦闘機：三角の翼の機体。飛行機雲と、後ろ(弱いところ)か機首の前(ロックされる範囲)を薄く出す
+    drawFighter:function(e){
+        var F = e.fighter, tail = F.kind == "tail";
+        //飛行機雲
+        ctx.lineCap = "round";
+        for(var i=1; i<F.trail.length; i++){
+            var A = F.trail[i - 1], B = F.trail[i], k = i/F.trail.length;
+            ctx.strokeStyle = "rgba(90,100,115," + (0.4*(1 - k)).toFixed(3) + ")";
+            ctx.lineWidth = 4 - 3*k;
+            ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+        }
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        var cone = tail ? [F.ang + Math.PI, FIGHT_REAR, 110, "240,180,0", F.six ? 0.24 : 0.08]
+                        : [F.ang, LOCK_CONE, FIGHT_RANGE, "230,50,40", 0.05 + 0.15*F.lock/LOCK_ENEMY_T];
+        ctx.fillStyle = "rgba(" + cone[3] + "," + cone[4].toFixed(3) + ")";
+        ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0, 0, cone[2], cone[0] - cone[1], cone[0] + cone[1]); ctx.closePath(); ctx.fill();
+        ctx.rotate(F.ang);
+        //噴射の炎(速いほど長い)。後ろを取られている間は噴射口が黄色く光る(弱いところ)
+        var fl = 6 + Math.sin(e.t*0.9)*2 + F.spd*1.3;
+        if(tail && F.six){
+            ctx.fillStyle = "rgba(255,215,50,0.35)";
+            ctx.beginPath(); ctx.arc(-13, 0, 10 + Math.sin(e.t*0.4)*2, 0, Math.PI*2); ctx.fill();
+        }
+        ctx.fillStyle = "rgba(255,140,40,0.9)";
+        ctx.beginPath(); ctx.moveTo(-12,-3.5); ctx.lineTo(-12 - fl,0); ctx.lineTo(-12,3.5); ctx.fill();
+        ctx.fillStyle = "rgba(255,240,170,0.95)";
+        ctx.beginPath(); ctx.moveTo(-12,-1.8); ctx.lineTo(-12 - fl*0.55,0); ctx.lineTo(-12,1.8); ctx.fill();
+        //機体(上半分の点を、下へ折り返してつなぐ)
+        var P = [[18,0],[5,-4],[-3,-15],[-10,-15],[-7,-5],[-11,-5],[-14,-10],[-17,-10],[-14,0]];
+        ctx.beginPath();
+        for(var i=0; i<P.length; i++) ctx.lineTo(P[i][0], P[i][1]);
+        for(var i=P.length - 2; i>0; i--) ctx.lineTo(P[i][0], -P[i][1]);
+        ctx.closePath();
+        ctx.lineJoin = "round";
+        ctx.strokeStyle = "#1d2128"; ctx.lineWidth = 3.5; ctx.stroke();
+        ctx.fillStyle = e.flash > 0 ? "#fff" : "#56606d"; ctx.fill();
+        //翼の先の赤いしるし
+        ctx.fillStyle = "#c8322a";
+        ctx.fillRect(-9.5,-14.5,5,2.5); ctx.fillRect(-9.5,12,5,2.5);
+        //操縦席
+        ctx.fillStyle = "#1d2128";
+        ctx.beginPath(); ctx.ellipse(6, 0, 5, 2.8, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "#e05a3a";
+        ctx.beginPath(); ctx.ellipse(6, 0, 3.6, 1.7, 0, 0, Math.PI*2); ctx.fill();
+        //ハイライトの線(機首から翼の前のふち)
+        ctx.strokeStyle = "rgba(255,255,255,0.45)"; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(15,-1); ctx.lineTo(5,-3); ctx.lineTo(-2,-12); ctx.stroke();
+        ctx.restore();
+        ctx.lineWidth = 1; ctx.lineCap = "butt";
+    },
+    //ロックオンの表示(弾の上に描く)：ドローン君の向きの矢印・自分のロック(水色の輪)・戦闘機のロック(赤いかぎ括弧)
+    drawLockUi:function(e){
+        var F = e.fighter, now = e.t;
+        if(F.kind != "lock") return;
+        ctx.lineJoin = "round";
+        var h = this.head;
+        ctx.save();
+        ctx.translate(drone.X + Math.cos(h)*32, drone.Y + Math.sin(h)*32);
+        ctx.rotate(h);
+        ctx.strokeStyle = "rgba(30,140,210,0.8)"; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(-4,-6); ctx.lineTo(3,0); ctx.lineTo(-4,6); ctx.stroke();
+        ctx.restore();
+        if(F.pLock > 0){
+            var k = F.pLock/LOCK_PLAYER_T, R = 30 - 8*k;
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = "rgba(30,150,220,0.3)";
+            ctx.beginPath(); ctx.arc(e.x, e.y, R, 0, Math.PI*2); ctx.stroke();
+            ctx.strokeStyle = "#1a8fd0";
+            ctx.beginPath(); ctx.arc(e.x, e.y, R, -Math.PI/2, -Math.PI/2 + Math.PI*2*k); ctx.stroke();
+            ctx.lineWidth = 2;
+            for(var i=0; i<4; i++){
+                var a = i*Math.PI/2 + now*0.05;
+                ctx.beginPath(); ctx.moveTo(e.x + Math.cos(a)*(R + 3), e.y + Math.sin(a)*(R + 3));
+                ctx.lineTo(e.x + Math.cos(a)*(R + 9), e.y + Math.sin(a)*(R + 9)); ctx.stroke();
+            }
+        }
+        if(F.lock > 0){
+            var k = F.lock/LOCK_ENEMY_T, s = 40 - 22*k;
+            //どこからロックされているか(戦闘機からの点線)
+            ctx.setLineDash([4,6]);
+            ctx.strokeStyle = "rgba(224,48,42,0.5)"; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(drone.X, drone.Y); ctx.stroke();
+            ctx.setLineDash([]);
+            //かぎ括弧は縮みながら近づき、もうすぐのときは点滅する
+            if(k < 0.7 || Math.floor(now/4) % 2 == 0){
+                ctx.strokeStyle = "#e0302a"; ctx.lineWidth = 2.5;
+                for(var sx=-1; sx<=1; sx+=2) for(var sy=-1; sy<=1; sy+=2){
+                    var cx = drone.X + sx*s, cy = drone.Y + sy*s;
+                    ctx.beginPath(); ctx.moveTo(cx - sx*9, cy); ctx.lineTo(cx, cy); ctx.lineTo(cx, cy - sy*9); ctx.stroke();
+                }
+            }
+            if(k > 0.25){
+                ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                ctx.font = "bold 12px sans-serif";
+                ctx.fillStyle = "#e0302a";
+                ctx.fillText("ロックされている！", drone.X, drone.Y - s - 12);
+            }
+        }
+        ctx.lineWidth = 1;
     },
     //迎撃：範囲に入ったドローン君の弾のうち、いちばん近いものを撃ち落とす(1秒に INTERCEPT_PER_SEC 発まで)
     //  I.range・I.per で範囲・1秒の数を変えられる。I.color は線の色、I.quiet なら範囲の輪と砲身を描かない(ライバル)
@@ -2207,6 +2449,7 @@ var shotLab = {
         this.drawStorm();
         this.drawNukeOver();
         for(var i=0; i<enemies.length; i++){
+            if(enemies[i].fighter && !enemies[i].dead) this.drawLockUi(enemies[i]);
             if(enemies[i].intercept && !enemies[i].dead && !enemies[i].intercept.quiet) this.drawIntercept(enemies[i]);
         }
         for(var i=0; i<this.buckets.length; i++){
@@ -2246,6 +2489,7 @@ var shotLab = {
     labStart:function(){
         this.labT = Math.max(0, this.labPick)*SHOT_LAB_SEC*60;
         this.labX = CW/2;
+        this.labCount = { six:0, tailed:0, lock:0, locked:0 };
     },
     //一覧の行(0番目は「自動で順番に」、そのあとに攻撃が並ぶ)
     labRows:function(){
@@ -2271,6 +2515,7 @@ var shotLab = {
         this.labT = (r.i >= 0 ? r.i : cur)*SHOT_LAB_SEC*60;
         enemyShots = [];
         this.clear();
+        this.labCount = { six:0, tailed:0, lock:0, locked:0 };
         sound.play("click");
         return true;
     },
@@ -2380,6 +2625,13 @@ var shotLab = {
                 if(T == 40) this.nuke(x, y);
                 if(T > 90 && T < 280 && T % 45 == 0){ fireFan(x, y, aim, 3, 0.3, 2.2*m, "normal"); shot = true; }
                 break;
+            case "tail":
+            case "lock":
+                //砲台の代わりに戦闘機が1機。撃ち落とされたら、少しして画面の左右の端から次が来る
+                if(!enemies.some(function(e){ return e.labId == id; }) && T % 60 == 0){
+                    this.fighter(id, Math.random() < 0.5 ? -20 : CW + 20, 80 + Math.random()*(CH - 180));
+                }
+                break;
             case "intercept":
                 //砲台の代わりに、迎撃する的を置く(撃たない。ドローン君の弾を撃ち落とす)
                 if(!enemies.some(function(e){ return e.labId == "intercept"; })){
@@ -2397,16 +2649,20 @@ var shotLab = {
     },
     labHits:0,      //迎撃の試作：的に当たった数
     labShot:0,      //迎撃の試作：撃ち落とした数
+    labCount:{ six:0, tailed:0, lock:0, locked:0 },     //空戦の試作：後ろを取った・取られた・ロックした・ロックされた回数
     //砲台と、弾の名前の一覧(bossDebug.drawTag から)
     drawLab:function(){
         var x = this.labX, y = 70;
         var cur = this.labIndex();
-        if(this.list[cur].id == "intercept"){
-            //迎撃：砲台の代わりに的がいる。撃ち落とした数と当たった数
+        var curId = this.list[cur].id, C = this.labCount;
+        if(curId == "intercept" || curId == "tail" || curId == "lock"){
+            //迎撃：砲台の代わりに的がいる。撃ち落とした数と当たった数。空戦：砲台の代わりに戦闘機。取った・取られた回数
             ctx.textAlign = "center";
             ctx.font = "bold 13px sans-serif";
             ctx.fillStyle = "#c33";
-            ctx.fillText("撃ち落とした " + this.labShot + "　当たった " + this.labHits, CW/2, 42);
+            ctx.fillText(curId == "intercept" ? "撃ち落とした " + this.labShot + "　当たった " + this.labHits :
+                         curId == "tail" ? "後ろを取った " + C.six + "　取られた " + C.tailed :
+                         "ロックした " + C.lock + "　ロックされた " + C.locked, CW/2, 42);
         }else{
             ctx.fillStyle = "#334";
             ctx.beginPath(); ctx.arc(x,y,14,0,Math.PI*2); ctx.fill();

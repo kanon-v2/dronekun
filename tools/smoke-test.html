@@ -353,6 +353,39 @@ try{
           pushed && blocked && crushed && wallGone && gapOk && errors.length == lerr,
           "押し出す" + pushed + " 弾を止める" + blocked + " 挟まれる" + crushed + " 通り過ぎる" + wallGone + " すき間" + gapOk);
 
+    // 空戦の戦闘機：後ろを取られると機銃を撃たれ、後ろを取るとダメージが増える。ロックオンはミサイル・一撃になる
+    lerr = errors.length;
+    enemyShots = []; enemies = []; popups = []; mainScreen.invincible = 99;
+    drone.X = 480; drone.Y = 270; drone.Speed = 0; shotLab.head = 0;     //右を向いて止まっている
+    var stP = mainScreen.state; mainScreen.state = "play";
+    var fg = shotLab.fighter("tail", 380, 270); fg.fighter.ang = 0;      //真後ろから機首を向ける
+    for(var i=0; i<FIGHT_GUN_EVERY*3; i++){ mainScreen.updateEnemies(); fg.x = 380; fg.y = 270; fg.fighter.ang = 0; }
+    var gunOk = enemyShots.filter(function(b){ return b.kind == "small"; }).length >= 2 && popups.some(function(p){ return p.text == "後ろを取られた！"; });
+    enemies = []; enemyShots = [];
+    var fBack = shotLab.fighter("tail", 580, 270), fFront = shotLab.fighter("tail", 580, 270);
+    fBack.fighter.ang = 0; fFront.fighter.ang = Math.PI;    //前を向いて逃げる機体(ドローン君は真後ろ)と、こちらを向く機体
+    mainScreen.updateEnemies();
+    var hb = fBack.hp, hf = fFront.hp;
+    mainScreen.hitEnemy(fBack, 2); mainScreen.hitEnemy(fFront, 2);
+    var backMul = (hb - fBack.hp)/(hf - fFront.hp), backOk = Math.abs(backMul - FIGHT_BACK_MUL) < 0.01;
+    draw1();
+    enemies = []; enemyShots = [];
+    var fl = shotLab.fighter("lock", 250, 270), missileN = 0;
+    for(var i=0; i<LOCK_ENEMY_T + 2; i++){
+        mainScreen.updateEnemies(); fl.x = 250; fl.y = 270; fl.fighter.ang = 0;
+        if(i == 60) draw1();
+    }
+    missileN = enemyShots.filter(function(b){ return b.kind == "missile" && b.homing; }).length;
+    enemies = []; enemyShots = [];
+    var fp = shotLab.fighter("lock", 650, 270);
+    for(var i=0; i<LOCK_PLAYER_T + 2; i++){ mainScreen.updateEnemies(); fp.x = 650; fp.y = 270; fp.fighter.ang = 0; }
+    var strikeOk = fp.hp <= fp.maxHp*(1 - LOCK_STRIKE) + 0.01 && fp.hp > 0;
+    mainScreen.state = stP; mainScreen.invincible = 0;
+    enemies = []; enemyShots = []; popups = [];
+    check("空戦の試作：後ろを取った戦闘機は機銃を撃つ。後ろを取るとダメージが" + FIGHT_BACK_MUL + "倍。ロックされるとミサイル、ロックすると一撃",
+          gunOk && backOk && missileN == LOCK_MISSILES && strikeOk && errors.length == lerr,
+          "機銃" + gunOk + " 倍率" + backMul.toFixed(2) + " ミサイル" + missileN + " 一撃" + strikeOk + "(" + fp.hp.toFixed(1) + "/" + fp.maxHp.toFixed(1) + ")" + (errors.length > lerr ? " " + errors.slice(lerr).join(" / ") : ""));
+
     // デバッグの「攻撃の試作」：砲台が全種類を順に出し、無敵。戻るとメニューへ
     save.clearAll(); game.reset();
     lerr = errors.length;
@@ -375,6 +408,7 @@ try{
         if(shotLab.splats.length) labKinds.glass = true;
         shotLab.obstacles.forEach(function(o){ labKinds[o.kind == "wall" ? "gate" : "drift"] = true; });
         if(shotLab.nukes.length) labKinds.nuke = true;
+        enemies.forEach(function(e){ if(e.fighter) labKinds[e.fighter.kind] = true; });
         if(lf % 10 == 0) draw1();
     }
     var labAll = shotLab.list.every(function(L){ return labKinds[L.id]; });
