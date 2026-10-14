@@ -386,6 +386,57 @@ try{
           gunOk && backOk && missileN == LOCK_MISSILES && strikeOk && errors.length == lerr,
           "機銃" + gunOk + " 倍率" + backMul.toFixed(2) + " ミサイル" + missileN + " 一撃" + strikeOk + "(" + fp.hp.toFixed(1) + "/" + fp.maxHp.toFixed(1) + ")" + (errors.length > lerr ? " " + errors.slice(lerr).join(" / ") : ""));
 
+    // マウスに付いていく動きの試作：投げなわ(輪で囲むと殻の敵が倒れ、弾が消える)・風・鏡・クモの糸
+    lerr = errors.length;
+    enemyShots = []; enemies = []; popups = []; shotLab.clear();
+    var stM = mainScreen.state; mainScreen.state = "play"; mainScreen.invincible = 99;
+    var sh = shotLab.shellEnemy(480); sh.x = 480; sh.y = 300;
+    mainScreen.hitEnemy(sh, 999, "gun");
+    var shellBlock = !sh.dead && sh.hp == sh.maxHp;     //ふつうの攻撃は殻で防ぐ
+    fireFan(500, 290, 0, 1, 0, 0, "normal");     //止まった弾(輪の中)
+    shotLab.lasso = { pts:[], flashes:[], t:0 };
+    for(var i=0; i<=52; i++){
+        var a = i/48*Math.PI*2;     //少し行き過ぎて、はじめの跡と交わる
+        drone.X = 480 + Math.cos(a)*90; drone.Y = 300 + Math.sin(a)*90;
+        shotLab.lassoStep();
+    }
+    var lassoOk = sh.dead && enemyShots.length == 0 && shotLab.labCount.caught >= 1 && shotLab.lasso.flashes.length == 1;
+    draw1();
+    // 小さな揺れでは閉じない
+    shotLab.lasso = { pts:[], flashes:[], t:0 };
+    for(var i=0; i<40; i++){ drone.X = 300 + (i % 2)*8; drone.Y = 300 + (i % 3)*8; shotLab.lassoStep(); }
+    var lassoSmall = shotLab.lasso.flashes.length == 0;
+    // 風：ポインタをドローン君に重ねても、風下へ流される
+    var wob0 = drone.wobble; drone.wobble = 0;     //ふらつきで結果が揺れないように
+    var follow = function(n){ for(var i=0; i<n; i++){ shotLab.fieldStep(); drone.calcXY(); } };
+    drone.X = 480; drone.Y = 270; MouseX = 480; MouseY = 270;
+    shotLab.field = { kind:"wind", t:WIND_TIMES.calm + WIND_TIMES.warn, k:1, ang:0, warn:false, ph:0 };
+    follow(30);
+    var windOk = drone.X > 490;
+    shotLab.field.t = 0;
+    // 鏡：円の中でポインタを右に置くと、左へ進む
+    drone.X = 480; drone.Y = 270; MouseX = 600; MouseY = 270;
+    shotLab.field = { kind:"mirror", t:0, inside:null, gx:0, gy:0, circles:[{ x:480, y:270, vx:0 }] };
+    follow(10);
+    var mirrorOk = drone.X < 475;
+    draw1();
+    // クモの糸：巣の中では遅く、ポインタを振るとほどける
+    drone.X = 480; drone.Y = 270; MouseX = 480; MouseY = 270;
+    shotLab.field = { kind:"web", t:0, webs:[], stuck:null };
+    var wb = shotLab.web(480, 70, 480, 270);
+    follow(WEB_FLY + WEB_OPEN);
+    MouseX = 700; follow(5);
+    var webMove = drone.X - 480, webSlow = webMove < (700 - 480)*5/(drone.delay + 1)*0.5;
+    for(var i=0; i<200 && shotLab.field.webs.length; i++){ MouseX = i % 2 ? 380 : 580; follow(1); }
+    var webTorn = shotLab.field.webs.length == 0 && shotLab.labCount.torn >= 1;
+    draw1();
+    shotLab.clear(); enemies = []; enemyShots = []; popups = [];
+    mainScreen.state = stM; mainScreen.invincible = 0; drone.wobble = wob0;
+    drone.X = CW/2; drone.Y = CH/2; MouseX = drone.X; MouseY = drone.Y;
+    check("マウスの試作：殻の敵は投げなわでしか倒れず、輪で囲むと弾も消える。風で流れ、鏡で左右が逆になり、クモの糸は振るとほどける",
+          shellBlock && lassoOk && lassoSmall && windOk && mirrorOk && webSlow && webTorn && errors.length == lerr,
+          "殻" + shellBlock + " 輪" + lassoOk + " 小さい揺れ" + lassoSmall + " 風" + windOk + " 鏡" + mirrorOk + " 糸で遅い" + webSlow + "(" + webMove.toFixed(1) + "/" + drone.delay + ")" + " ほどける" + webTorn + (errors.length > lerr ? " " + errors.slice(lerr).join(" / ") : ""));
+
     // デバッグの「攻撃の試作」：砲台が全種類を順に出し、無敵。戻るとメニューへ
     save.clearAll(); game.reset();
     lerr = errors.length;
@@ -409,6 +460,9 @@ try{
         shotLab.obstacles.forEach(function(o){ labKinds[o.kind == "wall" ? "gate" : "drift"] = true; });
         if(shotLab.nukes.length) labKinds.nuke = true;
         enemies.forEach(function(e){ if(e.fighter) labKinds[e.fighter.kind] = true; });
+        if(enemies.some(function(e){ return e.shell; }) && shotLab.lasso) labKinds.lasso = true;
+        if(shotLab.ptr && shotLab.ptr.n > 0) labKinds.ptraim = true;
+        if(shotLab.field) labKinds[shotLab.field.kind] = true;
         if(lf % 10 == 0) draw1();
     }
     var labAll = shotLab.list.every(function(L){ return labKinds[L.id]; });

@@ -1044,9 +1044,14 @@ var drone = {
         var d = this.slow ? this.delay*3 : this.delay;
 
         this.preX = this.X;
-        this.X = (tx + d * this.X) / (d+1);
-
         this.preY = this.Y;
+        //試作の場(風・鏡・クモの糸)が、目標と追従の遅れを変える(shotLab.js)
+        if(page.number == 1){
+            var T = { x:tx, y:ty, d:d };
+            shotLab.steer(this, T);
+            tx = T.x; ty = T.y; d = T.d;
+        }
+        this.X = (tx + d * this.X) / (d+1);
         this.Y = (ty + d * this.Y) / (d+1);
 
         //画面の外には出ない。天蓋母艦(bosses.js)がいる間は、船体の下までしか上がれない

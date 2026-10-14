@@ -1148,6 +1148,7 @@ var mainScreen = {
         if(_e.dead) return;
         if((_e.boss && _e.harmless) || _e.phased) return;     //倒れて復活している間のドローン君改(bosses.js の special.revive)・ワープ中のライバルと分身(rival.js)
         if(_e.fighter) _dmg = shotLab.fighterHit(_e,_dmg);  //空戦の試作：後ろを取っていると大きく効く(shotLab.js)
+        if(_e.shell && shotLab.shellHit(_e,_src)) return;   //殻の敵：投げなわでしか倒せない(shotLab.js)
         bossDebug.dealt(_e,_dmg);
         _e.hp -= _dmg;
         _e.flash = 6;

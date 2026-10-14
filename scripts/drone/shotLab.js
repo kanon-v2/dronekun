@@ -239,13 +239,42 @@ const LOCK_DECAY        = 1;        //外れている間にロックが減る速
 const LOCK_MISSILES     = 2;        //戦闘機がロックしたときに撃つ追尾ミサイルの数
 const LOCK_STRIKE       = 0.34;     //ドローン君がロックしたときの一撃(戦闘機の最大体力に対する割合)
 const LOCK_COOL         = 60;       //撃ったあと、次のロックを始めるまで(フレーム)
+//投げなわ：ドローン君の通った跡が交わって輪になったら、輪の中の敵・弾をまとめて攻撃する
+const LASSO_STEP        = 6;        //跡の点を足す間隔(px)
+const LASSO_LIFE        = 180;      //跡が残る長さ(フレーム。追従が遅くても輪を描ききれる長さ)
+const LASSO_MIN_AREA    = 2500;     //輪と数えるいちばん小さい広さ(px²。小さな揺れで閉じないように)
+const LASSO_DMG         = 0.5;      //輪で囲んだ敵へのダメージ(最大体力に対する割合。殻の敵は1回で倒れる)
+const LASSO_FLASH       = 30;       //閉じた輪が光って消えるまで(フレーム)
+const SHELL_N           = 4;        //攻撃の試作で出す殻の敵の数(殻があって、ふつうの弾では倒せない)
+const SHELL_SPEED       = 0.9;      //殻の敵の速さ(px/フレーム)
+//ポインタ狙い：ドローン君ではなく、ポインタ(これから行く所)を撃つ
+const PTR_EVERY         = 40;       //扇を撃つ間隔(フレーム)
+const PTR_SNIPE_EVERY   = 3;        //この回数に1回は、照準の線でポインタを追ってから針弾で狙い撃つ
+const PTR_SNIPE_T       = 45;       //照準の線を出してから撃つまで(フレーム)
+//場：風。ドローン君(と敵の弾)が流される。ポインタを風上へずらして合わせる
+const WIND_PUSH         = 2.2;      //いちばん強いときにドローン君が流される速さ(px/フレーム)
+const WIND_SHOT_PUSH    = 0.6;      //敵の弾が流される速さ(px/フレーム)
+const WIND_TIMES        = { calm:50, warn:50, blow:170 };   //なぎ → 予告(向きの矢印) → 吹く(フレーム)
+const WIND_RAMP         = 0.04;     //風の強さが変わる速さ(1フレームあたり)
+//場：鏡。円の中では左右が逆に付いていく(ポインタを左へ置くと右へ進む)
+const MIRROR_R          = 115;      //円の半径(px)
+const MIRROR_SPEED      = 0.7;      //円が流れる速さ(px/フレーム)
+//場：クモの糸。投げられた糸が開いて巣になる。巣の中では遅くなり、ポインタを激しく振るとほどける
+const WEB_R             = 70;       //巣の半径(px)
+const WEB_FLY           = 45;       //糸の玉が飛んで着くまで(フレーム)
+const WEB_OPEN          = 12;       //巣が開くまで(フレーム)
+const WEB_LIFE          = 480;      //巣が残る長さ(フレーム)
+const WEB_SLOW          = 8;        //巣の中では追従の遅れがこの倍になる
+const WEB_HP            = 1400;     //ほどくのに要るポインタの動き(px の合計)
+const WEB_EVERY         = 100;      //糸を投げる間隔(フレーム)
 
 //デバッグの「攻撃の試作」
 const SHOT_LAB_WAVE = 7;           //弾の速さ・数はこのWAVEのもの(ボス・ライバルのWAVEは選ばない)
 const SHOT_LAB_SEC  = 7;            //1種類を出す秒数(自動で順番に切り替えるとき。選んだ攻撃もこの長さで繰り返す)
 const LAB_LIST_Y    = 84;           //左の一覧の上の端(px)
 const LAB_ROW_H     = 14;          //一覧の1行の高さ(px)
-const LAB_LIST_W    = 190;          //一覧の幅(px)
+const LAB_LIST_W    = 150;          //一覧の1列の幅(px)
+const LAB_COL_ROWS  = 18;           //一覧の1列の行の数(あふれたら右の列へ)
 
 var shotLab = {
     //種類ごとの名前・撃ち方(デバッグの「攻撃の試作」の砲台が使う。敵に持たせるときの見本にもなる)
@@ -278,7 +307,12 @@ var shotLab = {
         { id:"nuke",   name:"核弾頭",       note:"落ちる所の範囲から逃げる。弾頭を撃ち落とせば爆発しない" },
         { id:"intercept", name:"迎撃(能力)", note:"近づいた弾を撃ち落とす(1秒に" + INTERCEPT_PER_SEC + "発まで)。数で押し切る" },
         { id:"tail",   name:"空戦：後ろの取り合い", note:"後ろを取るとダメージ" + FIGHT_BACK_MUL + "倍。取られると機銃を撃たれる" },
-        { id:"lock",   name:"空戦：ロックオン", note:"向きを合わせ続けるとロックして一撃。ロックされたら振り切る" }
+        { id:"lock",   name:"空戦：ロックオン", note:"向きを合わせ続けるとロックして一撃。ロックされたら振り切る" },
+        { id:"lasso",  name:"投げなわ",     note:"通った跡で輪を作ると、中の敵・弾をまとめて攻撃。殻の敵は輪でしか倒せない" },
+        { id:"ptraim", name:"ポインタ狙い", note:"ポインタ(これから行く所)を撃つ。ポインタを逆へ振ってだます" },
+        { id:"wind",   name:"場：風",       note:"風に流される。ポインタを風上へずらして合わせる" },
+        { id:"mirror", name:"場：鏡",       note:"紫の円の中では、左右が逆に付いていく" },
+        { id:"web",    name:"場：クモの糸", note:"巣に掛かると遅くなる。ポインタを激しく振るとほどける" }
     ],
     zones:[],       //範囲攻撃 { shape:"circle"|"band", x, y, r, w, h, t }
     buckets:[],     //バケツ { x, y, side, mode, t, tilt, pour, seq, drop }
@@ -296,6 +330,10 @@ var shotLab = {
     nukes:[],       //核弾頭 { e:弾頭の敵, x0, y0, tx, ty, t, mode:"launch"|"fall" }
     booms:[],       //核の爆発のあと { x, y, t }(衝撃波の輪・火の玉・きのこ雲・放射能の残り)
     head:-Math.PI/2,    //空戦：ドローン君の向き(動いた向きを覚える。ラジアン)
+    lasso:null,     //投げなわ { pts:[{x,y,t}], flashes:[{poly,t}] }(攻撃の試作で使う間だけ)
+    ptr:null,       //ポインタ狙い { n:撃った回数, snipe:照準の線の残り(0 なら出ていない), ax, ay:照準の先 }
+    field:null,     //付いていく動きを邪魔する場 { kind:"wind"|"mirror"|"web", t, … }
+    mouse:null,     //前のフレームのポインタの位置(クモの糸をほどく動きを数える)
 
     //試作の攻撃を全部消す(WAVEの始め・クリア・攻撃の試作で次の種類へ移るとき)
     clear:function(){
@@ -308,6 +346,7 @@ var shotLab = {
         this.obstacles = [];
         for(var i=0; i<this.nukes.length; i++) this.nukes[i].e.dead = true;     //落ちている途中の弾頭(敵)も消す
         this.nukes = []; this.booms = [];
+        this.lasso = null; this.ptr = null; this.field = null;
     },
     //すき間の壁を出す(_dir：1 は左から右へ、-1 は右から左へ。_gapY：すき間のまんなか)
     wall:function(_dir,_gapY){
@@ -660,6 +699,8 @@ var shotLab = {
         for(var i=this.puddles.length-1; i>=0; i--){ if(++this.puddles[i].t >= PUDDLE_LIFE) this.puddles.splice(i,1); }
         this.depthStep();
         this.nukeStep();
+        this.lassoStep();
+        this.fieldStep();
         if(drone.Speed > FIGHT_HEAD_MIN) this.head = turnTo(this.head, Math.atan2(drone.SpeedY, drone.SpeedX), FIGHT_HEAD_TURN);
     },
     //核弾頭：撃ち上げ → 上から落ちてくる → 着いたら爆発。撃ち落とされたら空中で砕ける
@@ -852,6 +893,7 @@ var shotLab = {
     enemyStep:function(e){
         if(e.nuke) return true;     //核弾頭の動きは nukeStep
         if(e.fighter) return this.fighterStep(e);
+        if(e.shell) return this.shellStep(e);
         if(e.intercept) this.interceptStep(e);
         if(e.dive) return this.diveStep(e);
         if(e.lab){
@@ -1593,6 +1635,7 @@ var shotLab = {
         }
         this.drawDepthUnder();
         this.drawNukeUnder();
+        this.drawMouseUnder();
         //床に落ちた雨粒：じゅっと泡立って煙が上がる
         for(var i=0; i<this.puddles.length; i++){
             var P = this.puddles[i], k = P.t/PUDDLE_LIFE;
@@ -2448,6 +2491,7 @@ var shotLab = {
     drawOver:function(){
         this.drawStorm();
         this.drawNukeOver();
+        this.drawMouseOver();
         for(var i=0; i<enemies.length; i++){
             if(enemies[i].fighter && !enemies[i].dead) this.drawLockUi(enemies[i]);
             if(enemies[i].intercept && !enemies[i].dead && !enemies[i].intercept.quiet) this.drawIntercept(enemies[i]);
@@ -2477,6 +2521,386 @@ var shotLab = {
         }
     },
 
+    //---- マウスに付いていく動きを使う試作(投げなわ・ポインタ狙い・付いていく動きを邪魔する場) ----
+    //場に合わせて、ドローン君の目標(T.x, T.y)と追従の遅れ(T.d)を変える(drone.calcXY から)
+    steer:function(d,T){
+        var F = this.field;
+        if(!F || mainScreen.state == "over") return;
+        if(F.kind == "wind"){
+            //流される(ポインタとのずれが広がる)
+            d.X += Math.cos(F.ang)*F.k*WIND_PUSH;
+            d.Y += Math.sin(F.ang)*F.k*WIND_PUSH;
+        }else if(F.kind == "mirror"){
+            //円の中では、目標をドローン君をはさんだ左右反対へ置く(ポインタと逆へ進む)
+            F.inside = this.mirrorAt(d.X, d.Y);
+            if(F.inside) T.x = 2*d.X - T.x;
+            F.gx = T.x; F.gy = T.y;
+        }else if(F.kind == "web"){
+            var w = this.webAt(d.X, d.Y);
+            if(w && !F.stuck){ popup(d.X, d.Y - 30, "糸に掛かった！", "#666"); sound.play("block"); }
+            F.stuck = w;
+            if(w) T.d = T.d*WEB_SLOW;
+        }
+    },
+    mirrorAt:function(_x,_y){
+        var C = this.field.circles;
+        for(var i=0; i<C.length; i++){ if(Math.hypot(_x - C[i].x, _y - C[i].y) < MIRROR_R) return C[i]; }
+        return null;
+    },
+    webAt:function(_x,_y){
+        var W = this.field.webs;
+        for(var i=0; i<W.length; i++){
+            var w = W[i];
+            if(w.t >= WEB_FLY && Math.hypot(_x - w.x, _y - w.y) < WEB_R*this.webOpen(w)) return w;
+        }
+        return null;
+    },
+    //巣の開き具合(0～1)
+    webOpen:function(w){
+        return Math.max(0, Math.min(1, (w.t - WEB_FLY)/WEB_OPEN));
+    },
+    //場を動かす(update から)
+    fieldStep:function(){
+        var F = this.field;
+        var mv = this.mouse ? Math.hypot(MouseX - this.mouse.x, MouseY - this.mouse.y) : 0;
+        this.mouse = { x:MouseX, y:MouseY };
+        if(!F) return;
+        F.t++;
+        if(F.kind == "wind"){
+            //なぎ → 予告(向きの矢印) → 吹く、をくり返す
+            var W = WIND_TIMES, p = F.t % (W.calm + W.warn + W.blow);
+            if(p == W.calm){
+                var dirs = [0, Math.PI, Math.PI/2, -Math.PI/2, Math.PI*0.25, Math.PI*0.75];
+                F.ang = dirs[Math.floor(Math.random()*dirs.length)];
+                F.warn = true;
+            }
+            if(p == W.calm + W.warn){ F.warn = false; sound.play("steam"); }
+            var blowing = p >= W.calm + W.warn;
+            F.k = Math.max(0, Math.min(1, F.k + (blowing ? WIND_RAMP : -WIND_RAMP)));
+            F.ph += F.k*9;
+            //敵の弾も流される
+            var px = Math.cos(F.ang)*F.k*WIND_SHOT_PUSH, py = Math.sin(F.ang)*F.k*WIND_SHOT_PUSH;
+            for(var i=0; i<enemyShots.length; i++){ enemyShots[i].x += px; enemyShots[i].y += py; }
+        }else if(F.kind == "mirror"){
+            //円は左右へゆっくり流れ、画面の端で折り返す
+            for(var i=0; i<F.circles.length; i++){
+                var c = F.circles[i];
+                c.x += c.vx;
+                if((c.x < MIRROR_R + 20 && c.vx < 0) || (c.x > CW - MIRROR_R - 20 && c.vx > 0)) c.vx = -c.vx;
+            }
+        }else if(F.kind == "web"){
+            for(var i=F.webs.length-1; i>=0; i--){
+                var w = F.webs[i];
+                w.t++;
+                if(w.t == WEB_FLY){ fx.ring(w.x, w.y, WEB_R, "235,235,245", 14, 2); sound.play("water"); }
+                if(w.t >= WEB_FLY + WEB_LIFE){ F.webs.splice(i,1); continue; }
+                //掛かっている巣は、ポインタを動かした分だけほどける
+                if(F.stuck == w){
+                    w.hp -= mv;
+                    w.shake = Math.min(6, mv*0.15);
+                    if(w.hp <= 0){
+                        fx.sparks(w.x, w.y, 18, "235,235,245", 6, 2.5);
+                        popup(drone.X, drone.Y - 30, "ほどけた！", "#4a8");
+                        sound.play("shatter");
+                        F.webs.splice(i,1);
+                        F.stuck = null;
+                        this.labCount.torn++;
+                    }
+                }else w.shake = 0;
+            }
+        }
+    },
+    //クモの糸を投げる(_x,_y から、_tx,_ty へ)
+    web:function(_x,_y,_tx,_ty){
+        var w = { x0:_x, y0:_y, x:Math.max(40, Math.min(CW - 40, _tx)), y:Math.max(40, Math.min(CH - 40, _ty)), t:0, hp:WEB_HP, shake:0 };
+        this.field.webs.push(w);
+        return w;
+    },
+
+    //投げなわ：ドローン君の跡を覚え、交わって輪になったら閉じる(update から)
+    lassoStep:function(){
+        var L = this.lasso;
+        if(!L) return;
+        L.t++;
+        for(var i=L.flashes.length-1; i>=0; i--){ if(++L.flashes[i].t >= LASSO_FLASH) L.flashes.splice(i,1); }
+        var P = L.pts;
+        while(P.length && L.t - P[0].t > LASSO_LIFE) P.shift();
+        var last = P[P.length - 1];
+        if(last && Math.hypot(drone.X - last.x, drone.Y - last.y) < LASSO_STEP) return;
+        var np = { x:drone.X, y:drone.Y, t:L.t };
+        if(last){
+            //新しい線が古い線と交わったら輪ができた。新しいほうから調べ、小さすぎる輪は飛ばす
+            for(var i=P.length-3; i>=0; i--){
+                var I = this.segCross(P[i], P[i+1], last, np);
+                if(!I) continue;
+                var poly = [I].concat(P.slice(i+1));
+                if(Math.abs(this.polyArea(poly)) < LASSO_MIN_AREA) continue;
+                this.lassoClose(poly);
+                L.pts = [np];
+                return;
+            }
+        }
+        P.push(np);
+    },
+    //2つの線分(a-b と c-d)の交わる点(交わらなければ null)
+    segCross:function(a,b,c,d){
+        var rx = b.x - a.x, ry = b.y - a.y, sx = d.x - c.x, sy = d.y - c.y;
+        var den = rx*sy - ry*sx;
+        if(Math.abs(den) < 1e-9) return null;
+        var u = ((c.x - a.x)*sy - (c.y - a.y)*sx)/den, v = ((c.x - a.x)*ry - (c.y - a.y)*rx)/den;
+        if(u < 0 || u > 1 || v < 0 || v > 1) return null;
+        return { x:a.x + rx*u, y:a.y + ry*u };
+    },
+    polyArea:function(poly){
+        var s = 0;
+        for(var i=0; i<poly.length; i++){ var a = poly[i], b = poly[(i + 1) % poly.length]; s += a.x*b.y - b.x*a.y; }
+        return s/2;
+    },
+    inPoly:function(poly,_x,_y){
+        var inside = false;
+        for(var i=0, j=poly.length-1; i<poly.length; j=i++){
+            var a = poly[i], b = poly[j];
+            if((a.y > _y) != (b.y > _y) && _x < (b.x - a.x)*(_y - a.y)/(b.y - a.y) + a.x) inside = !inside;
+        }
+        return inside;
+    },
+    //輪を閉じた：中の敵にダメージ(殻の敵は倒れる)、中の弾は消える
+    lassoClose:function(poly){
+        var nE = 0, nB = 0, cx = 0, cy = 0;
+        for(var i=0; i<poly.length; i++){ cx += poly[i].x/poly.length; cy += poly[i].y/poly.length; }
+        for(var i=0; i<enemies.length; i++){
+            var e = enemies[i];
+            if(e.dead || e.phased || !this.inPoly(poly, e.x, e.y)) continue;
+            fx.sparks(e.x, e.y, 12, "255,214,90", 6, 2.5);
+            mainScreen.hitEnemy(e, e.shell ? e.maxHp : e.maxHp*LASSO_DMG, "lasso");
+            nE++;
+        }
+        for(var i=enemyShots.length-1; i>=0; i--){
+            var b = enemyShots[i];
+            if(b.behind || !this.inPoly(poly, b.x, b.y)) continue;
+            fx.sparks(b.x, b.y, 3, "255,214,90", 3, 1.5);
+            enemyShots.splice(i,1);
+            nB++;
+        }
+        this.lasso.flashes.push({ poly:poly, t:0 });
+        if(nE + nB > 0) popup(cx, cy, nE ? "囲んだ！×" + nE : "弾を消した ×" + nB, "#c90", nE > 0);
+        sound.play(nE ? "synergy" : "graze");
+        this.labCount.caught += nE; this.labCount.erased += nB;
+    },
+    //殻の敵：投げなわでしか倒せない(mainScreen.hitEnemy から。防いだら true)
+    shellHit:function(e,_src){
+        if(_src == "lasso") return false;
+        e.shell.ping = 8;
+        return true;
+    },
+    //殻の敵を出す(画面の上から入ってきて、ゆっくりうろうろする)
+    shellEnemy:function(_x){
+        var e = makeEnemy("bug");
+        var a = Math.PI/2 + (Math.random() - 0.5)*1.2;
+        e.x = _x; e.y = -20;
+        e.hp = e.maxHp = 10;
+        e.score = 0; e.parts = 0;
+        e.lab = bossDebug.lab; e.labId = "lasso";
+        e.shell = { vx:Math.cos(a)*SHELL_SPEED, vy:Math.sin(a)*SHELL_SPEED, ping:0 };
+        enemies.push(e);
+        return e;
+    },
+    shellStep:function(e){
+        var S = e.shell;
+        if(S.ping > 0) S.ping--;
+        //ときどき向きを少し変える
+        if(Math.random() < 0.02){
+            var a = Math.atan2(S.vy, S.vx) + (Math.random() - 0.5)*1.2;
+            S.vx = Math.cos(a)*SHELL_SPEED; S.vy = Math.sin(a)*SHELL_SPEED;
+        }
+        e.x += S.vx; e.y += S.vy;
+        if((e.x < 40 && S.vx < 0) || (e.x > CW - 40 && S.vx > 0)) S.vx = -S.vx;
+        if((e.y < 140 && S.vy < 0) || (e.y > CH - 40 && S.vy > 0)) S.vy = -S.vy;
+        e.vx = S.vx; e.vy = S.vy;
+        return true;
+    },
+
+    //弾の下に描く：投げなわの跡・閉じた輪・場(風の筋・鏡の円・クモの巣)
+    drawMouseUnder:function(){
+        var F = this.field;
+        if(F && F.kind == "wind" && F.k > 0){
+            var ca = Math.cos(F.ang), sa = Math.sin(F.ang), len = 18 + 40*F.k;
+            ctx.strokeStyle = "rgba(70,95,130," + (0.45*F.k) + ")"; ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            for(var i=0; i<46; i++){
+                var bx = (i*173) % CW, by = (i*97 + i*i*7) % CH, s = F.ph*(1 + (i % 3)*0.3);
+                var x = ((bx + ca*s) % CW + CW) % CW, y = ((by + sa*s) % CH + CH) % CH;
+                ctx.moveTo(x, y); ctx.lineTo(x - ca*len, y - sa*len);
+            }
+            ctx.stroke();
+        }
+        if(F && F.kind == "mirror"){
+            for(var i=0; i<F.circles.length; i++){
+                var c = F.circles[i], on = F.inside == c;
+                ctx.fillStyle = on ? "rgba(170,110,235,0.24)" : "rgba(170,110,235,0.13)";
+                ctx.beginPath(); ctx.arc(c.x, c.y, MIRROR_R, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = "rgba(140,80,210," + (on ? 0.9 : 0.6) + ")"; ctx.lineWidth = 2;
+                ctx.setLineDash([8,6]); ctx.lineDashOffset = -F.t*0.5;
+                ctx.stroke();
+                //まんなかの鏡の線と、左右が入れ替わる矢印
+                ctx.setLineDash([4,6]);
+                ctx.beginPath(); ctx.moveTo(c.x, c.y - MIRROR_R + 8); ctx.lineTo(c.x, c.y + MIRROR_R - 8); ctx.stroke();
+                ctx.setLineDash([]); ctx.lineDashOffset = 0;
+                ctx.fillStyle = "rgba(140,80,210,0.75)"; ctx.font = "bold 22px sans-serif";
+                ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                ctx.fillText("⇄", c.x, c.y - MIRROR_R*0.55);
+            }
+            ctx.lineWidth = 1;
+        }
+        if(F && F.kind == "web"){
+            for(var i=0; i<F.webs.length; i++) this.drawWeb(F.webs[i], F.t);
+        }
+        var L = this.lasso;
+        if(L){
+            //閉じた輪：光って消える
+            for(var i=0; i<L.flashes.length; i++){
+                var Fl = L.flashes[i], k = Fl.t/LASSO_FLASH, poly = Fl.poly;
+                ctx.beginPath(); ctx.moveTo(poly[0].x, poly[0].y);
+                for(var j=1; j<poly.length; j++) ctx.lineTo(poly[j].x, poly[j].y);
+                ctx.closePath();
+                ctx.fillStyle = "rgba(255,220,90," + (0.4*(1 - k)) + ")"; ctx.fill();
+                ctx.strokeStyle = "rgba(255,190,40," + (1 - k) + ")"; ctx.lineWidth = 3 + 4*k; ctx.stroke();
+            }
+            //跡：古いほど薄い金色のなわ
+            var P = L.pts;
+            ctx.lineCap = "round";
+            for(var i=1; i<P.length; i++){
+                var a = 1 - (L.t - P[i].t)/LASSO_LIFE;
+                ctx.strokeStyle = "rgba(225,165,30," + (0.85*a) + ")"; ctx.lineWidth = 2 + 2*a;
+                ctx.beginPath(); ctx.moveTo(P[i-1].x, P[i-1].y); ctx.lineTo(P[i].x, P[i].y); ctx.stroke();
+            }
+            if(P.length) {
+                var e0 = P[P.length - 1];
+                ctx.strokeStyle = "rgba(225,165,30,0.85)"; ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.moveTo(e0.x, e0.y); ctx.lineTo(drone.X, drone.Y); ctx.stroke();
+            }
+            ctx.lineCap = "butt"; ctx.lineWidth = 1;
+        }
+    },
+    //クモの巣(飛んでいる間は糸の玉と、落ちる所の印)
+    drawWeb:function(w,now){
+        if(w.t < WEB_FLY){
+            var k = w.t/WEB_FLY;
+            var x = w.x0 + (w.x - w.x0)*k, y = w.y0 + (w.y - w.y0)*k - Math.sin(k*Math.PI)*80;
+            ctx.strokeStyle = "rgba(90,90,100,0.5)"; ctx.lineWidth = 1;
+            ctx.setLineDash([3,5]);
+            ctx.beginPath(); ctx.arc(w.x, w.y, WEB_R*0.8, 0, Math.PI*2); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = "#e8e8f0"; ctx.strokeStyle = "#555"; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            ctx.lineWidth = 1;
+            return;
+        }
+        var open = this.webOpen(w), R = WEB_R*open, left = WEB_FLY + WEB_LIFE - w.t;
+        var a = Math.min(1, left/40)*(0.35 + 0.65*Math.max(0.15, w.hp/WEB_HP));
+        var sx = (Math.random() - 0.5)*w.shake, sy = (Math.random() - 0.5)*w.shake;
+        ctx.save(); ctx.translate(w.x + sx, w.y + sy);
+        var N = 10;
+        //濃いふちどり → 白い糸の順に重ねる(どんな背景でも見えるように)
+        for(var pass=0; pass<2; pass++){
+            ctx.strokeStyle = pass == 0 ? "rgba(50,50,60," + (0.55*a) + ")" : "rgba(250,250,255," + (0.9*a) + ")";
+            ctx.lineWidth = pass == 0 ? 3 : 1.3;
+            ctx.beginPath();
+            for(var i=0; i<N; i++){
+                var t = i/N*Math.PI*2;
+                ctx.moveTo(0, 0); ctx.lineTo(Math.cos(t)*R, Math.sin(t)*R);
+            }
+            for(var r=1; r<=4; r++){
+                var rr = R*r/4;
+                for(var i=0; i<=N; i++){
+                    var t = i/N*Math.PI*2, sag = rr*0.88;    //糸はスポークの間で少したるむ
+                    var x1 = Math.cos(t)*rr, y1 = Math.sin(t)*rr;
+                    if(i == 0) ctx.moveTo(x1, y1);
+                    else{
+                        var tm = (i - 0.5)/N*Math.PI*2;
+                        ctx.quadraticCurveTo(Math.cos(tm)*sag, Math.sin(tm)*sag, x1, y1);
+                    }
+                }
+            }
+            ctx.stroke();
+        }
+        ctx.restore();
+        ctx.lineWidth = 1;
+    },
+    //弾の上に描く：殻・ポインタを狙う照準・鏡の中の目標・風の予告・もがく残り
+    drawMouseOver:function(){
+        for(var i=0; i<enemies.length; i++){
+            var e = enemies[i];
+            if(!e.shell || e.dead) continue;
+            //殻(六角形の板。撃たれると白く光る)
+            var ping = e.shell.ping/8, R = e.r + 8;
+            ctx.strokeStyle = ping > 0 ? "rgba(255,255,255," + (0.6 + 0.4*ping) + ")" : "rgba(90,170,235,0.85)";
+            ctx.fillStyle = "rgba(120,200,255," + (0.15 + 0.3*ping) + ")";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            for(var j=0; j<6; j++){
+                var t = j/6*Math.PI*2 + e.t*0.01;
+                if(j == 0) ctx.moveTo(e.x + Math.cos(t)*R, e.y + Math.sin(t)*R); else ctx.lineTo(e.x + Math.cos(t)*R, e.y + Math.sin(t)*R);
+            }
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.lineWidth = 1;
+        }
+        var P = this.ptr;
+        if(P){
+            //照準の線：撃つ直前ほど速く点滅する
+            if(P.snipe > 0){
+                var blink = P.snipe < 15 ? (P.snipe % 4 < 2) : true;
+                if(blink){
+                    ctx.strokeStyle = "rgba(230,30,30,0.7)"; ctx.lineWidth = 1.5;
+                    ctx.setLineDash([10,6]);
+                    ctx.beginPath(); ctx.moveTo(this.labX, 70); ctx.lineTo(P.ax, P.ay); ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+            }
+            //ポインタに重なる赤い照準(ポインタを隠していても出す)
+            var rot = this.labT*0.05, rr = 16 + (P.snipe > 0 ? 6*Math.sin(this.labT*0.4) : 0);
+            ctx.save(); ctx.translate(MouseX, MouseY); ctx.rotate(rot);
+            ctx.strokeStyle = "rgba(230,30,30,0.9)"; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(0, 0, rr, 0, Math.PI*2); ctx.stroke();
+            ctx.beginPath();
+            for(var j=0; j<4; j++){ var t = j*Math.PI/2; ctx.moveTo(Math.cos(t)*(rr - 6), Math.sin(t)*(rr - 6)); ctx.lineTo(Math.cos(t)*(rr + 6), Math.sin(t)*(rr + 6)); }
+            ctx.stroke();
+            ctx.restore();
+            ctx.lineWidth = 1;
+        }
+        var F = this.field;
+        if(F && F.kind == "mirror" && F.inside){
+            //鏡の中：ほんとうに向かっている先(ポインタの左右反対)を薄く出す
+            ctx.strokeStyle = "rgba(140,80,210,0.8)"; ctx.lineWidth = 1.5;
+            ctx.setLineDash([4,4]);
+            ctx.beginPath(); ctx.moveTo(drone.X, drone.Y); ctx.lineTo(F.gx, F.gy); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.beginPath(); ctx.arc(F.gx, F.gy, 9, 0, Math.PI*2); ctx.stroke();
+            ctx.lineWidth = 1;
+        }
+        if(F && F.kind == "wind" && F.warn && F.t % 16 < 11){
+            //風の予告：画面のまんなかに大きな矢印
+            ctx.save(); ctx.translate(CW/2, CH/2); ctx.rotate(F.ang);
+            ctx.fillStyle = "rgba(255,255,255,0.55)"; ctx.strokeStyle = "rgba(60,80,110,0.6)"; ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-90,-16); ctx.lineTo(30,-16); ctx.lineTo(30,-40); ctx.lineTo(90,0); ctx.lineTo(30,40); ctx.lineTo(30,16); ctx.lineTo(-90,16);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.restore();
+            ctx.lineWidth = 1;
+        }
+        if(F && F.kind == "web" && F.stuck){
+            //ほどけるまでの残り(ドローン君のまわりの弧)
+            var k = 1 - Math.max(0, F.stuck.hp)/WEB_HP;
+            ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.lineWidth = 5;
+            ctx.beginPath(); ctx.arc(drone.X, drone.Y, 26, 0, Math.PI*2); ctx.stroke();
+            ctx.strokeStyle = "#4a8"; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.arc(drone.X, drone.Y, 26, -Math.PI/2, -Math.PI/2 + k*Math.PI*2); ctx.stroke();
+            ctx.lineWidth = 1;
+            ctx.fillStyle = "#555"; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText("ポインタを振ってほどく", drone.X, drone.Y + 40);
+        }
+    },
+
     //---- デバッグの「攻撃の試作」：画面の上の砲台が、1種類ずつ順番に撃つ ----
     //左の一覧で見たい攻撃を選べる(押すとその攻撃だけを繰り返す。「自動で順番に」で SHOT_LAB_SEC 秒ずつ切り替わる)
     labT:0,
@@ -2489,12 +2913,15 @@ var shotLab = {
     labStart:function(){
         this.labT = Math.max(0, this.labPick)*SHOT_LAB_SEC*60;
         this.labX = CW/2;
-        this.labCount = { six:0, tailed:0, lock:0, locked:0 };
+        this.labCount = this.newCount();
     },
     //一覧の行(0番目は「自動で順番に」、そのあとに攻撃が並ぶ)
     labRows:function(){
         var out = [];
-        for(var i=-1; i<this.list.length; i++) out.push({ i:i, x:8, y:LAB_LIST_Y + (i + 1)*LAB_ROW_H, w:LAB_LIST_W, h:LAB_ROW_H });
+        for(var i=-1; i<this.list.length; i++){
+            var n = i + 1, col = Math.floor(n/LAB_COL_ROWS);
+            out.push({ i:i, x:8 + col*(LAB_LIST_W + 8), y:LAB_LIST_Y + (n % LAB_COL_ROWS)*LAB_ROW_H, w:LAB_LIST_W, h:LAB_ROW_H });
+        }
         return out;
     },
     labRowAt:function(_x,_y){
@@ -2515,7 +2942,7 @@ var shotLab = {
         this.labT = (r.i >= 0 ? r.i : cur)*SHOT_LAB_SEC*60;
         enemyShots = [];
         this.clear();
-        this.labCount = { six:0, tailed:0, lock:0, locked:0 };
+        this.labCount = this.newCount();
         sound.play("click");
         return true;
     },
@@ -2632,6 +3059,38 @@ var shotLab = {
                     this.fighter(id, Math.random() < 0.5 ? -20 : CW + 20, 80 + Math.random()*(CH - 180));
                 }
                 break;
+            case "lasso":
+                //殻の敵がうろうろする(輪で囲むと倒れる)。砲台はゆっくりの弾を撃つ(輪で消せる)
+                if(!this.lasso) this.lasso = { pts:[], flashes:[], t:0 };
+                if(T % 50 == 0 && enemies.filter(function(e){ return e.labId == "lasso" && !e.dead; }).length < SHELL_N) this.shellEnemy(80 + Math.random()*(CW - 160));
+                if(T % 45 == 0){ fireFan(x, y, aim, 5, 0.3, 1.6*m, "normal"); shot = true; }
+                break;
+            case "ptraim":
+                //ポインタ(これから行く所)を狙う。何回かに1回は、照準の線でポインタを追ってから針弾で狙い撃つ
+                if(!this.ptr) this.ptr = { n:0, snipe:0, ax:MouseX, ay:MouseY };
+                var P = this.ptr, pa = Math.atan2(MouseY - y, MouseX - x);
+                P.ax = MouseX; P.ay = MouseY;
+                if(P.snipe > 0){
+                    if(--P.snipe == 0){ for(var i=-1; i<=1; i++) this.fire(x, y, pa + i*0.05, 6*m, "needle"); shot = true; }
+                }else if(T % PTR_EVERY == 0){
+                    if(++P.n % PTR_SNIPE_EVERY == 0){ P.snipe = PTR_SNIPE_T; sound.play("tell"); }
+                    else{ fireFan(x, y, pa, 3, 0.2, 2.6*m, "normal"); shot = true; }
+                }
+                break;
+            case "wind":
+                if(!this.field) this.field = { kind:"wind", t:0, k:0, ang:0, warn:false, ph:0 };
+                if(T % 32 == 0){ fireFan(x, y, aim, 5, 0.22, 2.2*m, "normal"); shot = true; }
+                break;
+            case "mirror":
+                if(!this.field) this.field = { kind:"mirror", t:0, inside:null, gx:0, gy:0,
+                                               circles:[{ x:CW*0.3, y:CH*0.58, vx:MIRROR_SPEED }, { x:CW*0.7, y:CH*0.62, vx:-MIRROR_SPEED }] };
+                if(T % 28 == 0){ fireFan(x, y, aim, 5, 0.2, 2.2*m, "normal"); shot = true; }
+                break;
+            case "web":
+                if(!this.field) this.field = { kind:"web", t:0, webs:[], stuck:null };
+                if(T % WEB_EVERY == 50) this.web(x, y, tg.X, tg.Y);
+                if(T % 36 == 0){ fireFan(x, y, aim, 3, 0.3, 2.2*m, "normal"); shot = true; }
+                break;
             case "intercept":
                 //砲台の代わりに、迎撃する的を置く(撃たない。ドローン君の弾を撃ち落とす)
                 if(!enemies.some(function(e){ return e.labId == "intercept"; })){
@@ -2649,21 +3108,28 @@ var shotLab = {
     },
     labHits:0,      //迎撃の試作：的に当たった数
     labShot:0,      //迎撃の試作：撃ち落とした数
-    labCount:{ six:0, tailed:0, lock:0, locked:0 },     //空戦の試作：後ろを取った・取られた・ロックした・ロックされた回数
+    //試作の回数。空戦：後ろを取った・取られた・ロックした・ロックされた　投げなわ：囲んだ敵・消した弾　クモの糸：ほどいた巣
+    newCount:function(){ return { six:0, tailed:0, lock:0, locked:0, caught:0, erased:0, torn:0 }; },
+    labCount:{ six:0, tailed:0, lock:0, locked:0, caught:0, erased:0, torn:0 },
     //砲台と、弾の名前の一覧(bossDebug.drawTag から)
     drawLab:function(){
         var x = this.labX, y = 70;
         var cur = this.labIndex();
         var curId = this.list[cur].id, C = this.labCount;
-        if(curId == "intercept" || curId == "tail" || curId == "lock"){
-            //迎撃：砲台の代わりに的がいる。撃ち落とした数と当たった数。空戦：砲台の代わりに戦闘機。取った・取られた回数
+        //迎撃：撃ち落とした数と当たった数。空戦：取った・取られた回数。投げなわ：囲んだ数。クモの糸：ほどいた数
+        var head = curId == "intercept" ? "撃ち落とした " + this.labShot + "　当たった " + this.labHits :
+                   curId == "tail" ? "後ろを取った " + C.six + "　取られた " + C.tailed :
+                   curId == "lock" ? "ロックした " + C.lock + "　ロックされた " + C.locked :
+                   curId == "lasso" ? "囲んだ敵 " + C.caught + "　消した弾 " + C.erased :
+                   curId == "web" ? "ほどいた巣 " + C.torn : "";
+        if(head){
             ctx.textAlign = "center";
             ctx.font = "bold 13px sans-serif";
             ctx.fillStyle = "#c33";
-            ctx.fillText(curId == "intercept" ? "撃ち落とした " + this.labShot + "　当たった " + this.labHits :
-                         curId == "tail" ? "後ろを取った " + C.six + "　取られた " + C.tailed :
-                         "ロックした " + C.lock + "　ロックされた " + C.locked, CW/2, 42);
-        }else{
+            ctx.fillText(head, CW/2, 42);
+        }
+        //迎撃・空戦は砲台の代わりに的・戦闘機がいる
+        if(curId != "intercept" && curId != "tail" && curId != "lock"){
             ctx.fillStyle = "#334";
             ctx.beginPath(); ctx.arc(x,y,14,0,Math.PI*2); ctx.fill();
             ctx.fillStyle = "#c33";
@@ -2672,7 +3138,11 @@ var shotLab = {
         var rows = this.labRows(), hover = inputMode == "mouse" ? this.labRowAt(MouseX,MouseY) : null;
         //一覧の板(押せるとわかるように)
         ctx.fillStyle = "rgba(255,255,255,0.7)";
-        ctx.fillRect(4, LAB_LIST_Y - 4, LAB_LIST_W + 8, rows.length*LAB_ROW_H + 8);
+        for(var c=0; c*LAB_COL_ROWS < rows.length; c++){
+            var n = Math.min(LAB_COL_ROWS, rows.length - c*LAB_COL_ROWS);
+            ctx.fillRect(4 + c*(LAB_LIST_W + 8), LAB_LIST_Y - 4, LAB_LIST_W + 8, n*LAB_ROW_H + 8);
+        }
+        var listH = Math.min(LAB_COL_ROWS, rows.length)*LAB_ROW_H;
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
         for(var j=0; j<rows.length; j++){
@@ -2696,9 +3166,9 @@ var shotLab = {
         //選んでいる攻撃の説明は一覧の下に
         ctx.font = "bold 13px sans-serif";
         ctx.fillStyle = "#c33";
-        ctx.fillText(this.list[cur].note, 10, LAB_LIST_Y + rows.length*LAB_ROW_H + 14);
+        ctx.fillText(this.list[cur].note, 10, LAB_LIST_Y + listH + 14);
         ctx.font = "11px sans-serif";
         ctx.fillStyle = "#666";
-        ctx.fillText("一覧を押すと、その攻撃を繰り返します", 10, LAB_LIST_Y + rows.length*LAB_ROW_H + 32);
+        ctx.fillText("一覧を押すと、その攻撃を繰り返します", 10, LAB_LIST_Y + listH + 32);
     }
 };
