@@ -168,7 +168,8 @@ var battleBg = {
     classic:function(){ return !viewOpt.grid || viewOpt.gridSize == "large"; },
     //公開版と同じ方眼：GS ごとのごく薄い線(空と街の絵の上に引く)
     drawClassic:function(){
-        ctx.strokeStyle = BG_CLASSIC_COLOR;
+        //夜の戦場の色(finaleSync.js)の上では、明るい線が浮かないよう薄くする
+        ctx.strokeStyle = this.night > 0.001 ? "rgba(240,240,240," + Math.max(0.12, 1 - this.night) + ")" : BG_CLASSIC_COLOR;
         ctx.lineWidth = 1;
         ctx.beginPath();
         for(var x=0; x<=CW; x+=GS){ ctx.moveTo(x + 0.5,0); ctx.lineTo(x + 0.5,CH); }

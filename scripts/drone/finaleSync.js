@@ -49,6 +49,13 @@ const FS_SE_QUIET   = ["shot","missile","laser","bug","zap","mine","blade","wate
                        "hit","enemyShot","bossShot","graze","part","yaruki","comboUp"];
 const FS_SE_VOL     = 0.9;      //重い効果音(衝撃・高まる音・風を切る音)の大きさ
 const FS_REVERB_SEC = 2.6;      //重い効果音の残響の長さ(秒)
+//ノイズ：第二形態は、改に組み込まれた認識阻害プログラム(ストーリーでドローン君の目をふさいでいたもの)が暴走した姿
+const FS_NOISE      = [0.35, 0.15];     //ふだんのノイズの強さ(0～1。弾き返して割る前・割ったあと)
+const FS_NOISE_HURT = 0.45;     //体力が減るほど足すノイズ(体力0のときの分)
+const FS_LEAK       = 0.45;     //ノイズがこれより強いと、画面にも帯のずれとして漏れ出す
+const FS_TRUE_SEC   = 0.35;     //無音に入ってから、改が素顔(紫の色が抜けたドローン君の姿)になるまで(秒。その間はちらつく)
+const FS_SHARDS     = 46;       //ノイズが割れたときに飛び散るかけらの数
+const FS_SHATTER_T  = 10;       //割れた瞬間、画面が激しく乱れる長さ(フレーム。そのあとはすっかりきれいになる)
 const FS_SAFE       = 45;       //着いたあと、大きな改に触れても被弾しない時間(フレーム。小さくなっていく間)
 const FS_JUST_SEC   = 0.3;      //着く前のこの秒数の間に衝撃波を出すと弾き返す
 const FS_PERFECT_SEC = 0.1;     //そのうちこの秒数以内なら PERFECT
@@ -91,7 +98,12 @@ var finaleSync = {
         _e.fsScale += ((sec.giant ? FS_GIANT : 1) - _e.fsScale)*0.05;
         _e.r = _e.fsR0*_e.fsScale;
         if(_e.fsPulse > 0) _e.fsPulse = Math.max(0, _e.fsPulse - 0.06);
-        if(newBeat) _e.fsPulse = Math.max(_e.fsPulse, sec.pulse ? 0.6 : 0.3);
+        //ノイズ：ためで強まり、無音でぷつりと消える。割ったあとは弱く、体力が減るほど強い
+        var hurt = 1 - _e.hp/_e.maxHp;
+        var nz = (_e.fsDropped ? FS_NOISE[1] : FS_NOISE[0]) + FS_NOISE_HURT*hurt;
+        if(sec.name == "sink") nz = Math.max(nz, Math.min(1, (p - FS_SECTIONS[4].from)/(FS_SECTIONS[5].from - FS_SECTIONS[4].from) + 0.3));
+        if(sec.name == "hush") _e.fsNoise = 0;
+        else _e.fsNoise = (_e.fsNoise || 0) + (nz - (_e.fsNoise || 0))*(nz > (_e.fsNoise || 0) ? 0.04 : 0.01);
         //最初のサビまでは倒れない
         if(!_e.fsDropped) _e.hp = Math.max(_e.hp, Math.ceil(_e.maxHp*FS_GATE));
 
@@ -101,7 +113,6 @@ var finaleSync = {
         //第二形態の間は夜の戦場。改が足もとを照らす(奥にいる間は小さく)
         battleBg.night += (FS_NIGHT - battleBg.night)*0.02;
         battleBg.light = { x:_e.x, y:_e.y, a:FS_LIGHT*(1 + 0.8*(_e.fsPulse || 0)), r:220*(_e.fsMode == "sink" || _e.fsMode == "hush" ? 0.6 : _e.fsScale) };
-        this.liveT = 2;
         //着いたあと：大きいまま触れても被弾しない間・吹き飛ぶ光の尾
         if(_e.fsSafe > 0){
             _e.harmless = --_e.fsSafe > 0;
@@ -149,6 +160,7 @@ var finaleSync = {
                 this.calm(_e);
                 fsSfx.stopRumble();
                 fsSfx.riser(FS_HIT_T - this.pos());
+                this.cutT = 4;      //ぷつりと切れる直前に、ひと乱れ
                 for(var i=0; i<enemyShots.length; i++) fx.sparks(enemyShots[i].x, enemyShots[i].y, 2, KAI2_GLOW, 2, 2);
                 enemyShots = [];
                 shotLab.deeps = [];
@@ -229,6 +241,9 @@ var finaleSync = {
         var P = shotLab.depthAt(_e.fsTx, _e.fsTy, z);
         _e.x = P.x; _e.y = P.y; _e.vx = 0; _e.vy = 0;
         _e.fsDraw = P.s*(1 + (FS_RAM_SCALE - 1)*k*k*k);
+        //ノイズが消えて、紫の色が抜けていく(はじめは、ちらつきながら)
+        var tr = (_p - A)/FS_TRUE_SEC;
+        _e.look.tint = tr >= 1 || (tr > 0.3 && Math.random() < tr) ? null : KAI2_TINT;
         _e.fsDark = FS_DARK[2];
     },
     //衝撃波を出した(shotLab.onBlast から)：無音の間なら時刻を覚える(着いたときに弾き返せたか決める)
@@ -261,6 +276,7 @@ var finaleSync = {
             sound.play("just");
             fsSfx.impact(true);
             fsSfx.whoosh(0.08);
+            this.shatter(_e);
             //上へはじき飛ばされてよろける
             var dx = _e.x - CW/2, dy = _e.y - 120, d = Math.hypot(dx,dy) || 1;
             _e.vx = -dx/d*FS_FLING; _e.vy = -dy/d*FS_FLING;
@@ -273,11 +289,14 @@ var finaleSync = {
             fx.shake(16);
             sound.play("dash");
             fsSfx.impact(false);
+            _e.fsNoise = 1;     //止められなかった：ノイズがいっそう強まる
+            sound.play("glitch");
             _e.vx = 0; _e.vy = -6;
             _e.mode = "idle";
             this.result = near < FS_RAM_R + HIT_CORE ? "hit" : "dodge";
         }
         _e.fsMode = null;
+        _e.look.tint = KAI2_TINT;
         //迫ってきた大きさから、だんだんふだんの大きさへ戻る(その間は触れても被弾しない)
         _e.fsScale = FS_RAM_SCALE*0.7;
         _e.r = _e.fsR0*_e.fsScale;
@@ -345,14 +364,55 @@ var finaleSync = {
         ctx.save();
         ctx.scale(s,s);
         _orig();
+        if(!_body) this.drawNoise(_e, _orig);
         ctx.restore();
         return true;
     },
+    //改のまわりのノイズ(大きさを掛けたあとで呼ぶ)：体の帯が横にずれ、赤・水色・白のかけらがちらつく
+    drawNoise:function(_e,_orig){
+        var n = _e.fsNoise || 0;
+        if(n <= 0.02) return;
+        //体の帯を横にずらして描き直す
+        if(Math.random() < n*0.6){
+            var y = (Math.random() - 0.5)*70, h = 6 + Math.random()*22, dx = (Math.random() < 0.5 ? -1 : 1)*(6 + 22*n*Math.random());
+            ctx.save();
+            ctx.beginPath(); ctx.rect(-120, y, 240, h); ctx.clip();
+            ctx.translate(dx, 0);
+            _orig();
+            ctx.restore();
+        }
+        //かけら
+        var cols = ["255,0,60", "0,220,255", "235,235,245"];
+        var m = Math.round(4 + 14*n);
+        for(var i=0; i<m; i++){
+            var a = Math.random()*Math.PI*2, r = 20 + Math.random()*70;
+            ctx.fillStyle = "rgba(" + cols[i % 3] + "," + (0.35 + 0.5*n*Math.random()) + ")";
+            ctx.fillRect(Math.cos(a)*r, Math.sin(a)*r*0.8, 4 + Math.random()*34*n, 2 + Math.random()*5);
+        }
+    },
+    //ノイズが割れる(弾き返したとき)：かけらが飛び散り、画面がひと乱れしてから、すっかりきれいになる
+    shatter:function(_e){
+        _e.fsNoise = 0;
+        this.shards = [];
+        var cols = ["255,0,60", "0,220,255", "235,235,245", "190,60,255"];
+        for(var i=0; i<FS_SHARDS; i++){
+            var a = Math.random()*Math.PI*2, v = 3 + Math.random()*11;
+            this.shards.push({ x:_e.x + Math.cos(a)*20, y:_e.y + Math.sin(a)*20, vx:Math.cos(a)*v, vy:Math.sin(a)*v,
+                               w:4 + Math.random()*28, h:2 + Math.random()*7, c:cols[i % 4], life:30 + Math.random()*30, t:0 });
+        }
+        this.cutT = FS_SHATTER_T;
+        sound.play("glitch");
+        fsSfx.shatter();
+    },
     //第二形態の間か(曲に合わせて動いている改がいる)
-    live:function(){ return this.liveT > 0 && page.number == 1; },
+    //(描く回数ではなく敵の一覧で決める。画面のリフレッシュレートが高いと、1回の更新の間に何回も描くため)
+    live:function(){
+        if(page.number != 1) return false;
+        for(var i=0; i<enemies.length; i++) if(enemies[i].type == "kai" && !enemies[i].dead && enemies[i].fsSec && enemies[i].form == 2) return true;
+        return false;
+    },
     //弾の下(敵の上)：舞い上がる火の粉・弾のにじみ・ドローン君の灯り(光は lighter で重ねてにじませる)
     drawUnder:function(){
-        if(this.liveT > 0) this.liveT--;     //改が動かなくなったら(倒した・画面を出た)止める
         if(!this.live()) return;
         var k = battleBg.night/FS_NIGHT;
         ctx.save();
@@ -434,6 +494,40 @@ var finaleSync = {
             this.drawing = true;
             mainScreen.drawEnemy(e);
             this.drawing = false;
+        }
+        this.drawLeak();
+    },
+    //画面へ漏れ出すノイズ(ストーリーの認識阻害と同じ、帯のずれと赤・水色のにじみ)と、割れて飛び散るかけら
+    drawLeak:function(){
+        var n = 0;
+        for(var i=0; i<enemies.length; i++){
+            var e = enemies[i];
+            if(e.type == "kai" && !e.dead && e.fsSec && e.form == 2) n = Math.max(n, e.fsNoise || 0);
+        }
+        var cut = this.cutT > 0;
+        if(cut) this.cutT--;
+        var k = cut ? 1 : (n - FS_LEAK)/(1 - FS_LEAK);
+        if(k > 0 && (cut || Math.random() < 0.06 + 0.3*k)){
+            var bands = cut ? 9 : 2 + Math.round(4*k);
+            for(var i=0; i<bands; i++){
+                var y = Math.floor(Math.random()*CH), h = 3 + Math.floor(Math.random()*(cut ? 40 : 18));
+                //写し取る元はキャンバスの実際の画素で指定する(細かさの分を掛ける)
+                ctx.drawImage(canvas, 0, y*renderScale, canvas.width, h*renderScale, (Math.random() - 0.5)*(cut ? 90 : 40*k), y, CW, h);
+            }
+            ctx.fillStyle = "rgba(255,0,60," + (0.08 + 0.1*k) + ")";
+            ctx.fillRect(0, Math.random()*CH, CW, 5);
+            ctx.fillStyle = "rgba(0,220,255," + (0.08 + 0.1*k) + ")";
+            ctx.fillRect(0, Math.random()*CH, CW, 3);
+            if(!cut && Math.random() < 0.15) sound.play("glitch");
+        }
+        //割れたかけら
+        var sh = this.shards || [];
+        for(var i=sh.length-1; i>=0; i--){
+            var d = sh[i];
+            d.t++; d.x += d.vx; d.y += d.vy; d.vx *= 0.96; d.vy = d.vy*0.96 + 0.08;
+            if(d.t >= d.life){ sh.splice(i,1); continue; }
+            ctx.fillStyle = "rgba(" + d.c + "," + (1 - d.t/d.life) + ")";
+            ctx.fillRect(d.x - d.w/2, d.y - d.h/2, d.w, d.h);
         }
     }
 };
@@ -624,6 +718,16 @@ var fsSfx = {
         [55, 55.4, 82.4, 110.3, 164.8].forEach(function(_hz, _i){
             self.osc("sawtooth", _hz, _hz*0.985, t, 3, self.env(t, _i < 2 ? 0.12 : 0.07, 0.04, 0.6, 2.4), true, 700);
         });
+    },
+    //ノイズが割れる音：細かく砕ける高い音が、ぱらぱらと散る
+    shatter:function(){
+        if(!this.ok()) return;
+        var c = this.rig(), t = c.currentTime;
+        for(var i=0; i<9; i++){
+            var w = t + i*0.03 + Math.random()*0.02, f = 2500 + Math.random()*5000;
+            this.hiss("highpass", f, f*0.6, w, 0.09, this.env(w, 0.3*(1 - i/12), 0.002, 0.01, 0.08), true, 2);
+            this.osc("square", f*0.5, f*0.2, w, 0.06, this.env(w, 0.04, 0.002, 0.005, 0.05), true, 6000);
+        }
     },
     //風を切る音(吹き飛ぶ)
     whoosh:function(_delay){
