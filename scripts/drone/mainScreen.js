@@ -2,6 +2,11 @@
 //  調整用パラメータ(単位：px, フレーム)
 //------------------------------------------------------------------------------
 const INVINCIBLE_TIME = 75;     //被弾後の無敵時間
+//ドローン君の表情(common.js の DRONE_FACES)
+const FACE_LOW_HP = 0.34;       //耐久がこの割合以下(いちばん少なくても残り1)になると、あせった顔
+const FACE_HURT_TIME = 45;      //被弾したときの「いたい」顔の長さ(フレーム)。残り1になったときは「ふらふら」
+const FACE_DIZZY_TIME = 80;
+const FACE_JUST_TIME = 75;      //ジャスト衝撃波・かすりバーストのあとの喜ぶ顔の長さ
 const SHOT_SPEED      = 10;     //ドローンの弾の速さ
 //やる気ゲージ：衝撃波に使う。YARUKI_COST 以上あれば出せる(満タンでなくてよい)
 //動く・かする・ジャストを決める・敵が落とす「やる気」を拾うとたまる。止まっているとたまらない
@@ -449,6 +454,17 @@ var mainScreen = {
         this.state = "start";
         this.stateTime = 0;
         battleBg.reset();
+        //ドローン君の表情：ボスのWAVEは、はじめに驚く
+        drone.look.resetFace();
+        if(this.bossWave) drone.look.setFace("surprise", 110);
+    },
+    //ドローン君のふだんの顔(DRONE_FACES)：クリアで喜ぶ・残りの耐久が少ないとあせる・かすりコンボ中やボス戦は本気
+    droneMood:function(){
+        var m = "normal";
+        if(this.state == "clear") m = "happy";
+        else if(this.maxHp > 1 && this.hp <= Math.max(1, this.maxHp*FACE_LOW_HP)) m = "sad";
+        else if(this.comboTier() >= 1 || enemies.some(function(e){ return e.boss && !e.dead; })) m = "fierce";
+        drone.look.setMood(m);
     },
 
     //----------------------------------------------------------------- 更新
@@ -494,6 +510,7 @@ var mainScreen = {
         this.stateTime++;
         this.clock++;
         if(this.tint && --this.tint.life <= 0) this.tint = null;
+        this.droneMood();
 
         //ボスの登場の演出中(WARNINGから着地まで)は、ボスと演出以外は動かない
         if(this.state != "over" && !this.cinematic()){
@@ -931,6 +948,7 @@ var mainScreen = {
         }
         this.just++;
         this.addYaruki(this.justYaruki);
+        drone.look.setFace("happy", FACE_JUST_TIME);
         this.guard = good ? JUST_GOOD.guard : JUST_GUARD;
         //ひとり用は画面のすべてをゆっくりにする。協力プレイは画面のずれを防ぐため、敵と弾だけをゆっくりにする
         //(敵と弾を動かしているのはホスト。ゲストのジャストは相方に知らせ、ホストがゆっくりにする。coop.readEvents)
@@ -1057,6 +1075,7 @@ var mainScreen = {
                                 target:list.length ? list[i % list.length] : null, delay:SKILL_DELAY, turn:SKILL_TURN });
         }
         this.guard = Math.max(this.guard, SKILL_GUARD);
+        drone.look.setFace("happy", FACE_JUST_TIME);
         //発動の手ごたえ：白い閃光・金色の大きな輪・止め・文字・音
         this.hitStop = 4;
         this.flashT = 5;
@@ -1096,9 +1115,12 @@ var mainScreen = {
         if(bossDebug.active && (bossDebug.god || bossDebug.trial || bossDebug.lab)){
             this.invincible = 30;
             sound.play("damage");
+            drone.look.setFace("hurt", FACE_HURT_TIME);
             return;
         }
         this.hp--;
+        if(this.hp == 1) drone.look.setFace("dizzy", FACE_DIZZY_TIME);
+        else drone.look.setFace("hurt", FACE_HURT_TIME);
         this.invincible = INVINCIBLE_TIME;
         sound.play("damage");
         this.shake = 12;

@@ -923,8 +923,16 @@ try{
     for(var i=0; i<COMBO_TIME + 2; i++) mainScreen.comboStep();
     var timeOut = mainScreen.combo == 0 && mainScreen.comboEnd && !mainScreen.comboEnd.broke && mainScreen.comboBest == COMBO_TIERS[1];
     for(var i=0; i<5; i++) mainScreen.addCombo();
+    drone.look.blinkT = BLINK_MAX;     //確かめる間にまばたきが割り込まないように
     mainScreen.hp = 99; mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.damage();
     var broke = mainScreen.combo == 0 && mainScreen.comboEnd && mainScreen.comboEnd.broke;
+    var hurtFace = drone.look.shownFace() == "hurt";
+    mainScreen.hp = 2; mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.damage();
+    var dizzyFace = drone.look.shownFace() == "dizzy";
+    drone.look.faceT = 0; mainScreen.droneMood();
+    check("表情：被弾で「いたい」、残り1で「ふらふら」、そのあとはあせった顔", hurtFace && dizzyFace && drone.look.shownFace() == "sad",
+          drone.look.shownFace());
+    mainScreen.hp = 99;
     draw1();
     check("かすりコンボ：かすると増えて威力が上がり、時間切れ・被弾で途切れる", grazed && tierOk && mulOk && timeOut && broke && errors.length == cerr,
           "かすり" + grazed + " 段階" + tierOk + " 威力" + mulOk + " 時間切れ" + !!timeOut + " 被弾" + !!broke);
@@ -1612,6 +1620,22 @@ function finish(){
         var lv = droneSheets.pixel ? 0 : 1, tk = 0, oneFrame = true;
         for(var key in tintFrames) if(key.indexOf("drone" + droneSheets.id + "/" + lv + "|") == 0 && key.indexOf("|190,20,30") > 0){ tk++; if(tintFrames[key].width != DRONE_SIZE << lv) oneFrame = false; }
         check("色違い・拡大して描ける(色違いは使ったコマだけ1コマずつ作る)", tk > 0 && oneFrame, tk + "コマ");
+        //表情：優先の高い顔は低い顔に上書きされず、時間が来るとふだんの顔に戻る。まばたきする。表情のコマは使ったものだけ作る
+        var lf = new DroneLook();
+        lf.setFace("hurt", 10); lf.setFace("happy", 10);
+        var keepHi = lf.shownFace() == "hurt";
+        for(var i=0; i<11; i++) lf.update(0,0);
+        var backMood = lf.shownFace() == "normal";
+        lf.blinks = true;
+        var blinked = 0;
+        for(var i=0; i<BLINK_MAX + 20; i++){ lf.update(0,0); if(lf.shownFace() == "blink") blinked++; }
+        lf.blinks = false;     //全部の顔を描く間にまばたきが割り込まないように
+        var drawnAll = true;
+        for(var n in DRONE_FACES){ lf.setMood(n); lf.tint = n == "sad" ? "40,50,120" : null; try{ lf.draw(100,100,2); }catch(e){ drawnAll = false; } }
+        var fk = 0;
+        for(var key in faceFrames) if(key.indexOf("faceE/") == 0 && faceFrames[key].width == DRONE_SIZE << 1) fk++;
+        check("表情：優先・ふだんの顔に戻る・まばたき・全部の顔が描ける", keepHi && backMood && blinked >= BLINK_LEN && drawnAll && fk >= Object.keys(DRONE_FACES).length - 1,
+              "まばたき" + blinked + " コマ" + fk);
         //タイトルの設定：開く → クラシックを選ぶ
         page.change(0);
         clickAt(settingsButton);
