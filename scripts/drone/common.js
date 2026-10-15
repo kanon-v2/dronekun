@@ -135,10 +135,21 @@ function endTap(){
     tapKeep = null;
 }
 
+var mouseButtons = 0;    //押しているマウスのボタン(左を押したまま右を押すと pointerdown が来ないので、pointermove でも見る)
+//右クリック：戦闘中の回避ダッシュ(dodge.js)。クリック(Click)にはしない
+function rightPress(e){
+    var on = (e.buttons & 2) && !(mouseButtons & 2);
+    mouseButtons = e.buttons;
+    if(on) dodge.press();
+}
 canvas.addEventListener("pointerdown",function(e){
     var p = toCanvasPos(e);
     inputMode = e.pointerType == "mouse" ? "mouse" : "touch";
     MouseIn = true;
+    if(e.pointerType == "mouse"){
+        rightPress(e);
+        if(e.button != 0) return;
+    }
     if(inputMode == "touch"){
         e.preventDefault();
         try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
@@ -159,6 +170,7 @@ canvas.addEventListener("pointerdown",function(e){
 canvas.addEventListener("pointermove",function(e){
     var p = toCanvasPos(e);
     if(e.pointerType == "mouse"){
+        rightPress(e);
         inputMode = "mouse";
         MouseX = p.x;
         MouseY = p.y;
@@ -180,13 +192,16 @@ canvas.addEventListener("pointermove",function(e){
 function endDrag(e){
     if(e.pointerId == drag.id) drag.id = null;
 }
-canvas.addEventListener("pointerup",endDrag,false);
+canvas.addEventListener("pointerup",function(e){
+    if(e.pointerType == "mouse") mouseButtons = e.buttons;
+    endDrag(e);
+},false);
 canvas.addEventListener("pointercancel",endDrag,false);
 //指を離しても一時停止はしない。マウスが外に出たときだけ一時停止
 canvas.addEventListener("pointerleave",function(e){ if(e.pointerType == "mouse") MouseIn = false; },false);
 window.addEventListener("blur",function(){ MouseIn = false; },false);
-//長押しメニューが出ないように
-canvas.addEventListener("contextmenu",function(e){ if(inputMode == "touch") e.preventDefault(); },false);
+//長押しメニュー・右クリックのメニューが出ないように(右クリックは回避ダッシュ)
+canvas.addEventListener("contextmenu",function(e){ e.preventDefault(); },false);
 
 //------------------------------------------------------------------------------
 //  テスト用オブジェクト（マウスポジションの表示など）
@@ -1250,14 +1265,18 @@ var drone = {
 
         this.preX = this.X;
         this.preY = this.Y;
+        //回避ダッシュの間は、ポインタへ一気に飛ぶ(dodge.js)
+        var dashing = page.number == 1 && dodge.steer(this);
         //試作の場(風・鏡・クモの糸)が、目標と追従の遅れを変える(shotLab.js)
-        if(page.number == 1){
-            var T = { x:tx, y:ty, d:d };
-            shotLab.steer(this, T);
-            tx = T.x; ty = T.y; d = T.d;
+        if(!dashing){
+            if(page.number == 1){
+                var T = { x:tx, y:ty, d:d };
+                shotLab.steer(this, T);
+                tx = T.x; ty = T.y; d = T.d;
+            }
+            this.X = (tx + d * this.X) / (d+1);
+            this.Y = (ty + d * this.Y) / (d+1);
         }
-        this.X = (tx + d * this.X) / (d+1);
-        this.Y = (ty + d * this.Y) / (d+1);
 
         //画面の外には出ない。天蓋母艦(bosses.js)がいる間は、船体の下までしか上がれない
         var top = page.number == 1 ? special.ceiling() : 0;

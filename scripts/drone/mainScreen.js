@@ -403,6 +403,7 @@ var mainScreen = {
         }
         arms.reset();
         timeStop.reset();
+        dodge.reset();
         drone.applyStats();
         drone.slow = false;
         drone.X = CW/2; drone.Y = CH/2;
@@ -514,6 +515,7 @@ var mainScreen = {
 
         //ボスの登場の演出中(WARNINGから着地まで)は、ボスと演出以外は動かない
         if(this.state != "over" && !this.cinematic()){
+            dodge.update();     //右クリックの回避ダッシュ(dodge.js)
             drone.update();
             this.updateYaruki();
         }
@@ -587,11 +589,15 @@ var mainScreen = {
             this.slowmo--;
             frozen = this.slowmo % 2 == 0;
         }
+        //ジャスト回避の見切り：敵と弾だけがゆっくりになる(ドローン君と装備はふつうの速さ。dodge.js)
+        var seen = dodge.slowStep();
         if(!frozen){
             arms.update(this.state == "play" && !this.down && !special.holdFire());    //ドローン君改の復活の間は撃たない
-            this.updateEnemies();
-            this.updateShots();
-            this.updatePickups();
+            if(!seen){
+                this.updateEnemies();
+                this.updateShots();
+                this.updatePickups();
+            }
         }
         this.updateEffects();
         if(this.invincible > 0) this.invincible--;
@@ -1104,7 +1110,9 @@ var mainScreen = {
     },
 
     canBeHit:function(){
-        return (this.state == "play" || this.state == "start") && this.invincible == 0 && this.guard == 0 && !this.down && !timeStop.active;
+        if(!((this.state == "play" || this.state == "start") && this.invincible == 0 && this.guard == 0 && !this.down && !timeStop.active)) return false;
+        //回避ダッシュの間はすり抜ける。飛んでいる間にすり抜けたらジャスト回避(dodge.js)
+        return !dodge.evade();
     },
 
     damage:function(){
@@ -1504,6 +1512,7 @@ var mainScreen = {
             ctx.scale(z, z);
             ctx.translate(-drone.X, -drone.Y);
         }
+        dodge.zoom();       //ジャスト回避の見切りの間も、少し寄る(dodge.js)
         this.drawBackground();
 
         //ボスの登場の演出中はドローン君を出さない(着地のあとに現れる)
@@ -1589,11 +1598,12 @@ var mainScreen = {
         //ドローン(被弾後の無敵中は点滅、撃墜されたら消える)
         //協力プレイの相方
         if(!this.cinematic()) coop.drawPartner();
+        if(showMe && !this.down && !timeStop.active) dodge.drawUnder();    //回避ダッシュの残像(dodge.js)
         if(timeStop.active) timeStop.draw();     //時止めワープの間は、周りの色を抜いて、ドローン君か粒子を描く
         else if(showMe && !this.down && Math.floor(this.invincible/4) % 2 == 0){
             //着地のあとは、ふわっと現れる
             ctx.globalAlpha = 1 - this.droneIn/DRONE_IN_TIME;
-            drone.draw();
+            dodge.drawDrone();
             ctx.globalAlpha = 1;
         }
         //かすりの範囲(弾のふちがこの輪に入るとかすり。かすった瞬間は明るく光る。右下のボタンで隠せる)
@@ -1630,6 +1640,7 @@ var mainScreen = {
         }
         this.drawDon();     //閃光の上に出す
         this.drawJust();
+        dodge.drawOver();   //ジャスト回避の文字(dodge.js)
 
         this.drawHud();
         coop.drawHud();
