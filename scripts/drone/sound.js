@@ -462,6 +462,18 @@ var sound = {
                 this.tone("sawtooth",420,35,1.1,0.15,S,0,0,1500);
                 break;
             case "blast":     this.noise(0.45,0.28,"lowpass",3500,180,S); this.tone("sine",220,45,0.4,0.32,S); break;
+            //回避ダッシュ(dodge.js)：風を切る「シュッ」
+            case "dodge":
+                this.noise(0.2,0.16,"bandpass",700,4200,S);
+                this.tone("sine",320,1100,0.12,0.07,S);
+                break;
+            //ジャスト回避：鋭い「シャキン」と、きらっと上がる和音
+            case "dodgeJust":
+                this.tone("square",2400,3600,0.05,0.07,S,0,0,7000);
+                this.tone("triangle",3600,3550,0.4,0.06,S);
+                this.noise(0.3,0.1,"highpass",6000,9000,S);
+                this.jingle([91,95,98,103],0.035,"triangle",0.06,0.2);
+                break;
             case "error":     this.tone("square",196,196,0.07,0.05,S,0,0,1200); this.tone("square",196,196,0.07,0.05,S,now + 0.11,0,1200); break;
             case "part":
                 //続けて拾うほど音程が上がる

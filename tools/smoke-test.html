@@ -27,6 +27,7 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
 <script src="scripts/drone/battleBg.js"></script>
 <script src="scripts/drone/bossDebug.js"></script>
 <script src="scripts/drone/timeStop.js"></script>
+<script src="scripts/drone/dodge.js"></script>
 <script src="scripts/drone/rival.js"></script>
 <script src="scripts/drone/shotLab.js"></script>
 <script src="scripts/drone/finaleSync.js"></script>
@@ -1323,6 +1324,39 @@ try{
     tap(bossDebug.rows()[0]);
     var hpN = mainScreen.hp; mainScreen.state = "play"; mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.damage();
     check("時止めワープ：オフなら、いつもどおりダメージを受ける", !bossDebug.warp && !timeStop.active && mainScreen.hp == hpN - 1);
+    //回避ダッシュ(dodge.js)：右クリックでポインタの方へ飛ぶ。飛んでいる間にすり抜けるとジャスト回避
+    var dgErr = errors.length;
+    for(fw=0; fw<80; fw++) mainScreen.update();     //被弾の無敵が切れるまで
+    mainScreen.state = "play"; mainScreen.invincible = 0; mainScreen.guard = 0; enemyShots = [];
+    drone.X = 400; drone.Y = 300; MouseX = 700; MouseY = 300; dodge.cd = 0;
+    canvas.dispatchEvent(new PointerEvent("pointerdown", { pointerType:"mouse", button:2, buttons:2, clientX:10, clientY:10 }));
+    var dgReq = dodge.req && Click == 0;
+    canvas.dispatchEvent(new PointerEvent("pointerup", { pointerType:"mouse", button:2, buttons:0, clientX:10, clientY:10 }));
+    MouseX = 700; MouseY = 300;
+    for(fw=0; fw<DODGE_TIME + 1; fw++){ enemyShots = []; mainScreen.update(); if(fw % 3 == 0) draw1(); }
+    var dgMove = dodge.count == 1 && drone.X > 400 + DODGE_DIST_MAX*0.9 && Math.abs(drone.Y - 300) < 2 && dodge.cd > 0 && !dodge.active() && dodge.invuln();
+    check("回避ダッシュ：右クリック(クリックにならない)で、ポインタの方へ一気に飛ぶ", dgReq && dgMove,
+          [dgReq,dgMove].join("") + " 位置" + Math.round(drone.X) + "," + Math.round(drone.Y) + " cd" + dodge.cd);
+    dodge.cd = 0; dodge.press(); mainScreen.update();
+    var hpD = mainScreen.hp;
+    //飛んでいく先に弾を並べる(この更新でドローン君が先へ進むので)
+    enemyShots = [];
+    for(fw=0; fw<12; fw++) enemyShots.push({ x:drone.X + dodge.dx*fw*6, y:drone.Y + dodge.dy*fw*6, vx:0, vy:0, r:5, kind:"small" });
+    mainScreen.update(); draw1();
+    var dgInfo = [mainScreen.hp, hpD, dodge.justCount, dodge.cd, mainScreen.slowmo, mainScreen.hitStop, dodge.t, enemyShots.length].join(",");
+    var DODGE_STOP_WAIT = DODGE_JUST_STOP + 1;
+    var dgJust = mainScreen.hp == hpD && dodge.justCount == 1 && dodge.cd == 0 && dodge.slowT > 0 && mainScreen.hitStop > 0;
+    //見切り：周りはゆっくり(弾は少ししか進まない)、ドローン君はふつうの速さ
+    for(fw=0; fw<DODGE_STOP_WAIT; fw++) mainScreen.update();
+    var dgB = { x:200, y:100, vx:2, vy:0, r:5, kind:"small" }; enemyShots = [dgB];
+    for(fw=0; fw<10; fw++) mainScreen.update();
+    var dgSlow = dgB.x - 200 < 2*10*0.5 && dodge.slowPow > 0.5;
+    draw1();
+    for(fw=0; fw<DODGE_SLOW_TIME + 10; fw++){ enemyShots = []; mainScreen.update(); if(fw % 10 == 0) draw1(); }
+    dgJust = dgJust && dgSlow && dodge.slowPow == 0;
+    var dgAfter = !dodge.invuln() && mainScreen.canBeHit();
+    check("回避ダッシュ：飛んでいる間に弾が重なるとジャスト回避(ダメージなし・周りがゆっくり・すぐまた飛べる)、終わると当たる",
+          dgJust && dgAfter && errors.length == dgErr, [dgJust,dgAfter].join("") + " " + dgInfo + " " + errors.slice(dgErr).join(" "));
     tap(backBtn());
     //BGMの試し聞き(bgmTrial.js)：案を順に選べ、どの案でも曲の音符を止まらずに作れる。最終局面で原点回帰に替わる
     var bgmNames = [], bgmErr = errors.length, keepSnd = { ctx:sound.ctx, bgmGain:sound.bgmGain, noiseBuf:sound.noiseBuf };
