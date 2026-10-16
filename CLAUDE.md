@@ -48,7 +48,8 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | `upgradeScreen.js` | 強化画面(報酬カード・能力強化・装備・ショップ・能力リセット) |
 | `gameoverScreen.js` | ゲームオーバー画面 |
 | `story.js` | ストーリー(`STORIES`)・ストーリー画面・エンディング・ストーリー確認モード |
-| `battleBg.js` | 戦闘画面(対戦も)の背景。奥にWAVEで移り変わる空と街(昼→夕方→夜→WAVE16からは戦場。`story.js` の `drawSky` を別のキャンバスに粗く描いて薄く敷き、ドローン君と逆へ少しずらす)、手前に戦いに反応する方眼(目の大きさと出すかどうかはタイトルの「設定」で選ぶ：`viewOpt.grid`・`viewOpt.gridSize`、細かい7.5px／普通15px／大きい30px は `BG_CELL_SIZES`。光る範囲は普通の方眼のマス数で決め、細かいでは2倍のマス数にする。はじめの設定は「あり・大きい」。空と街の絵は、方眼の設定にかかわらずいつも出す。大きい・なしは方眼と演出が公開版と同じ(`battleBg.classic()`。大きいは `drawClassic` で絵の上にごく薄い30pxの方眼、なしは線なし)で、光るマス・波は出さず、ジャストのゆっくりの演出も公開版のまま(`mainScreen.js` の `JUST_FX` の `classic`。方眼ありは弱めた `bg`)。衝撃波・ジャスト衝撃波・ボスの着地で波打つ `ripple`、かすったマスが光る `graze`(黄色)、ドローン君の下のマスがいつも灰色に光り、かすりコンボ中は黄色く派手になる `drawAura`、ジャスト衝撃波でドローン君のまわりが水色のひし形に光り、外へひし形の輪になって伝わる `justSpread`)。WAVEの番号と自分の画面の出来事だけで決まるので通信は要らない |
+| `battleBg.js` | 戦闘画面(対戦も)の背景。奥にWAVEで移り変わる空と街(昼→夕方→夜→WAVE16からは戦場。描くのは `bgScene.js`。`#bgold` のときは前のとおり `story.js` の `drawSky` を別のキャンバスに粗く描いて薄く敷き、ドローン君と逆へ少しずらす)、手前に戦いに反応する方眼(目の大きさと出すかどうかはタイトルの「設定」で選ぶ：`viewOpt.grid`・`viewOpt.gridSize`、細かい7.5px／普通15px／大きい30px は `BG_CELL_SIZES`。光る範囲は普通の方眼のマス数で決め、細かいでは2倍のマス数にする。はじめの設定は「あり・大きい」。空と街の絵は、方眼の設定にかかわらずいつも出す。大きい・なしは方眼と演出が公開版と同じ(`battleBg.classic()`。大きいは `drawClassic` で絵の上にごく薄い30pxの方眼、なしは線なし)で、光るマス・波は出さず、ジャストのゆっくりの演出も公開版のまま(`mainScreen.js` の `JUST_FX` の `classic`。方眼ありは弱めた `bg`)。衝撃波・ジャスト衝撃波・ボスの着地で波打つ `ripple`、かすったマスが光る `graze`(黄色)、ドローン君の下のマスがいつも灰色に光り、かすりコンボ中は黄色く派手になる `drawAura`、ジャスト衝撃波でドローン君のまわりが水色のひし形に光り、外へひし形の輪になって伝わる `justSpread`)。WAVEの番号と自分の画面の出来事だけで決まるので通信は要らない |
+| `bgScene.js` | 戦闘画面の奥の景色(`battleBg.drawSky` から呼ぶ)。空・雲・山・遠い街・近い街・地面を別々の層(`SCENE_LAYERS`)にして、奥ほどゆっくり左へ流し(疾走感。速さは `SCENE_FLOW`・`bgScene.flow`)、ドローン君と逆へもずらす。層は空が変わったときに別のキャンバスへ描いておき、毎フレームは貼るだけ。空ごとの動く物：昼(鳥・飛行機雲・太陽の光の筋)・夕方(鳥・高架を走る電車)・夜(星・航空障害灯・探照灯)・戦場(煙と炎・地平線の爆発・照明弾・曳光弾・対空砲火・爆撃機・火の粉)。最後に紙の色(`SCENE_WASH`)を重ねて敵・弾が見やすい明るさにそろえ、上のふちは表示が読めるよう明るくする(`SCENE_HUD_*`)。位置はWAVEと時間だけで決まる(乱数を使わない)。`#bgold` で前の背景(ストーリーの空を白で薄く敷く)に戻して見比べられる |
 | `bossDebug.js` | デバッグのメニュー：ボス戦だけを遊ぶ・武器試用・ストーリー確認(`#debug` で開いたときだけ) |
 | `timeStop.js` | ショップのバフ「時止めワープ」(被弾の瞬間に自動で時が止まり、選んだ場所へ粒子になって移る。クールタイム `BUFF_WARP_CD` 秒・WAVEの始めは使える・協力プレイ／対戦では働かない)。デバッグのメニューで「オン」にすると、クールタイムなしで試せる |
 | `dodge.js` | 右クリックの回避ダッシュ。ポインタの方へ一気に飛び(`DODGE_DIST_MIN`～`MAX`、`DODGE_TIME` フレーム)、飛んでいる間と着いたあと少し(`DODGE_GUARD`)は当たらない。飛んでいる間、体は進む向きへ1回転し(`DODGE_SPIN`)、道すじも転がる側へ少し弧を描く(`DODGE_ARC`)。飛んでいる間に弾・レーザー・体当たりが芯に重なると「ジャスト回避」(一瞬止まり、残像が砕け、やる気・すぐまた飛べる。`DODGE_JUST_*`)。そのあと「見切り」で敵と弾だけがゆっくりになり、画面が青く沈んで曲がこもる(ドローン君と装備はふつうの速さ。`dodge.slowStep`・`DODGE_SLOW_*`)。`mainScreen.update` から `dodge.update`、`drone.calcXY` から `steer`、`mainScreen.canBeHit` から `evade` を呼ぶ。協力プレイ・対戦では使わない。タッチ操作にはまだない |
@@ -114,6 +115,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
 | 同胞・人間の兵器 | `forces.js` の `kinRate()`・`pickHuman()` |
 | ストーリーの文章・背景・流れる時期 | `story.js` の `STORIES`・`STORY_SKY`・`STORY_AFTER` |
 | BGM | `sound.js` の `TRACKS` |
+| 戦闘画面の奥の景色(層の流れる速さ・紙の色の濃さ・空ごとの色) | `bgScene.js` の `SCENE_LAYERS`・`SCENE_FLOW`・`SCENE_WASH`・`SCENE_PAL` |
 | 戦闘画面の背景(空の薄さ・奥行き・方眼の波) | `battleBg.js` の `BG_*`・`RIPPLE_*`・`GLOW_*`・`CELL_STYLES`・`CELL_STYLE`(光るマスの描き方の候補と、ふだん使うもの。見比べは `tools/bg-glow.html`、ゲームでは `#bgstyle=C` で試せる)・`AURA_*`・`BG_COMBO_COLOR`・`JUST_DIAMOND_R`・`JUST_SPREAD_*`、空の色は `story.js` の `SKY_COLORS` |
 | 対戦の耐久・装備ごとのダメージ倍率 | `versus.js` の `VS_HP`・`VS_DAMAGE_MUL` |
 | ドローン君の色・振り向き・傾き | `common.js` の `FLAT_COLOR`・`FLAT_YAWS`・`FLAT_ELEVS`・`TURN_*`・`TILT_*` |
