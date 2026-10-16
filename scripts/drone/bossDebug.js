@@ -6,7 +6,7 @@
 //  セーブ・ハイスコアは変えない(始める前の状態を覚えておき、終わったら戻す)。
 //  時止めワープ「オン」：試作の能力(timeStop.js)を、ボス戦・武器試用で試す
 //  途中でメニューへ戻るのは右下の「DEBUG：戻る」(sound.js の debugBack)
-//  BGM・最終局面：曲の鳴らし方の試し聞き(bgmTrial.js)。選んだ案で、メニューの曲もこのあと遊ぶ曲も鳴る
+//  BGM・最終局面・戦闘曲：曲の鳴らし方の試し聞き(bgmTrial.js)。選んだ案で、メニューの曲もこのあと遊ぶ曲も鳴る
 //  改・第二形態：WAVE20を第二形態から始める(最終局面の試作 finaleSync.js を試すため)
 //  ヘリ(試作)：ボスの試作「強襲ヘリ」(gunship.js)と WAVE10 の強さで戦う
 //------------------------------------------------------------------------------
@@ -180,7 +180,7 @@ var bossDebug = {
     tools:function(){
         var out = [];
         for(var i=0; i<5; i++) out.push(new drawRect(CW/2 + (i - 2)*116, GS*12.8, 110, 36));
-        for(var i=0; i<4; i++) out.push(new drawRect(CW/2 + (i - 1.5)*146, GS*14.1, 140, 32));
+        for(var i=0; i<5; i++) out.push(new drawRect(CW/2 + (i - 2)*118, GS*14.1, 114, 32));
         return out;
     },
     //武器試用：装備の一覧(WEAPON_IDS の順)
@@ -244,6 +244,12 @@ var bossDebug = {
             sound.play("click");
             return;
         }
+        if(t[9].clicked()){
+            bgmTrial.toggleFight();
+            this.msg = bgmTrial.fight ? "序盤・中盤の戦闘(WAVE1～15)で「" + bgmTrial.fightName() + "」の曲が流れます" : "序盤・中盤の戦闘は今の曲です";
+            sound.play("click");
+            return;
+        }
     },
     updateTrial:function(){
         var a = this.armButtons();
@@ -290,9 +296,9 @@ var bossDebug = {
             var t = this.tools();
             var labels = ["ストーリー確認", "武器試用", "装備「" + BOSS_DEBUG_GEAR[this.gear] + "」", "無敵「" + (this.god ? "オン" : "オフ") + "」", "閉じる",
                           "時止めワープ「" + (this.warp ? "オン" : "オフ") + "」", "攻撃の試作",
-                          "BGM「" + bgmTrial.short() + "」", "最終局面「" + bgmTrial.finaleName() + "」"];
+                          "BGM「" + bgmTrial.short() + "」", "最終局面「" + bgmTrial.finaleName() + "」", "戦闘曲「" + bgmTrial.fightName() + "」"];
             for(var i=0; i<t.length; i++){
-                ctx.font = i < 5 ? "bold 14px sans-serif" : "bold 13px sans-serif";
+                ctx.font = i < 5 ? "bold 14px sans-serif" : "bold 11px sans-serif";
                 t[i].button(labels[i]);
             }
         }
