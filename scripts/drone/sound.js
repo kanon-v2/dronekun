@@ -474,6 +474,18 @@ var sound = {
                 this.noise(0.3,0.1,"highpass",6000,9000,S);
                 this.jingle([91,95,98,103],0.035,"triangle",0.06,0.2);
                 break;
+            //切り返し：鋭く空気を裂く「ヒュン」
+            case "dodgeSlash":
+                this.noise(0.16,0.2,"bandpass",2500,9000,S);
+                this.tone("sawtooth",900,2600,0.08,0.05,S,0,0,6000);
+                break;
+            //切り返しの斬撃が入る：重い「ザンッ」と、高く伸びる金属の響き
+            case "dodgeCut":
+                this.noise(0.35,0.26,"lowpass",5000,300,S);
+                this.tone("sine",180,50,0.35,0.3,S);
+                this.tone("triangle",3200,3100,0.6,0.05,S);
+                this.tone("square",4800,4700,0.25,0.025,S,0,0,9000);
+                break;
             case "error":     this.tone("square",196,196,0.07,0.05,S,0,0,1200); this.tone("square",196,196,0.07,0.05,S,now + 0.11,0,1200); break;
             case "part":
                 //続けて拾うほど音程が上がる
