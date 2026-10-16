@@ -1393,7 +1393,7 @@ var mainScreen = {
             if(b.behind) continue;     //画面の奥を通っている弾は当たらず、かすらない(shotLab.js の立体の輪)
             var d = Math.hypot(b.x - drone.X, b.y - drone.Y);
             var r = b.r || 5;
-            if(d < r + HIT_CORE && this.canBeHit()){
+            if(d < r + dodge.core() && this.canBeHit()){     //見切りの間は当たり判定が小さい(dodge.js)
                 enemyShots.splice(i,1);
                 this.damage();
             }else if(!b.grazed && d < r + GRAZE_RANGE && !this.down && (!coop.isGuest() || coop.grazeCd <= 0)){
@@ -1613,9 +1613,9 @@ var mainScreen = {
         //敵の弾に対する当たり判定(中心の点。右下のボタンで隠せる)
         if(showMe && viewOpt.hitbox && !timeStop.active){
             ctx.fillStyle = "#fff";
-            ctx.beginPath(); ctx.arc(drone.X,drone.Y,HIT_CORE*0.75 + 1.5,0,Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(drone.X,drone.Y,dodge.core()*0.75 + 1.5,0,Math.PI*2); ctx.fill();
             ctx.fillStyle = "#e22";
-            ctx.beginPath(); ctx.arc(drone.X,drone.Y,HIT_CORE*0.75,0,Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(drone.X,drone.Y,dodge.core()*0.75,0,Math.PI*2); ctx.fill();
         }
 
         this.drawEffects();

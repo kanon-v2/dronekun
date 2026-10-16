@@ -22,6 +22,7 @@ const BG_RES = 0.5;             //空を描く細かさ(ゲームの大きさの
 const BG_CELL_SIZES = { fine:GS/4, normal:GS/2, large:GS };    //large(大きい)は公開版と同じ方眼・演出(classic。空と街の絵は出す)
 const BG_WARP_STEP = GS/4;      //方眼の線を波で曲げるときの区切り(px。小さいほどなめらかで重い。細かい方眼でもこれより細かくしない)
 const BG_CLASSIC_COLOR = "#f0f0f0";     //方眼が大きいときの、公開版と同じごく薄い方眼の色
+const BG_SCENE_GRID = 0.16;     //奥の景色(bgScene.js)の上に引く、大きい方眼の白い線の濃さ
 const BG_GRID_COLOR = "rgba(40,60,90,0.08)";   //方眼の線の色(目が細かいので少し薄く)
 const RIPPLE_MAX = 8;           //同時に起きる波の数の上限
 const RIPPLE_W = 40;            //波の幅(px)
@@ -171,7 +172,9 @@ var battleBg = {
     //公開版と同じ方眼：GS ごとのごく薄い線(空と街の絵の上に引く)
     drawClassic:function(){
         //夜の戦場の色(finaleSync.js)の上では、明るい線が浮かないよう薄くする
-        ctx.strokeStyle = this.night > 0.001 ? "rgba(240,240,240," + Math.max(0.12, 1 - this.night) + ")" : BG_CLASSIC_COLOR;
+        //奥の景色(bgScene.js)の上では、白に近い線が浮かないよう、うすい白で重ねる
+        if(bgScene.on) ctx.strokeStyle = "rgba(255,255,255," + (BG_SCENE_GRID*Math.max(0.4, 1 - this.night)) + ")";
+        else ctx.strokeStyle = this.night > 0.001 ? "rgba(240,240,240," + Math.max(0.12, 1 - this.night) + ")" : BG_CLASSIC_COLOR;
         ctx.lineWidth = 1;
         ctx.beginPath();
         for(var x=0; x<=CW; x+=GS){ ctx.moveTo(x + 0.5,0); ctx.lineTo(x + 0.5,CH); }
@@ -205,6 +208,7 @@ var battleBg = {
             this.sky.height = Math.round(CH*BG_RES);
             this.skyCtx = this.sky.getContext("2d");
         }
+        if(bgScene.on){ this.skyName = name; this.drawScene(name, dt); return; }
         this.skyAge += dt;
         if(name != this.skyName || this.skyAge >= BG_REDRAW){
             this.skyName = name;
@@ -225,6 +229,25 @@ var battleBg = {
             ox = vx + (ox - vx)*z; oy = vy + (oy - vy)*z; w *= z; h *= z;
         }
         ctx.drawImage(this.sky, ox, oy, w, h);
+        this.drawDark();
+    },
+    //奥の景色(bgScene.js)。遠ざかるときは、消失点へ向かって全体を小さくする(far がマイナス・zoom のときは大きくして寄る)
+    drawScene:function(_name,dt){
+        var z = (1 + this.zoom)*(Math.abs(this.far) > 0.001 ? 1 - FS_FAR*this.far : 1);
+        if(Math.abs(z - 1) > 0.001){
+            if(z < 1){
+                ctx.fillStyle = "#0c0814";
+                ctx.fillRect(0,0,CW,CH);
+            }
+            ctx.save();
+            ctx.translate(DEPTH_VP.x, DEPTH_VP.y); ctx.scale(z, z); ctx.translate(-DEPTH_VP.x, -DEPTH_VP.y);
+            bgScene.draw(_name, this.t, dt);
+            ctx.restore();
+        }else bgScene.draw(_name, this.t, dt);
+        this.drawDark();
+    },
+    //最終局面の試作(finaleSync.js)：遠ざかる間の暗さと、夜の戦場の色
+    drawDark:function(){
         if(this.far > 0.001){
             ctx.fillStyle = "rgba(12,8,20," + (FS_FAR_DIM*this.far) + ")";
             ctx.fillRect(0,0,CW,CH);

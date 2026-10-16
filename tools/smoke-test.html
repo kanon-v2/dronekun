@@ -25,6 +25,7 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
 <script src="scripts/drone/gameoverScreen.js"></script>
 <script src="scripts/drone/story.js"></script>
 <script src="scripts/drone/battleBg.js"></script>
+<script src="scripts/drone/bgScene.js"></script>
 <script src="scripts/drone/bossDebug.js"></script>
 <script src="scripts/drone/timeStop.js"></script>
 <script src="scripts/drone/dodge.js"></script>
@@ -1411,6 +1412,47 @@ try{
     var dgAfter = !dodge.invuln() && mainScreen.canBeHit();
     check("回避ダッシュ：飛んでいる間に弾が重なるとジャスト回避(ダメージなし・周りがゆっくり・すぐまた飛べる)、終わると当たる",
           dgJust && dgAfter && errors.length == dgErr, [dgJust,dgAfter].join("") + " " + dgInfo + " " + errors.slice(dgErr).join(" "));
+    //切り返し：見切りの間にもう一度右クリックすると、通り道の敵を切り、弾を切り落とす。倒すともう一度切り返せる
+    var slErr = errors.length;
+    enemies = []; enemyShots = []; dodge.reset();
+    drone.X = 300; drone.Y = 300; MouseX = 620; MouseY = 300;
+    dodge.just();
+    var slA = makeEnemy("bug"), slB = makeEnemy("bug"), slC = makeEnemy("bug");
+    slA.x = 420; slA.y = 300; slB.x = 540; slB.y = 310; slC.x = 450; slC.y = 120;      //C は通り道から外れている
+    [slA,slB,slC].forEach(function(e){ e.speed = 0; e.shotT = null; e.hp = e.maxHp = 1; enemies.push(e); });
+    var slShot = { x:480, y:300, vx:0, vy:0, r:5, kind:"small" }; enemyShots.push(slShot);
+    var slReady = dodge.slashOk && dodge.slowT > 0;
+    dodge.press();
+    var slHitMid = false, slArms = arms.update; arms.update = function(){};     //装備の弾で先に倒さないよう、装備は止める
+    for(fw=0; fw<40; fw++){ mainScreen.update(); if(dodge.slashHit.length == 2 && !slA.dead) slHitMid = true; if(fw % 4 == 0) draw1(); }
+    arms.update = slArms;
+    var slInfo = [slReady, dodge.slashCount, slHitMid, slA.dead, slB.dead, slC.dead, enemyShots.indexOf(slShot), dodge.chain, dodge.slashOk, dodge.slowT, Math.round(drone.X)].join(",");
+    var slOk = slReady && dodge.slashCount == 1 && slHitMid && slA.dead && slB.dead && !slC.dead && enemyShots.indexOf(slShot) < 0 &&
+               drone.X > 300 + DODGE_SLASH_DIST_MAX*0.9 && dodge.chain == 1 && dodge.slashOk && dodge.slowT > 0 && dodge.slowMax < DODGE_SLOW_TIME;
+    //見切りが終わると、右クリックはふつうの回避ダッシュに戻る
+    for(fw=0; fw<DODGE_SLOW_TIME + 10; fw++){ enemyShots = []; mainScreen.update(); }
+    var slCnt = dodge.count; dodge.cd = 0; MouseX = 100; dodge.press(); mainScreen.update();
+    var slBack = !dodge.slashOk && dodge.count == slCnt + 1 && dodge.slashCount == 1 && !dodge.slash;
+    for(fw=0; fw<DODGE_TIME + 2; fw++){ enemyShots = []; mainScreen.update(); }
+    check("切り返し：見切りの間の右クリックで、通り道の敵を切り(着いてからダメージ)・弾を切り落とす。倒すと続けて切り返せる。見切りが終わるとふつうの回避",
+          slOk && slBack && errors.length == slErr, slInfo + " " + slBack + " " + errors.slice(slErr).join(" "));
+    //ジャスト回避のあと被弾しにくく：見切りの間は当たり判定が小さく、解けるときにまわりの弾が消える。切り返しで着いたあとは長く当たらない
+    enemies = []; enemyShots = []; dodge.reset();
+    for(fw=0; fw<DODGE_TIME + 2; fw++) mainScreen.update();
+    MouseX = drone.X; MouseY = drone.Y;
+    dodge.just();
+    var sfCore = dodge.core() < HIT_CORE;
+    var sfNear = { x:drone.X + 40, y:drone.Y, vx:0, vy:0, r:5, kind:"small" }, sfFar = { x:drone.X + 250, y:drone.Y, vx:0, vy:0, r:5, kind:"small" };
+    enemyShots = [sfNear, sfFar];
+    for(fw=0; fw<DODGE_SLOW_TIME + 10; fw++){ MouseX = drone.X; MouseY = drone.Y; mainScreen.update(); }
+    var sfClear = enemyShots.indexOf(sfNear) < 0 && enemyShots.indexOf(sfFar) >= 0 && dodge.core() == HIT_CORE;
+    enemyShots = []; dodge.just(); dodge.cd = 0; MouseX = drone.X + 200; dodge.press();
+    for(fw=0; fw<DODGE_SLASH_TIME + 4; fw++) mainScreen.update();
+    var sfGuard = dodge.guard > DODGE_SLASH_DELAY && dodge.invuln();
+    check("ジャスト回避のあと被弾しにくい：見切りの間は当たり判定が小さく、解けるときにまわりの弾が消え、切り返しのあとは長く当たらない",
+          sfCore && sfClear && sfGuard, [sfCore,sfClear,sfGuard,dodge.guard].join(","));
+    for(fw=0; fw<DODGE_SLOW_TIME + 40; fw++){ enemyShots = []; mainScreen.update(); }
+    enemies = [];
     tap(backBtn());
     //BGMの試し聞き(bgmTrial.js)：案を順に選べ、どの案でも曲の音符を止まらずに作れる。最終局面で原点回帰に替わる
     var bgmNames = [], bgmErr = errors.length, keepSnd = { ctx:sound.ctx, bgmGain:sound.bgmGain, noiseBuf:sound.noiseBuf };
@@ -1547,6 +1589,18 @@ try{
     check("戦闘の背景：WAVEで空が変わり、衝撃波で方眼が波打ち、かすったマスが光り、ジャストでひし形が外へ伝わる",
           skies.join() == "day,dusk,night,war" && waved && pushed && celled && battleBg.ripples.length == 0 && battleBg.glows.length == 0 && errors.length == bgErr,
           skies.join() + " 押した幅" + (pt.x - 440).toFixed(1) + "px");
+    //奥の景色(bgScene.js)：空ごとに層を描いておき、時間がたつと流れる。動く物(鳥・電車・探照灯・煙など)も、遠ざかる演出の中でも描ける。#bgold の前の背景も描ける
+    var keepFar = battleBg.far, sceneErr = errors.length, sceneOk = true, d0 = bgScene.dist;
+    [1,6,11,16].forEach(function(w){
+        game.wave = w;
+        for(var f=0; f<4; f++){ battleBg.t += 450; battleBg.last = 0; battleBg.draw(); }
+        sceneOk = sceneOk && bgScene.name == battleBg.skyFor() && SCENE_LAYERS.every(function(L){ return bgScene.layers[L.id] && bgScene.layers[L.id].width > 0; });
+    });
+    var flowed = bgScene.dist > d0;
+    battleBg.far = 0.5; battleBg.last = 0; battleBg.draw(); battleBg.far = keepFar;
+    bgScene.on = false; battleBg.skyName = ""; battleBg.last = 0; battleBg.draw(); bgScene.on = true;
+    game.wave = keepWave;
+    check("戦闘の背景：奥の景色が空ごとに描け、流れる(遠ざかる演出・前の背景も描ける)", sceneOk && flowed && bgScene.rails === false && errors.length == sceneErr, "空 " + bgScene.name + " 高い建物 " + bgScene.tall.length);
     viewOpt.gridSize = keepBgSize; viewOpt.grid = keepBgGrid;
 
     //画面の細かさ：表示が大きいと細かく描き(座標はそのまま)、フレームレートが低い秒が続くと1段下げる
