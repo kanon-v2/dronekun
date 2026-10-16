@@ -32,6 +32,7 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
 <script src="scripts/drone/rival.js"></script>
 <script src="scripts/drone/shotLab.js"></script>
 <script src="scripts/drone/finaleSync.js"></script>
+<script src="scripts/drone/gunship.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="scripts/drone/coop.js"></script>
 <script src="scripts/drone/versus.js"></script>
@@ -1286,6 +1287,51 @@ try{
     var k2Ok = k2Go && k2b && k2b.form == 2 && k2b.hp == k2b.maxHp && !bossDebug.kai2;
     tap(backBtn());
     check("デバッグ「改・第二形態」：第二形態から戦える", k2Ok && page.number == 0 && bossDebug.menu && !bossDebug.kai2, "始まる" + k2Go + " 第二形態" + (k2b && k2b.form));
+    //ボスの試作「強襲ヘリ」(gunship.js)：横から飛んできて、画面の外も使って攻撃する(無敵のまま)
+    var gerr = errors.length;
+    tap(bossDebug.rivalRows()[RIVAL_WAVES.length + 1]);
+    var gGo = page.number == 1 && game.wave == 10 && bossDebug.gunship && bossTypeFor(10) == "gunship", gb = null, gSeen = {}, gOff = false, gShots = {}, gIn = false, gParry = false, gRam = false, gShells = {}, gFarMax = 0, gFarMin = 0;
+    for(var i=0; i<7000; i++){
+        bot();
+        mainScreen.update();
+        gb = enemies.filter(function(e){ return e.type == "gunship"; })[0];
+        if(!gb){ if(mainScreen.state == "start") continue; break; }     //WARNING の間はまだいない
+        if(!mainScreen.bossFreeze && mainScreen.state == "play"){
+            if(!gIn){ gIn = gb.mode == "hover"; gb.hp = gb.maxHp = 1e7; }     //倒れないように(攻撃をひととおり見る)
+            gSeen[gb.mode] = true;
+            if(gb.phased) gOff = true;
+            enemyShots.forEach(function(s){ gShots[s.kind] = true; });
+            //突撃を弾き返すと、きりもみになってダメージを受ける
+            if(!gParry && gb.mode == "pass" && mainScreen.canCounter(gb)){
+                var hp0 = gb.hp;
+                mainScreen.counter(gb);
+                gParry = gb.mode == "spin" && gb.hp < hp0;
+            }
+            gunship.shells.forEach(function(d){ gShells[d.near ? "near" : "far"] = true; });
+            gFarMax = Math.max(gFarMax, battleBg.far); gFarMin = Math.min(gFarMin, battleBg.far);
+            //奥から突っ込んでくるのを、着く直前の衝撃波で弾き返す
+            if(!gRam && gb.mode == "charge" && HELI_RAM_T - gb.count == 3){
+                var hp1 = gb.hp;
+                drone.X = gb.tx; drone.Y = gb.ty;
+                shotLab.onBlast();
+                gRam = gb.mode == "spin" && gb.hp < hp1 && gb.z == 0;
+            }
+        }
+        if(i % 20 == 0) draw1();
+    }
+    var gAll = ["hover","exit","lane","pass","orbit","bomb","spin","sink","far","charge","nearIn","near"];
+    var gModes = gAll.filter(function(m){ return gSeen[m]; });
+    check("強襲ヘリ(試作)：横から登場し、画面の外・奥・手前を使って攻撃する(そこでは当たらない)",
+          gGo && gIn && gModes.length == gAll.length && gOff && gShots.hrocket && gShots.hbomb && gShots.missile && gShells.far && gShells.near && gParry && gRam && gFarMax > 0.4 && gFarMin < -0.3 && errors.length == gerr,
+          "始まる" + gGo + " 登場" + gIn + " 動き" + gModes.join(",") + " 外" + gOff + " 弾" + Object.keys(gShots).join(",") + " 撃ち込み" + Object.keys(gShells).join(",") +
+          " 弾き返し(突撃" + gParry + "・突っ込み" + gRam + ") 背景" + gFarMin.toFixed(2) + "～" + gFarMax.toFixed(2) + " エラー" + (errors.length - gerr));
+    if(gb){ gb.hp = 1; gb.phased = false; gb.harmless = false; mainScreen.hitEnemy(gb, 10); }
+    //倒すと奥の街へ落ちていき、地平線で燃える(背景も元に戻る)
+    var gWreck = !!gunship.wreck, gBurn = false;
+    for(var i=0; i<1500 && page.number == 1; i++){ mainScreen.update(); if(gunship.wreck && gunship.wreck.burn > 0) gBurn = true; if(i % 20 == 0) draw1(); }
+    check("強襲ヘリ(試作)：倒すと奥の街へ落ちて燃え、メニューへ戻り、ふつうのボスに戻る",
+          gWreck && gBurn && errors.length == gerr && page.number == 0 && bossDebug.menu && !bossDebug.gunship && bossTypeFor(10) == "fortress" && Math.abs(battleBg.far) < 0.01 && battleBg.zoom < 0.01,
+          "落ちる" + gWreck + " 燃える" + gBurn + " 背景" + battleBg.far.toFixed(2) + " " + bossDebug.msg);
     //武器試用：選んだ装備で、尽きずに出てくる雑魚敵と戦う(無敵。与えたダメージを数える)
     bossDebug.god = false;    //武器試用は無敵の設定によらず無敵
     tap(bossDebug.tools()[1]);
