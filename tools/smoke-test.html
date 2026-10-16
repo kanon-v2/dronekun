@@ -32,6 +32,8 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
 <script src="scripts/drone/shotLab.js"></script>
 <script src="scripts/drone/finaleSync.js"></script>
 <script src="scripts/drone/gunship.js"></script>
+<script src="scripts/drone/emotion.js"></script>
+<script src="scripts/drone/emotionHint.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="scripts/drone/coop.js"></script>
 <script src="scripts/drone/versus.js"></script>
@@ -467,6 +469,8 @@ try{
         if(enemies.some(function(e){ return e.shell; }) && shotLab.lasso) labKinds.lasso = true;
         if(shotLab.ptr && shotLab.ptr.n > 0) labKinds.ptraim = true;
         if(shotLab.field) labKinds[shotLab.field.kind] = true;
+        if(emotion.cur) labKinds[emotion.cur.kind] = true;
+        if(hint.cur) labKinds[hint.cur.id] = true;
         if(lf % 10 == 0) draw1();
     }
     var labAll = shotLab.list.every(function(L){ return labKinds[L.id]; });
@@ -529,6 +533,140 @@ try{
     check("核弾頭(攻撃の試作)：範囲の中は被弾して爆心が赤熱する、外へ逃げれば無傷、撃ち落とせば爆発しない",
           nIn.hit && nIn.boom && nFall && nOut.boom && !nOut.hit && ndOk && errors.length == nerr,
           "中" + nIn.hit + "/" + nIn.boom + " 残り" + nFall + " 外" + nOut.boom + "/" + !nOut.hit + " 撃墜" + ndTarget + "/" + ndOk);
+
+    // 感情の攻撃(emotion.js)：怒りは破片を吐いて爆発し、稲妻が当たる。破片は冷えると灰に。悲しみは淵がたまり、中では重く沈む
+    var eerr = errors.length;
+    nukeKeep(); enemyShots = []; shotLab.clear(); mainScreen.hp = 9;     //前の確かめで減った分を戻す(稲妻で倒れないように)
+    drone.X = CW/2; drone.Y = CH/2; MouseX = drone.X; MouseY = drone.Y;
+    var rageN = function(){ return enemyShots.filter(function(b){ return b.kind == "rage"; }).length; };
+    var ea = emotion.anger(CW/2, 80), spitN = 0, maxRage = 0;
+    for(var i=0; i<ANGER_SIMMER; i++){ mainScreen.invincible = 999; mainScreen.update(); spitN = Math.max(spitN, rageN()); maxRage = Math.max(maxRage, ea.rage); if(i % 40 == 0) draw1(); }
+    var ringN0 = rageN();
+    mainScreen.update();     //爆発
+    var erupted = rageN() >= ringN0 + ANGER_RING_N - 2 && emotion.cracks.length == ANGER_CRACKS && ea.rage > 1;
+    draw1();
+    enemyShots = []; mainScreen.invincible = 0; mainScreen.guard = 0;
+    var ehp = mainScreen.hp, cp = emotion.cracks[0].pts[4];
+    drone.X = cp.x; drone.Y = cp.y; MouseX = drone.X; MouseY = drone.Y;
+    mainScreen.update();
+    var crackHit = mainScreen.hp == ehp - 1;
+    var ash = shotLab.fire(80, 120, 0, 0.5, "rage", { heat:1 });
+    for(var i=0; i<ANGER_COOL + 60 && emotion.cur; i++){ mainScreen.invincible = 999; mainScreen.update(); if(i % 50 == 0) draw1(); }
+    var angerOk = spitN >= 5 && maxRage > 0.9 && erupted && crackHit && ash.heat == 0 && ash.r == 3 && ash.vy > 0 && emotion.cur == null;
+    enemyShots = []; shotLab.clear();
+    // 悲しみ
+    drone.X = CW/2; drone.Y = CH - 30; MouseX = drone.X; MouseY = drone.Y;
+    var es = emotion.sorrow(CW/2, 70), tearN = 0, splashN = 0, rippled = false, greyMax = 0;
+    for(var i=0; i<SORROW_POOL_FULL; i++){
+        mainScreen.invincible = 999; mainScreen.update();
+        tearN += enemyShots.filter(function(b){ return b.kind == "tear" && b.t == 1; }).length;
+        splashN = Math.max(splashN, enemyShots.filter(function(b){ return b.kind == "splash"; }).length);
+        rippled = rippled || emotion.ripples.length > 0; greyMax = Math.max(greyMax, es.grey);
+        if(i % 60 == 0) draw1();
+    }
+    var poolFull = Math.abs(es.level - SORROW_POOL) < 1;
+    // 淵の中は付いていくのが遅く、沈む
+    enemyShots = [];
+    drone.X = 300; drone.Y = CH - 40; MouseX = 500; MouseY = drone.Y;
+    drone.calcXY(); var inDx = drone.X - 300, sank = drone.Y > CH - 40;
+    drone.X = 300; drone.Y = 200; MouseX = 500; MouseY = drone.Y;
+    drone.calcXY(); var outDx = drone.X - 300;
+    var heavy = inDx < outDx*0.6 && sank;
+    for(var i=SORROW_POOL_FULL; i<SORROW_LEN + 60 && emotion.cur; i++){ mainScreen.invincible = 999; mainScreen.update(); }
+    var sorrowOk = tearN >= 8 && splashN > 0 && rippled && greyMax > 0.99 && poolFull && heavy && emotion.cur == null;
+    enemyShots = []; shotLab.clear();
+    // 恐怖：明かりが狭まり、目が後ろ側に開いて暗い弾を撃つ。驚かしで目が囲む。暗い弾はだんだん速くなる
+    drone.X = CW/2; drone.Y = CH/2; MouseX = drone.X; MouseY = drone.Y;
+    var ef = emotion.fear(), minLight = 1e9, eyeMax = 0, dreadN = 0, dreadFast = false;
+    for(var i=0; i<FEAR_LEN + 60 && emotion.cur; i++){
+        mainScreen.invincible = 999; mainScreen.update();
+        if(emotion.cur) minLight = Math.min(minLight, ef.light);
+        eyeMax = Math.max(eyeMax, emotion.eyes.length);
+        enemyShots.forEach(function(b){ if(b.kind == "dread"){ if(b.t == 1) dreadN++; if(Math.hypot(b.vx, b.vy) > FEAR_SHOT_START*danmaku()*3) dreadFast = true; } });
+        if(i % 60 == 0) draw1();
+    }
+    var fearOk = minLight <= FEAR_LIGHT_START && eyeMax >= FEAR_SCARE_N && dreadN >= FEAR_SCARE_N + 3 && dreadFast && emotion.cur == null && emotion.eyes.length == 0;
+    enemyShots = []; shotLab.clear();
+    // 喜び：花びらの輪とはずむ玉。花びらは拍の頭で速く、拍の間はゆっくり。玉は床ではずむ
+    var ej = emotion.joy(CW/2, 70), petalN = 0, bounced = false, onBeat = 0, offBeat = 1e9;
+    for(var i=0; i<JOY_LEN + 60 && emotion.cur; i++){
+        mainScreen.invincible = 999; mainScreen.update();
+        var ph = emotion.beatPhase();
+        enemyShots.forEach(function(b){
+            if(b.kind == "petal"){ if(b.t == 1) petalN++; var sp = Math.hypot(b.vx, b.vy)/b.base; if(ph >= 0 && ph < 0.05) onBeat = Math.max(onBeat, sp); if(ph > 0.6) offBeat = Math.min(offBeat, sp); }
+            if(b.kind == "bouncy" && b.left < JOY_BOUNCES) bounced = true;
+        });
+        if(i % 60 == 0) draw1();
+    }
+    var joyOk = petalN >= JOY_PETAL_N*3 && bounced && onBeat > offBeat*2 && emotion.cur == null;
+    enemyShots = []; shotLab.clear(); mainScreen.invincible = 0;
+    drone.X = CW/2; drone.Y = CH/2; MouseX = drone.X; MouseY = drone.Y;
+    check("感情の攻撃：怒りは破片を吐いて爆発し、稲妻が当たり、破片は冷えて灰になる。悲しみは涙で淵がたまり、中では重く沈み、最後に引く。" +
+          "恐怖は明かりが狭まり、目が開いて暗い弾を撃ち、驚かしで囲む。喜びは花びらが拍に合わせて進み、玉がはずむ",
+          angerOk && sorrowOk && fearOk && joyOk && errors.length == eerr,
+          "怒り" + angerOk + "(吐く" + spitN + " 怒り" + maxRage.toFixed(2) + " 爆発" + erupted + " 稲妻" + crackHit + " 灰" + (ash.heat == 0 && ash.r == 3) + ")" +
+          " 悲しみ" + sorrowOk + "(涙" + tearN + " しずく" + splashN + " 波紋" + rippled + " 色" + greyMax.toFixed(2) + " 淵" + poolFull + " 重い" + heavy + "(" + inDx.toFixed(1) + "/" + outDx.toFixed(1) + "))" +
+          " 恐怖" + fearOk + "(明かり" + Math.round(minLight) + " 目" + eyeMax + " 弾" + dreadN + " 速く" + dreadFast + ")" +
+          " 喜び" + joyOk + "(花びら" + petalN + " はずむ" + bounced + " 拍" + onBeat.toFixed(2) + "/" + offBeat.toFixed(2) + ")" +
+          (errors.length > eerr ? " " + errors.slice(eerr).join(" / ") : ""));
+
+    // 暗喩の試作(emotionHint.js)：片割れは片方が消えると、その番は撃たない。張りつめるは撃たれると張りつめて吐き出し、離れると落ち着く。
+    // ついてくるは止まると追いつかれてはじける。かろやかは弾が昇り、かすると跳ねる。どれも終わると曲の速さが戻る
+    var herr = errors.length, bpm0 = sound.bpm;
+    nukeKeep(); enemyShots = []; shotLab.clear(); mainScreen.hp = 9;
+    drone.X = CW/2; drone.Y = CH - 60; MouseX = drone.X; MouseY = drone.Y;
+    var hl = hint.start("h_loss"), lossBefore = [0,0], lossAfter = [0,0];
+    for(var i=0; i<LOSS_GONE_AT + LOSS_FADE + 300; i++){
+        mainScreen.invincible = 999; mainScreen.update();
+        enemyShots.forEach(function(b){ if(b.kind == "h_orb" && b.t == 1) (hl.t <= LOSS_GONE_AT ? lossBefore : lossAfter)[b.who]++; });
+        if(i % 120 == 0) draw1();
+    }
+    var lossOk = lossBefore[0] > 0 && lossBefore[1] > 0 && lossAfter[0] > 0 && lossAfter[1] == 0;
+    enemyShots = []; shotLab.clear();
+    // 張りつめる：撃たれ続けると角ばって吐き出す。撃たれなくなると落ち着く
+    var ht = hint.start("h_tense"), te = ht.e, tSides = {}, snapped = false, agMax = 0;
+    drone.X = 60; drone.Y = CH - 30; MouseX = drone.X; MouseY = drone.Y;
+    for(var i=0; i<120; i++){     //はじめは撃たれず、落ち着いている
+        te.hp = te.maxHp; mainScreen.invincible = 999; mainScreen.update(); arms.bullets = [];
+        enemyShots.forEach(function(b){ if(b.kind == "h_shard" && b.t == 1) tSides[b.sides] = true; });
+    }
+    for(var i=0; i<240; i++){
+        te.hp -= 1; mainScreen.invincible = 999; mainScreen.update();
+        agMax = Math.max(agMax, te.hint.ag); if(te.hint.burst > 0) snapped = true;
+        enemyShots.forEach(function(b){ if(b.kind == "h_shard" && b.t == 1) tSides[b.sides] = true; });
+        if(i % 80 == 0) draw1();
+    }
+    var bpmUp = sound.bpm > bpm0;
+    arms.bullets = [];
+    for(var i=0; i<500; i++){ te.hp = te.maxHp; mainScreen.invincible = 999; mainScreen.update(); arms.bullets = []; }
+    var tenseOk = agMax >= TENSE_SNAP && snapped && tSides[0] && tSides[3] && te.hint.ag < 0.1 && bpmUp;
+    shotLab.clear();
+    var tenseGone = te.dead && sound.bpm == bpm0;
+    enemyShots = [];
+    // ついてくる：止まっていると追いつかれる
+    drone.X = CW/2; drone.Y = CH/2; MouseX = drone.X; MouseY = drone.Y;
+    var hf = hint.start("h_follow");
+    for(var i=0; i<FOLLOW_DELAY + 40; i++){ mainScreen.invincible = 999; mainScreen.update(); if(i % 80 == 0) draw1(); }
+    var followOk = hf.bursts >= 1;
+    enemyShots = []; shotLab.clear();
+    // かろやか：弾は昇り、かすると跳ねる。動きが軽い
+    var hg = hint.start("h_light"), rising = 0;
+    for(var i=0; i<200; i++){ mainScreen.invincible = 999; mainScreen.update(); if(i % 80 == 0) draw1(); }
+    enemyShots.forEach(function(b){ if(b.kind == "h_float" && b.cy < CH) rising++; });
+    var fb = enemyShots.filter(function(b){ return b.kind == "h_float" && !b.free; })[0];
+    if(fb){ fb.grazed = true; mainScreen.update(); }
+    var hopped = fb && fb.free && Math.hypot(fb.vx, fb.vy) > 1;
+    drone.X = 300; drone.Y = 200; MouseX = 500; MouseY = drone.Y; drone.calcXY(); var lightDx = drone.X - 300;
+    shotLab.clear();
+    drone.X = 300; drone.Y = 200; MouseX = 500; MouseY = drone.Y; drone.calcXY(); var normDx = drone.X - 300;
+    var lightOk = rising > 2 && hopped && lightDx > normDx*1.1 && sound.bpm == bpm0;
+    enemyShots = []; shotLab.clear(); mainScreen.invincible = 0;
+    drone.X = CW/2; drone.Y = CH/2; MouseX = drone.X; MouseY = drone.Y;
+    check("暗喩の試作：片割れは片方が消えるとその番に撃たない。張りつめるは撃たれると角ばって吐き出し、撃たれないと落ち着く。ついてくるは止まると追いつかれる。かろやかは弾が昇り、かすると跳ねる",
+          lossOk && tenseOk && tenseGone && followOk && lightOk && errors.length == herr,
+          "片割れ" + lossOk + "(前" + lossBefore + " 後" + lossAfter + ") 張りつめる" + tenseOk + "(最大" + agMax.toFixed(2) + " 吐く" + snapped + " 形" + Object.keys(tSides) + " 速さ" + bpmUp + " 片付け" + tenseGone + ")" +
+          " ついてくる" + followOk + " かろやか" + lightOk + "(昇る" + rising + " 跳ねる" + hopped + " 軽い" + lightDx.toFixed(1) + "/" + normDx.toFixed(1) + ")" +
+          (errors.length > herr ? " " + errors.slice(herr).join(" / ") : ""));
 
     // ジャスト衝撃波：当たる直前の弾があればはね返してやる気がたまる。遠い弾だけならふつうの衝撃波
     setup(2, { gun:1 }, ["gun",null,null], 1);
