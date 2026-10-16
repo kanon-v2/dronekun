@@ -65,7 +65,8 @@ const JUST_SPREAD_ALPHA = 0.4;  //伝わっていく輪の色の濃さ(遠いほ
 
 var battleBg = {
     t:0,                //背景の時間(フレーム)
-    far:0,              //奥の空と街が遠ざかって暗くなる割合(0～1。最終局面の試作 finaleSync.js が決める)
+    far:0,              //奥の空と街が遠ざかって暗くなる割合(0～1。最終局面の試作 finaleSync.js・強襲ヘリ gunship.js が決める。マイナスは寄る(暗くならない))
+    zoom:0,             //奥の空と街をこの割合だけ大きく描く(強襲ヘリ gunship.js が戦いの間に使う。遠ざかっても(far)ふちが見えないように)
     night:0,            //夜の戦場の色を重ねる濃さ(0～1。finaleSync.js)
     light:null,         //夜の地面を照らす光 { x, y, a:濃さ, r:半径 }(finaleSync.js)
     last:0,             //前に描いた時刻(ミリ秒)
@@ -148,6 +149,7 @@ var battleBg = {
         this.glows = [];
         this.auraI = null;
         this.far = 0;
+        this.zoom = 0;
         this.night = 0;
         this.light = null;
     },
@@ -212,11 +214,14 @@ var battleBg = {
         var w = CW*BG_SCALE, h = CH*BG_SCALE;
         var ox = (CW - w)/2 - (drone.X - CW/2)*BG_PARALLAX;
         var oy = (CH - h)/2 - (drone.Y - CH/2)*BG_PARALLAX*0.5;
-        if(this.far > 0.001){
-            //遠ざかる：消失点へ向かって小さくなり、まわりは夜の色
-            var z = 1 - FS_FAR*this.far, vx = DEPTH_VP.x, vy = DEPTH_VP.y;
-            ctx.fillStyle = "#0c0814";
-            ctx.fillRect(0,0,CW,CH);
+        var z = (1 + this.zoom)*(Math.abs(this.far) > 0.001 ? 1 - FS_FAR*this.far : 1);
+        if(Math.abs(z - 1) > 0.001){
+            //遠ざかる：消失点へ向かって小さくなり、まわりは夜の色(マイナスなら消失点から大きくなって寄る)
+            var vx = DEPTH_VP.x, vy = DEPTH_VP.y;
+            if(z*BG_SCALE < 1){
+                ctx.fillStyle = "#0c0814";
+                ctx.fillRect(0,0,CW,CH);
+            }
             ox = vx + (ox - vx)*z; oy = vy + (oy - vy)*z; w *= z; h *= z;
         }
         ctx.drawImage(this.sky, ox, oy, w, h);
