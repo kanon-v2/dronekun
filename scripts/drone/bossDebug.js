@@ -246,7 +246,7 @@ var bossDebug = {
         }
         if(t[9].clicked()){
             bgmTrial.toggleFight();
-            this.msg = bgmTrial.fight ? "序盤・中盤の戦闘(WAVE1～15)で「" + bgmTrial.fightName() + "」の曲が流れます" : "序盤・中盤の戦闘は今の曲です";
+            this.msg = bgmTrial.fight ? "序盤・中盤の戦闘(WAVE1～15)とボス戦で「" + bgmTrial.fightName() + "」の曲が流れます" : "序盤・中盤の戦闘とボス戦は今の曲です";
             sound.play("click");
             return;
         }

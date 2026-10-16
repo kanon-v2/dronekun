@@ -6,8 +6,9 @@
 //    原点回帰(finale)：今の音で作ったアレンジ
 //    Lyria(monarch)：Google Lyria で作った録音の曲「The Monarch's Last Stand」。music/monarch.js(tools/music-loop.py で
 //                    前奏のあとをループ用に切り抜いたもの)を、はじめて選んだときに読み込む(ふつうに遊ぶときは読まない)
-//  戦闘曲：序盤・中盤の戦闘曲(heroic・battle)の代わりに、Suno でカバーした録音の曲(sunoHeroic・sunoBattle)を流す。
-//          music/sunoHeroic.js・sunoBattle.js(前奏1小節のあとをループ用に切り抜いたもの)を、はじめて選んだときに読み込む。
+//  戦闘曲：序盤・中盤の戦闘曲・ボス戦の曲(heroic・battle・boss)の代わりに、Suno でカバーした録音の曲(sunoHeroic・sunoBattle・
+//          sunoBoss)を流す。music/sunoHeroic.js・sunoBattle.js・sunoBoss.js(前奏のあとをループ用に切り抜いたもの)を、
+//          はじめて選んだときに読み込む。
 //          録音なので、WAVEが進んでも速くならない
 //  選んだものは覚えない(読み込み直すと今の音に戻る)。選ばなければ sound.js のまま
 //  sound.music・sound.playStep を包んで差し替える(このファイルを読まないページは今のまま)
@@ -18,6 +19,8 @@ const SUNO_HEROIC_SRC = "music/sunoHeroic.js";  //Suno でカバーした序盤�
 const SUNO_HEROIC_VOL = 0.6;                    //その音量(今の序盤の戦闘曲と同じくらいの大きさになるよう測った値)
 const SUNO_BATTLE_SRC = "music/sunoBattle.js";  //Suno でカバーした中盤の戦闘曲のファイル(BGM_SUNO_BATTLE を作る)
 const SUNO_BATTLE_VOL = 0.65;                   //その音量(今の中盤の戦闘曲と同じくらいの大きさになるよう測った値)
+const SUNO_BOSS_SRC = "music/sunoBoss.js";      //Suno でカバーしたボス戦の曲「Boss Rush Protocol」のファイル(BGM_SUNO_BOSS を作る)
+const SUNO_BOSS_VOL = 0.9;                      //その音量(今のボス戦の曲と同じくらいの大きさになるよう測った値)
 
 var bgmTrial = {
     list:[
@@ -35,10 +38,10 @@ var bgmTrial = {
         { v:"monarch", name:"Lyria" }
     ],
     finale:0,
-    //序盤・中盤の戦闘で流す曲(fights の番号。0 は今の曲)。v は 今の曲の名前 → 代わりに流す曲の名前
+    //序盤・中盤の戦闘・ボス戦で流す曲(fights の番号。0 は今の曲)。v は 今の曲の名前 → 代わりに流す曲の名前
     fights:[
         { v:null, name:"今の曲" },
-        { v:{ heroic:"sunoHeroic", battle:"sunoBattle" }, name:"Suno" }
+        { v:{ heroic:"sunoHeroic", battle:"sunoBattle", boss:"sunoBoss" }, name:"Suno" }
     ],
     fight:0,
 
@@ -66,7 +69,7 @@ var bgmTrial = {
     isFinal:function(_n){ return _n == "kai2" || _n == "finale" || _n == "monarch"; },
     //戦闘曲(差し替えたものも)なら、もとの曲の名前。ちがえば null
     fightOf:function(_n){
-        if(_n == "heroic" || _n == "battle") return _n;
+        if(_n == "heroic" || _n == "battle" || _n == "boss") return _n;
         for(var i=1; i<this.fights.length; i++){
             for(var k in this.fights[i].v) if(this.fights[i].v[k] == _n) return k;
         }
@@ -152,8 +155,9 @@ function recorded(_src,_var,_vol){ return {
 var monarch = recorded(MONARCH_SRC, "BGM_MONARCH", MONARCH_VOL);
 var sunoHeroic = recorded(SUNO_HEROIC_SRC, "BGM_SUNO_HEROIC", SUNO_HEROIC_VOL);
 var sunoBattle = recorded(SUNO_BATTLE_SRC, "BGM_SUNO_BATTLE", SUNO_BATTLE_VOL);
+var sunoBoss = recorded(SUNO_BOSS_SRC, "BGM_SUNO_BOSS", SUNO_BOSS_VOL);
 //TRACKS の名前 → 録音の曲
-recorded.list = { monarch:monarch, sunoHeroic:sunoHeroic, sunoBattle:sunoBattle };
+recorded.list = { monarch:monarch, sunoHeroic:sunoHeroic, sunoBattle:sunoBattle, sunoBoss:sunoBoss };
 
 (function(){
     var actx = null;    //sound.ctx(ゲームの ctx はキャンバスなので別の名前にする)
@@ -663,6 +667,7 @@ recorded.list = { monarch:monarch, sunoHeroic:sunoHeroic, sunoBattle:sunoBattle 
     TRACKS.monarch = { bpm:160 };   //録音の曲。音符は作らず、曲の進みだけ使う(monarch.tick)
     TRACKS.sunoHeroic = { bpm:150 };
     TRACKS.sunoBattle = { bpm:138 };
+    TRACKS.sunoBoss = { bpm:153 };
     var FINAL_ARP   = ["x...x...x...x...", "x.x.x.x.x.x.x.x.", "xxxxxxxxxxxxxxxx", "x.x.x.x.x.x.x.x."];
     var FINAL_KICK  = ["x...............", "x...x...x...x...", "x..x..x.x..x..x.", "x.......x......."];
     var FINAL_SNARE = ["................", "....x.......x...", "....x.......x..x", "................"];

@@ -36,7 +36,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 |---|---|
 | `common.js` | キャンバス・ページ管理(`page`)・マウス/タッチ入力・矩形ボタン(`drawRect`)・能力(`STATS`)・進行状況(`game`)・セーブ(`save`)・ドローン君(`drone`)と見た目(`DroneLook`) |
 | `sound.js` | BGM・効果音。Web Audio API で合成(音声ファイルなし)。曲データは `TRACKS` |
-| `bgmTrial.js` | BGMの試し聞き(開発用)。デバッグのメニューの「BGM」「最終局面」で選ぶと、`sound.music`・`sound.playStep` を包んで、曲の鳴らし方を試作の案(案D 和の怪談風・案F 尺八が主役・案H 管弦と篠笛・案I カリンバ)に替える。曲の並び(`TRACKS`)はそのまま。「最終局面」はドローン君改の第二形態の曲(`kai2`)の代わりに、`finale`(原点回帰。今の音で作ったアレンジ)か `monarch`(Lyria。Google Lyria で作った録音の曲。`monarch` が `AudioBufferSourceNode` の `loopStart`・`loopEnd` で前奏のあとをくり返し、`sound.bgmGain` へつなぐ。音量は `MONARCH_VOL`)を流す(`bgmTrial.finales`)。「戦闘曲」は序盤・中盤の戦闘曲(`heroic`・`battle`)の代わりに、Suno でカバーした録音の曲(`sunoHeroic`・`sunoBattle`。`music/sunoHeroic.js`・`sunoBattle.js`、音量は `SUNO_HEROIC_VOL`・`SUNO_BATTLE_VOL`。録音なのでWAVEが進んでも速くならない)を流す(`bgmTrial.fights`)。録音の曲を流すのは `recorded()`(Lyria・Suno で共通。`recorded.list` に並べる)。選んだものは覚えない。案は試聴ページ(Artifact)で作ったもの |
+| `bgmTrial.js` | BGMの試し聞き(開発用)。デバッグのメニューの「BGM」「最終局面」で選ぶと、`sound.music`・`sound.playStep` を包んで、曲の鳴らし方を試作の案(案D 和の怪談風・案F 尺八が主役・案H 管弦と篠笛・案I カリンバ)に替える。曲の並び(`TRACKS`)はそのまま。「最終局面」はドローン君改の第二形態の曲(`kai2`)の代わりに、`finale`(原点回帰。今の音で作ったアレンジ)か `monarch`(Lyria。Google Lyria で作った録音の曲。`monarch` が `AudioBufferSourceNode` の `loopStart`・`loopEnd` で前奏のあとをくり返し、`sound.bgmGain` へつなぐ。音量は `MONARCH_VOL`)を流す(`bgmTrial.finales`)。「戦闘曲」は序盤・中盤の戦闘曲・ボス戦の曲(`heroic`・`battle`・`boss`)の代わりに、Suno でカバーした録音の曲(`sunoHeroic`・`sunoBattle`・`sunoBoss`。`music/sunoHeroic.js`・`sunoBattle.js`・`sunoBoss.js`、音量は `SUNO_HEROIC_VOL`・`SUNO_BATTLE_VOL`・`SUNO_BOSS_VOL`。録音なのでWAVEが進んでも速くならない)を流す(`bgmTrial.fights`)。録音の曲を流すのは `recorded()`(Lyria・Suno で共通。`recorded.list` に並べる)。選んだものは覚えない。案は試聴ページ(Artifact)で作ったもの |
 | `bgmFull.js` | BGMの「本格版」(試し聞き)。デバッグのメニューの「BGM」で「本格版」を選ぶと鳴る(`bgmTrial.list` に足し、`sound.playStep` を包む)。音色は今の音のまま、曲を区切り(前奏は1回・A・B・サビ・つなぎ)に分けて作り込んだもの。今の曲のメロディは A に使い、B・サビを書き足した。楽譜は `BGM_FULL`(和音は名前、メロディは MML、低音・分散和音・ドラムは16分音符の並び。書き方はファイルの先頭)。ドラムのフィルは `FULL_FILLS`。合成のコーラス(母音の響きの山を通した男声・女声・ささやき。区切りの `choir`・`chant`、調整値は `FULL_CHOIR_*`・`FULL_FORMANTS`)も鳴らせる。コーラス入りの試作曲(ゲームでは使わない)は `tools/bgm-choir-demo.js`。試聴ページは `tools/bgm-full.html`(`#check` で書き間違いと和音に合わない音を出す) |
 | `equipment.js` | 装備(`WEAPONS`)・シナジー(`SYNERGIES`)・戦闘中の装備の動作(`arms`)・シナジー演出(`fx`) |
 | `armsExtra.js` | 追加の装備(火炎放射・円盤・重力弾・バリア・狙撃・冷凍)とそのシナジー。`WEAPONS`・`SYNERGIES`・`arms` に足す(`arms` から `fire2`・`update2`・`draw2` などを呼ぶ)。敵の状態「燃える」「凍る」もここ |
@@ -64,7 +64,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | `versus.js` | ふたりで対戦(下記「対戦」参照)。page 7 |
 | `draw.js` | 1/60秒刻みの更新ループと描画。最後に読み込む |
 
-録音の曲は `music/` 以下。`tools/music-loop.py`(numpy・ffmpeg)で、元の mp3 からループのつなぎ目をなじませて切り抜き、base64 の mp3 を埋めた JS にする(`fetch` は file:// で使えないため)。大きいので、使うときだけ読み込む(`index.html` では読まない)。今は `music/monarch.js`(Lyria の曲。160 BPM、前奏16小節のあと 48.06～120.06秒の48小節をくり返す)と、Suno でカバーした戦闘曲 `music/sunoHeroic.js`(序盤。150 BPM、前奏1小節のあと 1.984～65.984秒の40小節をくり返す)・`music/sunoBattle.js`(中盤。138 BPM、前奏1小節のあと 1.8331～29.6592秒の16小節をくり返す)。
+録音の曲は `music/` 以下。`tools/music-loop.py`(numpy・ffmpeg)で、元の mp3 からループのつなぎ目をなじませて切り抜き、base64 の mp3 を埋めた JS にする(`fetch` は file:// で使えないため)。大きいので、使うときだけ読み込む(`index.html` では読まない)。今は `music/monarch.js`(Lyria の曲。160 BPM、前奏16小節のあと 48.06～120.06秒の48小節をくり返す)と、Suno でカバーした戦闘曲 `music/sunoHeroic.js`(序盤。150 BPM、前奏1小節のあと 1.984～65.984秒の40小節をくり返す)・`music/sunoBattle.js`(中盤。138 BPM、前奏1小節のあと 1.8331～29.6592秒の16小節をくり返す)・`music/sunoBoss.js`(ボス戦「Boss Rush Protocol」。前半153.3 BPM・後半は約155 BPM と少し速くなる。前奏8小節のあと、主題3回と展開の 12.770～122.092秒をくり返す。122.09秒で主題が戻ってくる)。
 
 画像は `images/game/` 以下(ポインタと、ドローン君の見た目「クラシック」用の元の6方向のドット絵 `Drone/Drone_*.png`)。それ以外の見た目はすべてキャンバスに図形で描いている(下の「ドローン君の絵」参照)。
 `images/icon-180.png`・`icon-192.png`・`icon-512.png` はホーム画面のアイコン(`tools/make-icon.html` で描いてヘッドレスEdgeで撮る。作り方はファイルの先頭)。
@@ -187,7 +187,7 @@ iPhone の Safari は全画面(Fullscreen API)が使えないので、全画面�
   - ストーリー確認：戦闘なしで全ストーリーを順に流す。終わるとメニューへ戻る。
   - 時止めワープ「オン」(ショップのバフと同じ能力。`timeStop.js`)：クールタイムなしで、ボス戦・武器試用で、被弾する瞬間に時が止まり(ダメージなし)、クリック・タップした場所へ、体が粒子にほどけて飛び、組み上がる。そのあと `WARP_GUARD` の間は無敵。協力プレイ・対戦では働かない。粒子はドローン君の今のコマを別のキャンバスに写して小さく切って描く(`getImageData` は使わない)。
   - 攻撃の試作：画面の上の砲台が、試作の弾・攻撃(`shotLab.js`)を `SHOT_LAB_SEC` 秒ずつ順に出す。左の一覧を押すと、その攻撃だけを繰り返す(「自動で順番に」で戻る。`shotLab.labPickAt`)(雑魚敵なし・無敵。弾の速さ・数は `SHOT_LAB_WAVE` のもの)。
-  - BGM「今の音／本格版／案D／案F／案H／案I」・最終局面「今の曲／原点回帰／Lyria」・戦闘曲「今の曲／Suno」(`bgmTrial.js`。Lyria・Suno は選んだときに `music/monarch.js`・`music/sunoHeroic.js`・`sunoBattle.js` を読み込む)：押すとすぐ、流れている曲がその案で鳴り直す。このあと遊ぶ曲(タイトルから始めるふつうの周も)もその案で鳴る。
+  - BGM「今の音／本格版／案D／案F／案H／案I」・最終局面「今の曲／原点回帰／Lyria」・戦闘曲「今の曲／Suno」(`bgmTrial.js`。Lyria・Suno は選んだときに `music/monarch.js`・`music/sunoHeroic.js`・`sunoBattle.js`・`sunoBoss.js` を読み込む)：押すとすぐ、流れている曲がその案で鳴り直す。このあと遊ぶ曲(タイトルから始めるふつうの周も)もその案で鳴る。
   - 途中でメニューへ戻るのは、右下の「DEBUG：戻る」(`sound.buttons` の `debugBack`)。
 - `common.js` の `DEBUG = true` で、マウス座標などを左上に表示。
 - 画面上部の中央に、フレームレート(1秒あたりの描画回数)を常に表示している(`draw.js` の `fps`)。`FPS_WARN` 未満でオレンジ、`FPS_BAD` 未満で赤。
