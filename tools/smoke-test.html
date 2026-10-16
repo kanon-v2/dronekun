@@ -32,6 +32,7 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
 <script src="scripts/drone/rival.js"></script>
 <script src="scripts/drone/shotLab.js"></script>
 <script src="scripts/drone/finaleSync.js"></script>
+<script src="scripts/drone/finaleTriumph.js"></script>
 <script src="scripts/drone/gunship.js"></script>
 <script src="scripts/drone/emotion.js"></script>
 <script src="scripts/drone/emotionHint.js"></script>
@@ -1046,6 +1047,98 @@ try{
           "拍" + fsBeat + "(" + fsShots + ") 体力" + fsGate + " ため" + fsSink + "(" + fsDeep + ") 無音" + fsHush + " 弾く" + fsParry + "(" + fsRes + ") 巨大" + fsGiant +
           " 息つぎ" + fsBreath + " 放つ" + fsRelease + " 当たる" + fsHit);
 
+    // 最終局面の試作(finaleTriumph.js)：Suno を選ぶと、曲の頭から改が組み上がり、曲の時刻で戦う(曲の時刻は fakeT で進める)
+    setup(FINAL_WAVE, { gun:1 }, ["gun",null,null], 1);
+    page.change(1); MouseIn = true;
+    for(var i=0; i<3000 && (mainScreen.state != "play" || mainScreen.bossFreeze); i++) mainScreen.update();
+    var trErr = errors.length;
+    var tb = enemies.filter(function(e){ return e.type == "kai"; })[0];
+    enemies = [tb]; enemyShots = [];
+    bgmTrial.finale = bgmTrial.finales.map(function(f){ return f.v; }).indexOf("triumph");
+    tb.form = 1.5; tb.baseHp = tb.maxHp = 3000; tb.maxHp = Math.round(tb.baseHp*KAI2_HP_MUL); tb.hp = 1; tb.mode = "revive"; tb.count = KAI2_REVIVE_T; tb.harmless = true;
+    var trRun = function(_from,_to,_each){
+        for(finaleTri.fakeT = _from; finaleTri.fakeT < _to; finaleTri.fakeT += 1/60){
+            mainScreen.invincible = 10; mainScreen.update();
+            if(_each) _each();
+        }
+    };
+    //再構築：曲の頭から組み上がり、最初の大きな一打で第二形態
+    var trWing = 0;
+    trRun(0, 12, function(){ trWing = finaleTri.rebuildN(tb); });
+    var trRebuild = tb.trSong && tb.mode == "revive" && trWing > 3 && trWing < TR_WING_N && tb.maxHp == Math.round(3000*KAI2_HP_MUL*TR_HP_MUL) && special.holdFire();
+    draw1();
+    var trShots = 0, trKinds = {};
+    trRun(12, 26, function(){ trShots = Math.max(trShots, enemyShots.length); enemyShots.forEach(function(b){ trKinds[b.kind] = 1; }); });
+    var trAwake = tb.form == 2 && tb.trSec.name == "theme" && KAI2.name == TR_NAME.name && trShots > 0 && battleBg.night > 0.5 && finaleTri.live();
+    draw1();
+    //自分の攻撃をひと通り(翼の羽根・光輪・光の柱・光の槍)。光の柱は落ちる拍に当たる
+    var trBeat = Math.ceil(finaleTri.beatAt(30));
+    trRun(30, finaleTri.beatTime(trBeat));
+    tb.mode = "idle";
+    ["feathers","halo","pillars","lances"].forEach(function(n){ finaleTri.attack(tb, n, trBeat, 0); });
+    var trPil = finaleTri.pillars.length, trHits = 0, dmg0 = mainScreen.damage;
+    drone.X = finaleTri.pillars[0].c; drone.Y = 300;
+    mainScreen.damage = function(){ trHits++; };
+    for(; finaleTri.fakeT < finaleTri.beatTime(trBeat + 4) + 0.05; finaleTri.fakeT += 1/60){
+        if(finaleTri.pillars.length) drone.X = finaleTri.pillars[0].c;
+        MouseX = drone.X; MouseY = drone.Y; mainScreen.invincible = 0; mainScreen.guard = 0;
+        mainScreen.update();
+        enemyShots.forEach(function(b){ trKinds[b.kind] = 1; });
+    }
+    mainScreen.damage = dmg0;
+    var trOwn = trPil == 3 && trHits > 0 && trKinds.tFeather && trKinds.tOrb && trKinds.tLance && trKinds.tMote;
+    draw1();
+    //体力の関門：最高潮の前は TR_GATES より減らない(大きな一撃でも倒れない)
+    tb.hp = 10; mainScreen.hitEnemy(tb, tb.maxHp, "gun");
+    var trGate = !tb.dead && tb.hp >= tb.maxHp*TR_GATES[0][1] - 1;
+    //沈む → 迫る → 最高潮の頭で弾き返す
+    var trDeep = 0;
+    trRun(93.1, 104.9, function(){ trDeep = Math.max(trDeep, shotLab.deeps.length); MouseX = drone.X; MouseY = drone.Y; });
+    var trHush = tb.trMode == "hush" && tb.trLocked && tb.phased && trDeep > 0 && battleBg.far > 0.8;
+    draw1();
+    drone.X = tb.trTx; drone.Y = tb.trTy; mainScreen.yaruki = YARUKI_COST;
+    finaleTri.fakeT = finaleTri.sec("climax").from - 0.05; mainScreen.blast();
+    var trHp0 = tb.hp;
+    trRun(finaleTri.fakeT, finaleTri.sec("climax").from + 0.1);
+    var trParry = finaleTri.result == "perfect" && tb.trFire == 1 && trHp0 - tb.hp >= Math.round(tb.maxHp*TR_PARRY_DMG[1]) - 1 && tb.trMode == null;
+    //息つぎ → 放つ
+    trRun(129.1, 131.9);
+    var trBreath = tb.trMode == "breath" && tb.trFold > 0.8;
+    trRun(131.9, 132.3);
+    var trRelease = tb.trMode == null && enemyShots.length > 20;
+    //夜明け：空が明け、改へのダメージが強くなる。羽根が欠ける
+    trRun(155.85, 159.5);
+    var trHpA = tb.hp = Math.round(tb.maxHp*0.5);
+    mainScreen.hitEnemy(tb, 100, "gun");
+    var trDawn = finaleTri.dawnK >= 1 && trHpA - tb.hp >= 100*TR_DAWN_POW - 1;
+    draw1();
+    tb.hp = Math.round(tb.maxHp*0.25); trRun(159.5, 160);
+    var trLose = tb.trLost > 0;
+    //最後の突進：決められないと、曲は夜明けへ戻ってくり返す
+    tb.hp = Math.round(tb.maxHp*0.1);
+    trRun(179.8, TR_LOOP[1] - 0.01, function(){ MouseX = drone.X; MouseY = drone.Y; });
+    var trLast = tb.trMode == "last" && tb.trLocked;
+    draw1();
+    drone.X = tb.trTx + 200; drone.Y = tb.trTy;
+    trRun(TR_LOOP[0], TR_LOOP[0] + 0.1);
+    var trAgain = !tb.dead && tb.trMode == null && tb.trSec.name == "dawn" && finaleTri.result == "dodge";
+    //もう一度：最後の和音に合わせてジャスト衝撃波を出すと、とどめ(曲はくり返しを抜けて最後まで)
+    trRun(179.8, TR_LOOP[1] - 0.06, function(){ MouseX = drone.X; MouseY = drone.Y; });
+    drone.X = tb.trTx; drone.Y = tb.trTy; mainScreen.yaruki = YARUKI_COST;
+    mainScreen.blast();
+    var trFin = finaleTri.finished;
+    trRun(TR_LOOP[1] - 0.06, TR_LOOP[1] + 0.1);
+    var trKill = trFin && tb.dead && finaleTri.keepMusic && finaleTri.result == "perfect";
+    for(var i=0; i<60; i++) mainScreen.update();
+    draw1();
+    var trClear = mainScreen.state == "clear";
+    finaleTri.fakeT = null; bgmTrial.finale = 0; finaleTri.keepMusic = false; finaleTri.names();
+    check("最終局面の試作(Suno)：曲の頭から改が組み上がり、拍で撃ち、奥から迫る突進をジャストで弾き、夜明けに反撃して、最後の和音でとどめ",
+          trRebuild && trAwake && trOwn && trGate && trHush && trParry && trBreath && trRelease && trDawn && trLose && trLast && trAgain && trKill && trClear && errors.length == trErr && KAI2.name != TR_NAME.name,
+          "再構築" + trRebuild + "(" + trWing.toFixed(1) + ") 完全体" + trAwake + "(" + trShots + ") 攻撃" + trOwn + "(" + Object.keys(trKinds).join(",") + " 柱" + trPil + "/" + trHits + ") 関門" + trGate +
+          " 迫る" + trHush + " 弾く" + trParry + " 息つぎ" + trBreath + "/" + trRelease + " 夜明け" + trDawn + "/" + trLose + " 最後" + trLast + " くり返し" + trAgain +
+          " とどめ" + trKill + " クリア" + trClear + " " + errors.slice(trErr).join(" "));
+
     // かすりコンボ：かするとコンボが増えて威力が上がり、時間切れ・被弾で途切れる
     setup(2, { gun:1 }, ["gun",null,null], 1);
     page.change(1); MouseIn = true;
@@ -1518,7 +1611,9 @@ try{
     var hpN = mainScreen.hp; mainScreen.state = "play"; mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.damage();
     check("時止めワープ：オフなら、いつもどおりダメージを受ける", !bossDebug.warp && !timeStop.active && mainScreen.hp == hpN - 1);
     //回避ダッシュ(dodge.js)：右クリックでポインタの方へ飛ぶ。飛んでいる間にすり抜けるとジャスト回避
+    //(このあと敵を空にして更新を回すので、WAVEクリアでデバッグの戦いが終わってストーリーへ進まないよう、まだ敵が出てくることにしておく)
     var dgErr = errors.length;
+    mainScreen.toSpawn = 1; mainScreen.spawnTimer = 1e9;
     for(fw=0; fw<80; fw++) mainScreen.update();     //被弾の無敵が切れるまで
     mainScreen.state = "play"; mainScreen.invincible = 0; mainScreen.guard = 0; enemyShots = [];
     drone.X = 400; drone.Y = 300; MouseX = 700; MouseY = 300; dodge.cd = 0;
@@ -1591,6 +1686,7 @@ try{
           sfCore && sfClear && sfGuard, [sfCore,sfClear,sfGuard,dodge.guard].join(","));
     for(fw=0; fw<DODGE_SLOW_TIME + 40; fw++){ enemyShots = []; mainScreen.update(); }
     enemies = [];
+    mainScreen.toSpawn = 0;
     tap(backBtn());
     //BGMの試し聞き(bgmTrial.js)：案を順に選べ、どの案でも曲の音符を止まらずに作れる。最終局面で原点回帰に替わる
     var bgmNames = [], bgmErr = errors.length, keepSnd = { ctx:sound.ctx, bgmGain:sound.bgmGain, noiseBuf:sound.noiseBuf };
@@ -1639,6 +1735,8 @@ try{
     bgmSteps("finale");
     tap(bossDebug.tools()[8]);    //最終局面「Lyria」(録音の曲。music/monarch.js を読み込み始める)
     var monarchOn = bgmTrial.trackFor("kai2") == "monarch" && bgmTrial.finaleName() == "Lyria" && TRACKS.monarch && typeof monarch.tick == "function";
+    tap(bossDebug.tools()[8]);    //最終局面「Suno」(録音の曲。music/triumph.js を読み込み始める。finaleTriumph.js)
+    var triumphOn = bgmTrial.trackFor("kai2") == "triumph" && bgmTrial.finaleName() == "Suno" && TRACKS.triumph && typeof triumph.finish == "function";
     tap(bossDebug.tools()[8]);    //今の曲に戻る
     tap(bossDebug.tools()[9]);    //戦闘曲「Suno」(録音の曲。music/sunoHeroic.js・sunoBattle.js を読み込み始める)
     var sunoOn = bgmTrial.trackFor("heroic") == "sunoHeroic" && bgmTrial.trackFor("battle") == "sunoBattle" && bgmTrial.trackFor("boss") == "boss" &&
@@ -1646,8 +1744,8 @@ try{
                  sunoHeroic.loading && sunoBattle.loading;
     tap(bossDebug.tools()[9]);    //今の曲に戻る
     sound.ctx = keepSnd.ctx; sound.bgmGain = keepSnd.bgmGain; sound.noiseBuf = keepSnd.noiseBuf; sound.track = null; sound.trackName = null;
-    check("BGMの試し聞き：案を順に選べ、どの案・原点回帰でも曲を鳴らせる。最終局面は Lyria、序盤・中盤の戦闘曲は Suno の曲も選べる",
-          bgmNames.join(",") == "orig,full,d,f,h,i" && bgmTrial.v() == "orig" && finaleOn && monarchOn && sunoOn && !bgmTrial.finale && !bgmTrial.fight &&
+    check("BGMの試し聞き：案を順に選べ、どの案・原点回帰でも曲を鳴らせる。最終局面は Lyria・Suno、序盤・中盤の戦闘曲は Suno の曲も選べる",
+          bgmNames.join(",") == "orig,full,d,f,h,i" && bgmTrial.v() == "orig" && finaleOn && monarchOn && triumphOn && sunoOn && !bgmTrial.finale && !bgmTrial.fight &&
           errors.length == bgmErr,
           bgmNames.join(",") + " " + errors.slice(bgmErr).join(" "));
     tap(bossDebug.tools()[4]);    //閉じる

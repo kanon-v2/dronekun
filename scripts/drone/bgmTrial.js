@@ -2,10 +2,12 @@
 //  BGMの試し聞き(開発用)。デバッグのメニュー(bossDebug.js)で選ぶと、ゲームの中の曲をその案で鳴らす
 //  案は試聴ページで作ったもの。曲の並び(TRACKS のメロディ・和音)はそのままで、鳴らし方だけを替える
 //    案D 和の怪談風(琴・尺八・太鼓・拍子木・おりん)／案F 尺八が主役／案H 管弦と篠笛／案I カリンバ
-//  最終局面：ドローン君改の第二形態の曲(kai2)の代わりに、次のどちらかを流す
+//  最終局面：ドローン君改の第二形態の曲(kai2)の代わりに、次のどれかを流す
 //    原点回帰(finale)：今の音で作ったアレンジ
 //    Lyria(monarch)：Google Lyria で作った録音の曲「The Monarch's Last Stand」。music/monarch.js(tools/music-loop.py で
 //                    前奏のあとをループ用に切り抜いたもの)を、はじめて選んだときに読み込む(ふつうに遊ぶときは読まない)
+//    Suno(triumph)：Suno で作った録音の曲「Triumph in D Major」。music/triumph.js(最後の山をくり返し、とどめを決めると
+//                    元の曲の終わりへ進む)。動きは finaleTriumph.js
 //  戦闘曲：序盤・中盤の戦闘曲(heroic・battle)の代わりに、Suno でカバーした録音の曲(sunoHeroic・sunoBattle)を流す。
 //          music/sunoHeroic.js・sunoBattle.js(前奏1小節のあとをループ用に切り抜いたもの)を、はじめて選んだときに読み込む。
 //          録音なので、WAVEが進んでも速くならない
@@ -14,6 +16,8 @@
 //------------------------------------------------------------------------------
 const MONARCH_SRC = "music/monarch.js";   //Lyria の曲のファイル(BGM_MONARCH を作る)
 const MONARCH_VOL = 0.4;                   //Lyria の曲の音量(今の最終局面の曲と同じくらいの大きさになるよう測った値)
+const TRIUMPH_SRC = "music/triumph.js";   //Suno の曲のファイル(BGM_TRIUMPH を作る)
+const TRIUMPH_VOL = 0.7;                   //Suno の曲の音量(Lyria の曲と同じくらいの大きさになるよう、平均の大きさの比から決めた値)
 const SUNO_HEROIC_SRC = "music/sunoHeroic.js";  //Suno でカバーした序盤の戦闘曲のファイル(BGM_SUNO_HEROIC を作る)
 const SUNO_HEROIC_VOL = 0.6;                    //その音量(今の序盤の戦闘曲と同じくらいの大きさになるよう測った値)
 const SUNO_BATTLE_SRC = "music/sunoBattle.js";  //Suno でカバーした中盤の戦闘曲のファイル(BGM_SUNO_BATTLE を作る)
@@ -32,7 +36,8 @@ var bgmTrial = {
     finales:[
         { v:null, name:"今の曲" },
         { v:"finale", name:"原点回帰" },
-        { v:"monarch", name:"Lyria" }
+        { v:"monarch", name:"Lyria" },
+        { v:"triumph", name:"Suno" }
     ],
     finale:0,
     //序盤・中盤の戦闘で流す曲(fights の番号。0 は今の曲)。v は 今の曲の名前 → 代わりに流す曲の名前
@@ -53,7 +58,9 @@ var bgmTrial = {
     finaleName:function(){ return this.finales[this.finale].name; },
     toggleFinale:function(){
         this.finale = (this.finale + 1) % this.finales.length;
-        if(this.finales[this.finale].v == "monarch") monarch.load();    //戦う前に読み込んでおく
+        var v = this.finales[this.finale].v;
+        if(v == "monarch") monarch.load();    //戦う前に読み込んでおく
+        if(v == "triumph") triumph.load();
         if(this.isFinal(sound.trackName)) this.restart();
     },
     fightName:function(){ return this.fights[this.fight].name; },
@@ -63,7 +70,7 @@ var bgmTrial = {
         for(var k in v) recorded.list[v[k]].load();     //戦う前に読み込んでおく
         if(this.fightOf(sound.trackName)) this.restart();
     },
-    isFinal:function(_n){ return _n == "kai2" || _n == "finale" || _n == "monarch"; },
+    isFinal:function(_n){ return _n == "kai2" || _n == "finale" || _n == "monarch" || _n == "triumph"; },
     //戦闘曲(差し替えたものも)なら、もとの曲の名前。ちがえば null
     fightOf:function(_n){
         if(_n == "heroic" || _n == "battle") return _n;
@@ -89,71 +96,103 @@ var bgmTrial = {
     }
 };
 
-//録音の曲を流す。前奏は1回、そのあとは loopStart～loopEnd をくり返す
-//  _src：曲のファイル(JS)、_var：そのファイルが作る変数の名前({ loopStart, loopEnd, mp3 })、_vol：音量
-function recorded(_src,_var,_vol){ return {
-    buf:null,       //読み込んだ曲(AudioBuffer)
-    loading:false,
-    src:null,       //流している音
-    startAt:0,      //曲のどこから流し始めるか(秒。Lyria の曲は finaleSync.js が決める)
-    data:function(){ return window[_var]; },
-    load:function(){
-        if(this.buf || this.loading) return;
-        this.loading = true;
-        var self = this;
-        var decode = function(){
-            //ファイルは base64 の mp3(file:// で開いても読めるよう、JS に埋めてある)
-            var b = atob(self.data().mp3), u = new Uint8Array(b.length);
-            for(var i=0; i<b.length; i++) u[i] = b.charCodeAt(i);
-            var wait = function(){
-                if(!sound.ctx){ setTimeout(wait, 200); return; }
-                sound.ctx.decodeAudioData(u.buffer, function(_b){ self.buf = _b; self.loading = false; },
-                                          function(){ self.loading = false; });
+//録音の曲を流す(Lyria・Suno の最終局面・Suno の戦闘曲)。前奏は1回、そのあとは loopStart～loopEnd をくり返す
+//_o：src(曲のファイル) key(ファイルが作る変数の名前) vol(音量)
+//ファイルに終わり(endAt。tools/music-loop.py で付ける)があれば、finish() でくり返しを抜けて、元の曲の終わりまで流せる
+function recTrack(_o){
+    return {
+        buf:null,       //読み込んだ曲(AudioBuffer)
+        loading:false,
+        src:null,       //流している音
+        gain:null,
+        startAt:0,      //曲のどこから流し始めるか(秒。最終局面の試作 finaleSync.js・finaleTriumph.js が決める)
+        ended:null,     //くり返しを抜けて終わりへ切り替えた { t:切り替えた時刻(sound.ctx), p:そのときの曲の時刻 }
+        info:function(){ return window[_o.key]; },
+        load:function(){
+            if(this.buf || this.loading) return;
+            this.loading = true;
+            var self = this;
+            var decode = function(){
+                //ファイルは base64 の mp3(file:// で開いても読めるよう、JS に埋めてある)
+                var b = atob(self.info().mp3), u = new Uint8Array(b.length);
+                for(var i=0; i<b.length; i++) u[i] = b.charCodeAt(i);
+                var wait = function(){
+                    if(!sound.ctx){ setTimeout(wait, 200); return; }
+                    sound.ctx.decodeAudioData(u.buffer, function(_b){ self.buf = _b; self.loading = false; },
+                                              function(){ self.loading = false; });
+                };
+                wait();
             };
-            wait();
-        };
-        if(self.data()){ decode(); return; }
-        var el = document.createElement("script");
-        el.src = _src;
-        el.onload = decode;
-        el.onerror = function(){ self.loading = false; };
-        document.head.appendChild(el);
-    },
-    //曲の進みに合わせて呼ぶ(読み込みが終わっていて、まだ流していなければ流し始める)
-    tick:function(_t){
-        if(this.src) return;
-        if(!this.buf){ this.load(); return; }
-        var ac = sound.ctx, s = ac.createBufferSource(), g = ac.createGain();
-        s.buffer = this.buf;
-        s.loop = true;
-        s.loopStart = this.data().loopStart;
-        s.loopEnd = this.data().loopEnd;
-        g.gain.value = _vol;
-        s.connect(g); g.connect(sound.bgmGain);     //BGMの音量・消音・こもらせ(ジャスト衝撃波)がそのまま効く
-        s.start(_t, this.startAt);
-        this.src = s;
-        this.at = _t - this.startAt;
-    },
-    //曲のどこを鳴らしているか(秒。元の曲の時刻で、くり返しの分は戻す)。流していなければ -1
-    //スピーカーから出るまでの遅れを引き、画面と耳がそろうようにする(finaleSync.js が曲に合わせて攻撃するため)
-    pos:function(){
-        if(!this.src) return -1;
-        var ac = sound.ctx, p = ac.currentTime - this.at - (ac.outputLatency || ac.baseLatency || 0);
-        var A = this.data().loopStart, B = this.data().loopEnd;
-        if(p >= B) p = A + (p - A) % (B - A);
-        return p;
-    },
-    stop:function(){
-        if(!this.src) return;
-        try{ this.src.stop(); }catch(e){}
-        this.src = null;
-    }
-}; }
+            if(this.info()){ decode(); return; }
+            var el = document.createElement("script");
+            el.src = _o.src;
+            el.onload = decode;
+            el.onerror = function(){ self.loading = false; };
+            document.head.appendChild(el);
+        },
+        //曲の進みに合わせて呼ぶ(読み込みが終わっていて、まだ流していなければ流し始める)
+        tick:function(_t){
+            if(this.src) return;
+            if(!this.buf){ this.load(); return; }
+            var I = this.info(), ac = sound.ctx, s = ac.createBufferSource(), g = ac.createGain();
+            s.buffer = this.buf;
+            s.loop = true;
+            s.loopStart = I.loopStart;
+            s.loopEnd = I.loopEnd;
+            g.gain.value = _o.vol;
+            s.connect(g); g.connect(sound.bgmGain);     //BGMの音量・消音・こもらせ(ジャスト衝撃波)がそのまま効く
+            s.start(_t, this.startAt);
+            this.src = s; this.gain = g;
+            this.at = _t - this.startAt;
+            this.ended = null;
+        },
+        //スピーカーから出るまでの遅れ
+        latency:function(){ var ac = sound.ctx; return ac.outputLatency || ac.baseLatency || 0; },
+        //sound.ctx の時刻 _t に鳴らしている、元の曲の時刻(くり返しの分は戻す)
+        songAt:function(_t){
+            if(this.ended) return this.ended.p + (_t - this.ended.t);
+            var I = this.info(), p = _t - this.at, A = I.loopStart, B = I.loopEnd;
+            if(p >= B) p = A + (p - A) % (B - A);
+            return p;
+        },
+        //曲のどこを鳴らしているか(秒。元の曲の時刻)。流していなければ -1
+        //スピーカーから出るまでの遅れを引き、画面と耳がそろうようにする(曲に合わせて攻撃するため)
+        pos:function(){
+            if(!this.src) return -1;
+            return this.songAt(sound.ctx.currentTime - this.latency());
+        },
+        //くり返しを抜けて、元の曲の終わりまで流す(終わりの付いたファイルだけ)。
+        //終わりの部分(元の曲の endFrom 秒から)の同じ時刻へ、音の途切れなく切り替える。endFrom より前なら、そこまで待って切り替える
+        finish:function(){
+            var I = this.info();
+            if(!this.src || this.ended || !I || I.endAt == null) return false;
+            var ac = sound.ctx, T = ac.currentTime + 0.03, p = this.songAt(T);
+            if(p < I.endFrom){ T += I.endFrom - p; p = I.endFrom; }
+            var s = ac.createBufferSource();
+            s.buffer = this.buf;
+            s.connect(this.gain);
+            s.start(T, I.endAt + (p - I.endFrom));
+            try{ this.src.stop(T); }catch(e){}
+            this.src = s;
+            this.ended = { t:T, p:p };
+            return true;
+        },
+        stop:function(){
+            if(!this.src) return;
+            try{ this.src.stop(); }catch(e){}
+            this.src = null;
+            this.ended = null;
+        }
+    };
+}
+//(_src：曲のファイル(JS)、_var：そのファイルが作る変数の名前、_vol：音量)
+function recorded(_src,_var,_vol){ return recTrack({ src:_src, key:_var, vol:_vol }); }
 var monarch = recorded(MONARCH_SRC, "BGM_MONARCH", MONARCH_VOL);
+var triumph = recorded(TRIUMPH_SRC, "BGM_TRIUMPH", TRIUMPH_VOL);
 var sunoHeroic = recorded(SUNO_HEROIC_SRC, "BGM_SUNO_HEROIC", SUNO_HEROIC_VOL);
 var sunoBattle = recorded(SUNO_BATTLE_SRC, "BGM_SUNO_BATTLE", SUNO_BATTLE_VOL);
 //TRACKS の名前 → 録音の曲
-recorded.list = { monarch:monarch, sunoHeroic:sunoHeroic, sunoBattle:sunoBattle };
+recorded.list = { monarch:monarch, triumph:triumph, sunoHeroic:sunoHeroic, sunoBattle:sunoBattle };
 
 (function(){
     var actx = null;    //sound.ctx(ゲームの ctx はキャンバスなので別の名前にする)
@@ -661,6 +700,7 @@ recorded.list = { monarch:monarch, sunoHeroic:sunoHeroic, sunoBattle:sunoBattle 
         TRACKS.heroic.prog.map(function(c){ return [c[0] + 2, c[1]]; }), TRACKS.title.prog, TRACKS.title.prog);
     TRACKS.finale = { bpm:132, prog:FINAL_PROG };
     TRACKS.monarch = { bpm:160 };   //録音の曲。音符は作らず、曲の進みだけ使う(monarch.tick)
+    TRACKS.triumph = { bpm:160 };
     TRACKS.sunoHeroic = { bpm:150 };
     TRACKS.sunoBattle = { bpm:138 };
     var FINAL_ARP   = ["x...x...x...x...", "x.x.x.x.x.x.x.x.", "xxxxxxxxxxxxxxxx", "x.x.x.x.x.x.x.x."];
