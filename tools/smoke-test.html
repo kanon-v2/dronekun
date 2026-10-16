@@ -1738,13 +1738,13 @@ try{
     tap(bossDebug.tools()[8]);    //最終局面「Suno」(録音の曲。music/triumph.js を読み込み始める。finaleTriumph.js)
     var triumphOn = bgmTrial.trackFor("kai2") == "triumph" && bgmTrial.finaleName() == "Suno" && TRACKS.triumph && typeof triumph.finish == "function";
     tap(bossDebug.tools()[8]);    //今の曲に戻る
-    tap(bossDebug.tools()[9]);    //戦闘曲「Suno」(録音の曲。music/sunoHeroic.js・sunoBattle.js を読み込み始める)
-    var sunoOn = bgmTrial.trackFor("heroic") == "sunoHeroic" && bgmTrial.trackFor("battle") == "sunoBattle" && bgmTrial.trackFor("boss") == "boss" &&
-                 bgmTrial.fightName() == "Suno" && bgmTrial.fightOf("sunoHeroic") == "heroic" && TRACKS.sunoHeroic && TRACKS.sunoBattle &&
-                 sunoHeroic.loading && sunoBattle.loading;
+    tap(bossDebug.tools()[9]);    //戦闘曲「Suno」(録音の曲。music/sunoHeroic.js・sunoBattle.js・sunoBoss.js を読み込み始める)
+    var sunoOn = bgmTrial.trackFor("heroic") == "sunoHeroic" && bgmTrial.trackFor("battle") == "sunoBattle" && bgmTrial.trackFor("boss") == "sunoBoss" &&
+                 bgmTrial.trackFor("rival") == "rival" && bgmTrial.fightName() == "Suno" && bgmTrial.fightOf("sunoBoss") == "boss" &&
+                 TRACKS.sunoHeroic && TRACKS.sunoBattle && TRACKS.sunoBoss && sunoHeroic.loading && sunoBattle.loading && sunoBoss.loading;
     tap(bossDebug.tools()[9]);    //今の曲に戻る
     sound.ctx = keepSnd.ctx; sound.bgmGain = keepSnd.bgmGain; sound.noiseBuf = keepSnd.noiseBuf; sound.track = null; sound.trackName = null;
-    check("BGMの試し聞き：案を順に選べ、どの案・原点回帰でも曲を鳴らせる。最終局面は Lyria・Suno、序盤・中盤の戦闘曲は Suno の曲も選べる",
+    check("BGMの試し聞き：案を順に選べ、どの案・原点回帰でも曲を鳴らせる。最終局面は Lyria・Suno、序盤・中盤の戦闘曲・ボス戦の曲は Suno の曲も選べる",
           bgmNames.join(",") == "orig,full,d,f,h,i" && bgmTrial.v() == "orig" && finaleOn && monarchOn && triumphOn && sunoOn && !bgmTrial.finale && !bgmTrial.fight &&
           errors.length == bgmErr,
           bgmNames.join(",") + " " + errors.slice(bgmErr).join(" "));
