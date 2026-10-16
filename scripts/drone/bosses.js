@@ -114,6 +114,7 @@ function isBossWave(_w){
 }
 //女王蜂と移動要塞が交互に出る
 function bossTypeFor(_w){
+    if(bossDebug.gunship) return "gunship";     //ボスの試作：強襲ヘリ(gunship.js。デバッグのメニューから)
     if(_w >= FINAL_WAVE) return "kai";
     if(_w == REVEAL_WAVE) return "canopy";
     return (_w / BOSS_EVERY) % 2 == 1 ? "queen" : "fortress";

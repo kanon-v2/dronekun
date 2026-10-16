@@ -8,6 +8,7 @@
 //  途中でメニューへ戻るのは右下の「DEBUG：戻る」(sound.js の debugBack)
 //  BGM・最終局面：曲の鳴らし方の試し聞き(bgmTrial.js)。選んだ案で、メニューの曲もこのあと遊ぶ曲も鳴る
 //  改・第二形態：WAVE20を第二形態から始める(最終局面の試作 finaleSync.js を試すため)
+//  ヘリ(試作)：ボスの試作「強襲ヘリ」(gunship.js)と WAVE10 の強さで戦う
 //------------------------------------------------------------------------------
 const BOSS_DEBUG_WAVES = [5,10,15,20];
 const BOSS_DEBUG_GEAR = ["弱い","標準","最強"];
@@ -30,6 +31,7 @@ var bossDebug = {
     rival:false,    //ライバル(中ボス。rival.js)と戦っている(雑魚敵なしで、すぐ現れる)
     kai2:false,     //ドローン君改の第二形態から戦う(第一形態が戦い始めたらすぐ復活に入る。finaleSync.js)
     lab:false,      //攻撃の試作(shotLab.js)を見ている(雑魚敵なし。試作の弾・攻撃を順に出す。無敵)
+    gunship:false,  //ボスの試作「強襲ヘリ」(gunship.js)と戦っている(bossTypeFor がこれを返す)
     wave:5,
     keep:null,      //始める前の進行状況(終わったら戻す)
     msg:"",
@@ -114,6 +116,7 @@ var bossDebug = {
         this.rival = false;
         this.kai2 = false;
         this.lab = false;
+        this.gunship = false;
         timeStop.reset();   //時が止まったまま戻ってきたとき
         save.restore(this.keep);
         if(this.trial){
@@ -166,10 +169,11 @@ var bossDebug = {
         for(var i=0; i<BOSS_DEBUG_WAVES.length; i++) out.push(new drawRect(CW/2, GS*5.4 + i*GS*1.45, GS*16, GS*1.25));
         return out;
     },
-    //ボスの下の段：ライバル(中ボス。rival.js)と戦うWAVE、最後にドローン君改の第二形態から
+    //ボスの下の段：ライバル(中ボス。rival.js)と戦うWAVE、ドローン君改の第二形態から、最後にボスの試作(強襲ヘリ)
     rivalRows:function(){
         var out = [];
-        for(var i=0; i<=RIVAL_WAVES.length; i++) out.push(new drawRect(CW/2 + (i - RIVAL_WAVES.length/2)*GS*3.9, GS*5.4 + BOSS_DEBUG_WAVES.length*GS*1.45, GS*3.7, GS*1.25));
+        var n = RIVAL_WAVES.length + 2;
+        for(var i=0; i<n; i++) out.push(new drawRect(CW/2 + (i - (n - 1)/2)*GS*3.3, GS*5.4 + BOSS_DEBUG_WAVES.length*GS*1.45, GS*3.15, GS*1.25));
         return out;
     },
     //メニューの下のボタン：ストーリー確認・武器試用・装備・無敵・閉じる・(下の段に)時止めワープ・攻撃の試作・BGMの案・最終局面の曲
@@ -221,6 +225,7 @@ var bossDebug = {
         for(var i=0; i<rr.length; i++){
             if(rr[i].clicked()){
                 if(i == RIVAL_WAVES.length){ this.kai2 = true; this.start(BOSS_DEBUG_WAVES[BOSS_DEBUG_WAVES.length - 1]); return; }
+                if(i == RIVAL_WAVES.length + 1){ this.gunship = true; this.start(10); return; }
                 this.rival = true; this.start(RIVAL_WAVES[i]); return;
             }
         }
@@ -281,7 +286,7 @@ var bossDebug = {
             }
             var rr = this.rivalRows();
             ctx.font = "bold 14px sans-serif";
-            for(var i=0; i<rr.length; i++) rr[i].button(i < RIVAL_WAVES.length ? "ライバル W" + RIVAL_WAVES[i] : "改・第二形態");
+            for(var i=0; i<rr.length; i++) rr[i].button(i < RIVAL_WAVES.length ? "ライバル W" + RIVAL_WAVES[i] : i == RIVAL_WAVES.length ? "改・第二形態" : "ヘリ(試作)");
             var t = this.tools();
             var labels = ["ストーリー確認", "武器試用", "装備「" + BOSS_DEBUG_GEAR[this.gear] + "」", "無敵「" + (this.god ? "オン" : "オフ") + "」", "閉じる",
                           "時止めワープ「" + (this.warp ? "オン" : "オフ") + "」", "攻撃の試作",

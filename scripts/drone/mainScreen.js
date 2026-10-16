@@ -1514,6 +1514,7 @@ var mainScreen = {
         }
         dodge.zoom();       //ジャスト回避の見切りの間も、少し寄る(dodge.js)
         this.drawBackground();
+        gunship.drawUnder();    //強襲ヘリ(ボスの試作)と戦っている間の風の筋(gunship.js)
 
         //ボスの登場の演出中はドローン君を出さない(着地のあとに現れる)
         var showMe = this.state != "over" && !this.cinematic();
@@ -1627,6 +1628,7 @@ var mainScreen = {
         ctx.restore();
         if(this.slowPow > 0) this.drawSlowFx();
         shotLab.drawFront();    //いちばん手前：通り過ぎる突進・横切る影・ガラスの液体(shotLab.js)
+        gunship.drawFront();    //画面の外にいる強襲ヘリの印(gunship.js)
 
         //連鎖爆破などで画面全体がうっすら色づく
         if(this.tint){
