@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<!--
+  最終局面の試作(Suno。finaleTriumph.js)の確認ページ。曲は鳴らさず、曲の時刻(finaleTri.fakeT)を1コマ1/60秒ずつ進める。
+  ドローン君は よけて動く自動プレイ(smoke-test.html の bot と同じ)で動き、標準の装備で戦う。
+    #t=30            曲の30秒のところまで進めて、その画面を出す(ヘッドレスEdgeの --screenshot で撮る)
+    #film=20,60,110  その時刻の画面を小さく並べた1枚にする(--window-size=1440,820 くらいで撮る)
+    #sim             曲の最後まで戦い、区切りごとの改の体力・被弾の回数を表にする(--dump-dom で読む)
+    &parry           迫ってくる改を、ドローン君が着く所へ動いて PERFECT で弾き返す(付けないと何もしない)
+    &god             被弾しない(付けないと、被弾は数えるが倒れないようにする)
+    &gear=2          装備(0 弱い・1 標準・2 最強)
+    &nogate          体力の関門をなくす(体力の減り方を測る。とどめの前には倒れる)
+    #sim&plain       比べる用：曲に合わせない、ふだんの第二形態と100秒戦い、20秒ごとの被弾の回数を出す
+-->
+<html lang="ja"><head><meta charset="UTF-8"><base href="../"><title>最終局面の試作(Suno)</title>
+<style>body{margin:0;background:#222;color:#eee;font:12px monospace} #film{display:block}</style></head>
+<body><div id="Bigbox"><canvas id="Canvas"></canvas></div><pre id="result">running...</pre>
+<script>
+var errors = [];
+window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.filename || "").split("/").pop() + ":" + e.lineno); });
+</script>
+<script src="scripts/drone/common.js"></script>
+<script src="scripts/drone/sound.js"></script>
+<script src="scripts/drone/bgmTrial.js"></script>
+<script src="scripts/drone/bgmFull.js"></script>
+<script src="scripts/drone/equipment.js"></script>
+<script src="scripts/drone/armsExtra.js"></script>
+<script src="scripts/drone/bosses.js"></script>
+<script src="scripts/drone/startScreen.js"></script>
+<script src="scripts/drone/mainScreen.js"></script>
+<script src="scripts/drone/forces.js"></script>
+<script src="scripts/drone/enemyArt.js"></script>
+<script src="scripts/drone/upgradeScreen.js"></script>
+<script src="scripts/drone/gameoverScreen.js"></script>
+<script src="scripts/drone/story.js"></script>
+<script src="scripts/drone/battleBg.js"></script>
+<script src="scripts/drone/bgScene.js"></script>
+<script src="scripts/drone/bossDebug.js"></script>
+<script src="scripts/drone/timeStop.js"></script>
+<script src="scripts/drone/dodge.js"></script>
+<script src="scripts/drone/rival.js"></script>
+<script src="scripts/drone/shotLab.js"></script>
+<script src="scripts/drone/finaleSync.js"></script>
+<script src="scripts/drone/finaleTriumph.js"></script>
+<script src="scripts/drone/gunship.js"></script>
+<script src="scripts/drone/emotion.js"></script>
+<script src="scripts/drone/emotionHint.js"></script>
+<script src="lib/peerjs.min.js"></script>
+<script src="scripts/drone/coop.js"></script>
+<script src="scripts/drone/versus.js"></script>
+<script src="scripts/drone/draw.js"></script>
+<script>
+var H = location.hash;
+var opt = {
+    t:/t=([\d.]+)/.exec(H), film:/film=([\d.,]+)/.exec(H), sim:/sim/.test(H),
+    parry:/parry/.test(H), god:/god/.test(H), gear:/gear=(\d)/.exec(H), nogate:/nogate/.test(H), plain:/plain/.test(H)
+};
+var out = [];
+function L(s){ out.push(s); }
+var frames = 0;
+//よけながら円を描いて飛ぶボット(smoke-test.html と同じ)
+function bot(){
+    frames++; MouseIn = true;
+    MouseX = 480 + 300*Math.cos(frames/60); MouseY = 270 + 170*Math.sin(frames/45);
+    var tx = 0, ty = 0, list = enemyShots.filter(function(b){ return !b.behind; }).concat(enemies.filter(function(e){ return !e.harmless; }));
+    for(var i=0; i<list.length; i++){ var o = list[i], dx = drone.X - o.x, dy = drone.Y - o.y, d = Math.hypot(dx,dy) || 1, R = (o.r || 5) + 90; if(d < R){ tx += dx/d*(R-d); ty += dy/d*(R-d); } }
+    //光の柱：予告が出たら柱の外へ
+    for(var i=0; i<finaleTri.pillars.length; i++){
+        var P = finaleTri.pillars[i];
+        if(P.dir == "v" && Math.abs(drone.X - P.c) < 60) tx += (drone.X < P.c ? -1 : 1)*80;
+        if(P.dir == "h" && Math.abs(drone.Y - P.c) < 60) ty += (drone.Y < P.c ? -1 : 1)*80;
+    }
+    if(tx || ty){ MouseX = drone.X + tx*2; MouseY = drone.Y + ty*2; }
+    MouseX = Math.max(30, Math.min(CW-30, MouseX)); MouseY = Math.max(30, Math.min(CH-30, MouseY));
+}
+function draw1(){ ctx.fillStyle = "white"; ctx.fillRect(0,0,CW,CH); screens[page.number].draw(); }
+function kai(){ return enemies.filter(function(e){ return e.type == "kai"; })[0]; }
+
+try{
+    var keep = { save:localStorage.getItem("dronekun_save"), meta:localStorage.getItem("dronekun_meta"), best:localStorage.getItem("dronekun_best") };
+    if(opt.nogate){ TR_GATES.length = 0; finaleTri.floor = function(){ return 0; }; }
+    bgmTrial.finale = opt.plain ? 0 : bgmTrial.finales.map(function(f){ return f.v; }).indexOf("triumph");
+    bossDebug.gear = opt.gear ? +opt.gear[1] : 1;
+    bossDebug.kai2 = true;
+    bossDebug.start(FINAL_WAVE);
+    MouseIn = true; MouseX = 480; MouseY = 400;
+    //登場の演出が終わり、第一形態がすぐ復活に入るまで
+    for(var i=0; i<4000 && !(kai() && kai().mode == "revive"); i++){ mainScreen.update(); }
+    var hits = 0, damage = mainScreen.damage;
+    mainScreen.damage = function(){ hits++; damage.apply(this, arguments); if(mainScreen.hp < 2) mainScreen.hp = 2; mainScreen.down = false; };
+    //#t=30 は1枚だけの #film と同じ(大きさは等倍)。ゲームの描画ループがあとから描き直すので、撮った絵は別のキャンバスに写して出す
+    if(opt.t && !opt.film) opt.film = [null, opt.t[1]];
+    var one = opt.t && opt.film[1] == opt.t[1];
+    var goal = 999, shots = opt.film ? opt.film[1].split(",").map(Number) : [];
+    if(opt.film) goal = Math.max.apply(null, shots);
+    if(opt.sim) goal = 192;
+    var film = null, fi = 0;
+    if(opt.plain){
+        var marks = [];
+        for(var f=0; f<60*104; f++){
+            bot();
+            if(opt.god) mainScreen.invincible = 10;
+            mainScreen.update();
+            if(f % 1200 == 1199) marks.push(Math.round(f/60) + "秒 被弾" + hits + " 体力" + (kai() ? Math.round(kai().hp/kai().maxHp*100) : 0) + "%");
+            if(kai() && kai().hp < kai().maxHp*0.3) kai().hp = kai().maxHp;     //倒れないように(被弾を数えるため)
+        }
+        L("ふだんの第二形態: " + marks.join(" / ") + "  errors " + errors.length);
+        goal = -1;
+    }
+    if(opt.film){
+        var cols = Math.min(3, shots.length), rows = Math.ceil(shots.length/cols), sc = one ? 1 : 0.5;
+        film = document.createElement("canvas");
+        film.id = "film";
+        film.width = CW*sc*cols; film.height = (CH*sc + 18)*rows;
+        var fx2 = film.getContext("2d");
+        fx2.fillStyle = "#222"; fx2.fillRect(0,0,film.width,film.height);
+        document.body.insertBefore(film, document.body.firstChild);
+        document.getElementById("Bigbox").style.display = "none";
+    }
+    var table = [], lastSec = null, results = [], killedAt = -1, maxShots = 0;
+    finaleTri.fakeT = 0;
+    for(var f=0; finaleTri.fakeT < goal && f < 60*200; f++){
+        var e = kai();
+        if(e && e.trSec && e.trSec != lastSec){
+            lastSec = e.trSec;
+            table.push(lastSec.name + "@" + finaleTri.fakeT.toFixed(1) + " 体力" + Math.round(e.hp/e.maxHp*100) + "% 被弾" + hits);
+        }
+        //PERFECT で弾き返す：着く所へ動き、着く0.05秒前に衝撃波
+        if(opt.parry && e && e.trApproach){
+            //狙いが止まるまでは画面の下のほうへ動き(撮る絵が実際に近くなるように)、止まったら着く所へ
+            if(!e.trLocked){ MouseX = 600; MouseY = 390; }
+            else{ MouseX = e.trTx; MouseY = e.trTy; drone.X += (e.trTx - drone.X)*0.3; drone.Y += (e.trTy - drone.Y)*0.3; }
+            var left = e.trHit - finaleTri.fakeT;
+            if(left <= 0.06 && left > 0.04){ mainScreen.yaruki = Math.max(mainScreen.yaruki, YARUKI_COST); mainScreen.blast(); }
+        }else bot();
+        if(opt.god) mainScreen.invincible = 10;
+        mainScreen.update();
+        if(finaleTri.result){ results.push(finaleTri.fakeT.toFixed(2) + ":" + finaleTri.result); finaleTri.result = null; }
+        maxShots = Math.max(maxShots, enemyShots.length);
+        if(killedAt < 0 && (!kai() || kai().dead) && finaleTri.fakeT > 20) killedAt = finaleTri.fakeT;
+        //曲がくり返す(fakeT は自分で戻す。くり返しを抜けたときだけ最後まで)
+        var T2 = finaleTri.fakeT + 1/60;
+        if(T2 >= TR_LOOP[1] && finaleTri.fakeT < TR_LOOP[1] && !finaleTri.finished) T2 = TR_LOOP[0] + (T2 - TR_LOOP[1]);
+        finaleTri.fakeT = T2;
+        if(opt.film && fi < shots.length && finaleTri.fakeT >= shots[fi]){
+            draw1();
+            var c = fi % cols, rw = Math.floor(fi/cols);
+            fx2.drawImage(canvas, 0, 0, canvas.width, canvas.height, c*CW*sc, rw*(CH*sc + 18) + 18, CW*sc, CH*sc);
+            fx2.fillStyle = "#eee"; fx2.font = "13px monospace";
+            fx2.fillText(shots[fi] + "s " + (kai() && kai().trSec ? kai().trSec.name : "-"), c*CW*sc + 6, rw*(CH*sc + 18) + 13);
+            fi++;
+        }
+        if(opt.sim && killedAt >= 0 && finaleTri.fakeT > killedAt + 3) break;
+    }
+    //#t=30&art：改だけを大きく、状態を変えて並べる(組み上がり途中・ふだん・羽ばたき・火がついた後・たたむ・欠けた後)
+    if(/art/.test(H) && kai()){
+        var K = kai(), vars = [
+            ["組み上がり途中", { form:1.5, trScale:1, trFlap:0, trFold:0, trFire:0, trLost:0 }, 12],
+            ["ふだん", { form:2, trScale:1, trFlap:0, trFold:0, trFire:0, trLost:0 }],
+            ["羽ばたき(小節の頭)", { form:2, trScale:1, trFlap:1, trFold:0, trFire:0, trLost:0 }],
+            ["火がついた後", { form:2, trScale:1, trFlap:0.5, trFold:0, trFire:1, trLost:0 }],
+            ["たたむ(息つぎ)", { form:2, trScale:1, trFlap:0, trFold:1, trFire:1, trLost:0 }],
+            ["欠けた後(夜明け)", { form:2, trScale:1, trFlap:0, trFold:0, trFire:1, trLost:6 }]
+        ];
+        ctx.fillStyle = "#140a1e"; ctx.fillRect(0,0,CW,CH);
+        var keepT = finaleTri.fakeT;
+        for(var i=0; i<vars.length; i++){
+            var c = Object.assign({}, K, vars[i][1]);
+            c.x = 160 + (i % 3)*320; c.y = 140 + Math.floor(i/3)*270; c.mode = "idle"; c.trMode = null; c.flash = 0;
+            if(vars[i][2] != null) finaleTri.fakeT = vars[i][2]; else finaleTri.fakeT = 40;
+            mainScreen.drawEnemy(c);
+            ctx.fillStyle = "#eee"; ctx.font = "14px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText(vars[i][0], c.x, c.y + 115);
+        }
+        finaleTri.fakeT = keepT;
+        fx2.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 18, CW, CH);
+    }
+    L("区切り: " + table.join(" / "));
+    L("弾き返し: " + results.join(" "));
+    L("倒した時刻: " + (killedAt < 0 ? "倒せず" : killedAt.toFixed(2)) + "  とどめ" + finaleTri.finished + "  被弾" + hits + "  弾の数の最大" + maxShots);
+    L("errors: " + errors.length + " " + errors.slice(0,5).join(" | "));
+    finaleTri.fakeT = null;
+    if(keep.save == null) localStorage.removeItem("dronekun_save"); else localStorage.setItem("dronekun_save", keep.save);
+    if(keep.meta != null) localStorage.setItem("dronekun_meta", keep.meta);
+    if(keep.best != null) localStorage.setItem("dronekun_best", keep.best);
+}catch(ex){ L("EXCEPTION " + ex.message + " " + ex.stack); }
+document.getElementById("result").textContent = out.join("\n");
+</script>
+</body></html>
