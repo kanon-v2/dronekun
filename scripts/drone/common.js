@@ -1272,7 +1272,7 @@ var drone = {
             if(page.number == 1){
                 var T = { x:tx, y:ty, d:d };
                 shotLab.steer(this, T);
-                tx = T.x; ty = T.y; d = T.d;
+                tx = T.x; ty = T.y; d = rivalTime.delay(T.d);   //ライバルの時の枷で、ドローン君の時が遅い(rivalTime.js)
             }
             this.X = (tx + d * this.X) / (d+1);
             this.Y = (ty + d * this.Y) / (d+1);

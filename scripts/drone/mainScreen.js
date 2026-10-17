@@ -591,12 +591,16 @@ var mainScreen = {
         }
         //ジャスト回避の見切り：敵と弾だけがゆっくりになる(ドローン君と装備はふつうの速さ。dodge.js)
         var seen = dodge.slowStep();
+        //ライバルが時を操る(rivalTime.js)：加速世界・時飛ばしの分だけ敵と弾を余分に動かし、ドローン君の時が遅い間は装備が遅れる
+        var extra = rivalTime.frame();
         if(!frozen){
-            arms.update(this.state == "play" && !this.down && !special.holdFire());    //ドローン君改の復活の間は撃たない
+            if(rivalTime.armsStep()) arms.update(this.state == "play" && !this.down && !special.holdFire());    //ドローン君改の復活の間は撃たない
             if(!seen){
                 this.updateEnemies();
                 this.updateShots();
                 this.updatePickups();
+                extra += rivalTime.takeSkip();
+                for(var n=0; n<extra; n++){ this.updateEnemies(); this.updateShots(); }
             }
         }
         this.updateEffects();
@@ -1608,6 +1612,7 @@ var mainScreen = {
             ctx.globalAlpha = 1;
         }
         //かすりの範囲(弾のふちがこの輪に入るとかすり。かすった瞬間は明るく光る。右下のボタンで隠せる)
+        rivalTime.drawFront();  //ライバルが時を操る：枷のかかったドローン君・加速の筋・時飛ばしの閃光(rivalTime.js)
         rival.drawIntro();      //ライバルの登場：止まった世界の上に、集まる光とライバル(rival.js)
         if(showMe && !this.down && viewOpt.graze && !timeStop.active) this.drawGrazeRange();
         //敵の弾に対する当たり判定(中心の点。右下のボタンで隠せる)

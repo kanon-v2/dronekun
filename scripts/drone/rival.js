@@ -22,8 +22,9 @@
 //      来た道を巻き戻される(戻ってくる弾の中へ)／時止め(跳んだ跡に分身が残る)／時計盤
 //    ・十二時の決闘(twelve。本気になってから)：時が止まり、ドローン君を囲む文字盤の時刻の位置に分身が並ぶ。
 //      針が1つ進むたびにその時刻の分身が突っ込み、最後に十二時の本物が突っ込む。本物を弾き返すと大きなダメージ
+//  時を操る攻撃(時の枷・加速世界・時飛ばし・時の裂け目・別の時間の自分)と第二形態の見た目は rivalTime.js
 //  山場「時ノ奔流」(over。第一形態は本気になったとき、第二形態は体力が RIVAL2_OD_HP を切ったときに1度)：
-//    カットイン(時が止まる) → 加速(時が速くなり、渦に撃つ針が拍 → 半拍 → 16分と細かく、飛んでいる針も速くなる) →
+//    画面のまんなかへワープ → 加速(時が速くなり、渦に撃つ針が拍 → 半拍 → 16分と細かく、飛んでいる針も速くなる) →
 //    針の裁き(画面全体が文字盤になり、光る長針(Lv.2からは短針も)が拍ごとに1目盛りずつなぎ払う。次の範囲は赤く見える) →
 //    時が巻き戻る(針が逆向きに戻る) → 疲れて長い隙
 //  体力が0になっても倒れず、捨てぜりふを残してワープで去る(撃退。報酬カプセルとパーツを落とす)。
@@ -84,10 +85,10 @@ const RIVAL_DIST     = [170,240];       //ワープで現れるときのドロ�
 const RIVAL_DASH_DIST = [250,320];      //突進の前にワープする距離
 const RIVAL_REST     = [[100,75],[85,60],[70,50],[60,42]];  //攻撃のあと、次の攻撃まで(Lv.1～4。ふだん・本気)
 const RIVAL_PATTERNS = [                //攻撃の順番(Lv.1～4)。shoot 刻み撃ち・dash 残響突進・phantom 時止め・clock 時計盤
-    ["shoot","dash","phantom"],
-    ["shoot","dash","clock","phantom"],
-    ["clock","dash","phantom","shoot","dash"],
-    ["phantom","clock","dash","shoot","clock","dash"]
+    ["shoot","shackle","dash","haste","phantom"],                     //(rivalTime.js)shackle 時の枷・haste 加速世界・skip 時飛ばし・rift 時の裂け目
+    ["shoot","rift","dash","shackle","clock","phantom"],
+    ["clock","rift","dash","haste","phantom","shackle","shoot","dash"],
+    ["phantom","rift","clock","haste","dash","skip","shackle","shoot","dash"]
 ];
 const RIVAL_STRAFE   = 205;             //動き回るときのドローン君からの距離
 const RIVAL_STEP_T   = [30,56];         //横へ跳ぶ間隔(フレーム)
@@ -151,9 +152,9 @@ const RIVAL2_FALL     = 46;         //目覚めの演出：吹き飛んで落ち
 const RIVAL2_DOWN_LINE = "ぐっ……！";  //目覚めの演出：倒れたときのせりふ
 const RIVAL2_FILL_T   = 80;         //体力が満ちる長さ
 const RIVAL2_PATTERNS = [null,      //攻撃の順番(Lv.2～4)。echo 過去の自分・mirror 鏡像・waltz 分身の輪舞・rewind 時戻し・
-    ["echo","mirror","rewind","waltz","phantom","echo","dash"],         //phantom 時止め(分身が残る)・clock 時計盤・dash 残響突進
-    ["waltz","echo","rewind","mirror","clock","phantom","echo","dash"],
-    ["echo","mirror","rewind","waltz","clock","phantom","mirror","rewind","dash"]
+    ["era","echo","haste","mirror","shackle","rewind","waltz","rift","phantom","skip","dash"],   //phantom 時止め(分身が残る)・clock 時計盤・dash 残響突進
+    ["era","waltz","skip","echo","haste","rewind","mirror","shackle","clock","rift","phantom","dash"],     //era 別の時間の自分ほか(rivalTime.js)
+    ["era","echo","skip","mirror","haste","rewind","shackle","waltz","clock","rift","phantom","mirror","dash"]
 ];
 const RIVAL2_REST     = [null,[75,55],[65,48],[55,40]];     //攻撃のあと、次の攻撃まで(Lv.2～4。ふだん・本気)
 const RIVAL2_CLONES   = [0,3,3,3];  //分身の数(本物のほかに。Lv.1～4。鏡像・輪舞。鏡像の映し方は4通りまで)
@@ -196,7 +197,6 @@ const RIVAL2_TWELVE_STAGGER = 80;   //本物を弾き返したときによろけ
 const RIVAL_OD        = { name:"時ノ奔流", en:"CHRONO OVERDRIVE" };
 const RIVAL_OD_LINE   = "見せてやる…時の奔流を！";    //始めるときのせりふ
 const RIVAL_OD_TIRED_LINE = "はぁ…はぁ…！";        //終えて疲れたときのせりふ
-const RIVAL_OD_CUT    = 84;         //カットインの長さ(フレーム。この間は時が止まる)
 const RIVAL_OD_ACCEL  = 12;         //加速の長さ(拍。拍 → 半拍 → 16分と、撃つ間が3段に細かくなる)
 const RIVAL_OD_KMAX   = [1.7,1.9,2.1,2.3];  //加速の終わりの時の速さ(飛んでいる針の速さに掛ける。Lv.1～4)
 const RIVAL_OD_ARMS   = [2,3,3,4];  //渦に撃つ腕の数(Lv.1～4)
@@ -243,15 +243,6 @@ var rivalSfx = {
         sound.tone("sine", 1976, 1974, 0.8, 0.035, S, 0, 0.003);
         sound.tone("sine", 659, 659, 1.6, 0.05, S, 0, 0.004);
         sound.tone("triangle", 2637, 2637, 0.25, 0.02, S, 0, 0.001);
-    },
-    //カットイン：風を切る音と、低い鐘
-    cut:function(){
-        if(!this.ok()) return;
-        var S = sound.seGain;
-        sound.noise(0.4, 0.08, "bandpass", 700, 4500, S);
-        sound.tone("square", 220, 880, 0.18, 0.03, S, 0, 0.005, 2500);
-        sound.tone("sine", 98, 96, 1.6, 0.12, S, 0, 0.004);
-        sound.tone("sine", 196, 195, 1.2, 0.05, S, 0, 0.004);
     },
     //加速：だんだん高くなるうなり(_sec 秒かけて)
     riser:function(_sec){
@@ -401,6 +392,7 @@ var rival = {
         this.muffle(false);
         this.timeK = 1;
         this.pull = null;
+        rivalTime.reset();
     },
     //戦っているライバル(撃退されて去っていくところは含まない)
     alive:function(){
@@ -460,15 +452,6 @@ var rival = {
     //登場の間は時が止まる：ライバルの演出だけを進める(mainScreen.update から。止めている間は true)
     //協力プレイのゲストは、届いた mode・count で同じ演出を描く(自分のドローン君は動けるが撃たない：special.holdFire)
     introStep:function(){
-        //時ノ奔流のカットインの間も時が止まる
-        var c = this.cutOf();
-        if(c){
-            c.t++;
-            c.look.update(0, 0, 0);
-            this.cutStep(c);
-            mainScreen.updateEffects();
-            return true;
-        }
         var e = this.introOf();
         if(!e) return false;
         e.t++;
@@ -507,6 +490,7 @@ var rival = {
         _e.vx = 0; _e.vy = 0;
         this.timeK = 1;
         this.pull = null;
+        rivalTime.clear();
         this.flags(_e);
         //置いたままの弾は消える
         enemyShots = enemyShots.filter(function(b){ return b.held != _e.id; });
@@ -771,7 +755,7 @@ var rival = {
                 if(this.mirrorStep(_e, _e, play)) this.rest(_e);
                 break;
             case "over":
-                //時ノ奔流(山場)：加速 → 針の裁き(カットインは rival.introStep)
+                //時ノ奔流(山場)：加速 → 針の裁き
                 this.overStep(_e, play);
                 break;
             case "rewind":
@@ -835,10 +819,14 @@ var rival = {
                 if(_e.count == RIVAL_FLEE_OUT) sound.play("warpOut");
                 if(--_e.count <= 0) _e.dead = true;
                 break;
+            default:
+                //時を操る攻撃(rivalTime.js)
+                rivalTime.step(_e, play, toMe);
+                break;
         }
         this.muffle(_e.mode == "hold" || _e.mode == "rstop");
         //攻撃の合間に削られすぎると、ワープでよける
-        if((_e.mode == "idle" || _e.mode == "shoot" || _e.mode == "echo") && play && _e.dodgeCd <= 0 && _e.hpMark - _e.hp >= _e.maxHp*RIVAL_DODGE){
+        if((_e.mode == "idle" || _e.mode == "shoot" || _e.mode == "echo" || _e.mode == "haste") && play && _e.dodgeCd <= 0 && _e.hpMark - _e.hp >= _e.maxHp*RIVAL_DODGE){
             _e.dodgeCd = RIVAL_DODGE_CD;
             popup(_e.x, _e.y - 40, "遅い！", "rgb(30,120,190)");
             if(_e.mode == "echo") _e.hist.done = true;
@@ -1147,18 +1135,18 @@ var rival = {
         return --_e.count <= 0;
     },
     //------------------------------------------------------------ 時ノ奔流(山場)
-    //始める：画面のまんなかへワープする(着いたらカットイン)
+    //始める：画面のまんなかへワープする(着いたらすぐ加速)
     over:function(_e){
         _e.odDue = false;
         _e.chain = 0;
         this.warp(_e, CW/2, RIVAL2_MIRROR_CY, RIVAL_WARP_T[_e.lv], "over");
     },
-    //着いた：分身・置いた針を消し、時を止めてカットイン(rival.introStep で進める)
+    //着いた：分身・置いた針を消し、すぐに加速が始まる(時は止めない)
     overStart:function(_e){
         _e.mode = "over";
-        _e.count = RIVAL_OD_CUT;
+        _e.count = 0;
         _e.odDone = (_e.odDone || 0) | (_e.form == 2 ? 2 : 1);
-        _e.ov = { ph:"cut", t:0, spin:Math.random()*Math.PI*2, dir:Math.random() < 0.5 ? 1 : -1, sub:null, whirl:0, u:0, fired:[] };
+        _e.ov = { ph:"accel", t:0, b0:null, spin:Math.random()*Math.PI*2, dir:Math.random() < 0.5 ? 1 : -1, sub:null, whirl:0, u:0, fired:[] };
         for(var i=0; i<enemies.length; i++){
             var c = enemies[i];
             if(c.clone && c.owner == _e.id && c.mode != "fade") this.fade(c);
@@ -1166,32 +1154,17 @@ var rival = {
         enemyShots = enemyShots.filter(function(b){ return b.held != _e.id; });
         this.say(_e, RIVAL_OD_LINE);
         this.flags(_e);
-        sound.play("timeStop");
-        rivalSfx.cut();
-    },
-    //カットイン中のライバル(この間は時が止まる)
-    cutOf:function(){
-        for(var i=0; i<enemies.length; i++){
-            var e = enemies[i];
-            if(e.type == "chrono" && e.mode == "over" && e.ov && e.ov.ph == "cut") return e;
-        }
-        return null;
-    },
-    //カットインの1コマ(introStep から)。終わると加速が始まる
-    cutStep:function(_e){
-        if(--_e.count > 0) return;
-        _e.ov.ph = "accel";
-        _e.ov.t = 0;
-        _e.ov.b0 = null;
-        mainScreen.guard = Math.max(mainScreen.guard, 30);
+        fx.flare(_e.x, _e.y, 120, this.second(_e) ? RIVAL2_GLOW : WARP_COLOR, 16);
+        fx.ring(_e.x, _e.y, RIVAL_OD_FACE_R, this.second(_e) ? RIVAL2_TIME : RIVAL_TIME, 22, 4);
+        fx.shake(8);
+        sound.play("bossImpact");
         rivalSfx.riser(RIVAL_OD_ACCEL*60/this.bpm());
-        sound.play("timeResume");
     },
     //加速・針の裁きの1コマ(update から)
     overStep:function(_e,_play){
         var O = _e.ov, lv = _e.lv, bf = this.beatF();
         _e.vx *= 0.8; _e.vy *= 0.8;
-        if(!O || O.ph == "cut") return;
+        if(!O) return;
         O.t++;
         if(O.b0 == null) O.b0 = _e.bt;
         if(O.ph == "accel"){
@@ -1404,6 +1377,7 @@ var rival = {
                 }
                 break;
             default:
+                if(rivalTime.arrive(_e)) break;     //時を操る攻撃(rivalTime.js)
                 //知らない攻撃(取りやめた攻撃の名前など)は、動き回るに戻る
                 _e.mode = "idle";
                 _e.timer = this.restTime(_e);
@@ -1427,6 +1401,7 @@ var rival = {
         if(_e.odDue){ this.over(_e); return; }
         if(_e.form == 2 && _e.enraged && _e.since12 >= RIVAL2_TWELVE_EVERY){ this.twelve(_e); return; }
         var list = (_e.form == 2 ? RIVAL2_PATTERNS : RIVAL_PATTERNS)[_e.lv], p = list[_e.cycle++ % list.length];
+        if(rivalTime.start(_e, p)) return;      //時を操る攻撃(rivalTime.js)
         if(p == "mirror" || p == "waltz"){
             this.surround(_e, p);
         }else if(p == "rewind"){
@@ -1541,6 +1516,10 @@ var rival = {
             case "echo":
                 if(this.echoReplay(_c, play)) this.fade(_c);
                 break;
+            case "era":
+                //別の時間から連れてきた自分(rivalTime.js)
+                rivalTime.eraStep(_c, o, play, _dx, _dy);
+                break;
             case "waltz":
                 if(this.waltzStep(_c, o || _c, play)) this.fade(_c);
                 break;
@@ -1576,6 +1555,7 @@ var rival = {
     },
     //分身が倒された(special.onKill から)
     cloneKilled:function(_c){
+        if(_c.era){ rivalTime.eraKilled(_c); return; }
         fx.flare(_c.x, _c.y, 50, _c.echo ? WARP_COLOR : RIVAL2_GLOW, 14);
         this.shatter(_c, _c.echo ? WARP_COLOR : RIVAL2_GLOW);
         if(!_c.echo) popup(_c.x, _c.y - _c.r - 6, "分身だ！", "rgb(110,70,190)");
@@ -1674,6 +1654,7 @@ var rival = {
         _e.ov = null;
         this.timeK = 1;
         this.pull = null;
+        rivalTime.clear();
         this.flags(_e);
         this.muffle(false);
         _e.look.setFace("dizzy", RIVAL_FLEE_T);
@@ -1758,7 +1739,8 @@ var rival = {
             ctx.lineWidth = 2*(1 - u) + 0.5;
             ctx.beginPath(); ctx.arc(b.x, b.y, 10 + 14*u, 0, Math.PI*2); ctx.stroke();
         }
-        this.needle(b.x, b.y, a, RIVAL_SCARF, 1);
+        //別の時間から来た針(時の裂け目。rivalTime.js)は、過去はセピア・未来は水色
+        this.needle(b.x, b.y, a, b.era == "past" ? "rgb(" + CT_PAST + ")" : b.era == "future" ? "rgb(" + CT_FUTURE + ")" : RIVAL_SCARF, 1);
         ctx.restore();
         ctx.lineWidth = 1;
         return true;
@@ -1782,7 +1764,8 @@ var rival = {
     //------------------------------------------------------------------ 描画
     //見た目だけの変化を見張る(ワープの始まりで今のコマを写す・せりふ)。ホストもゲストも描画のたびに呼ぶ
     watch:function(_e){
-        if(!_e.wfx) _e.wfx = new RivalWarp(RIVAL_SCALE);
+        var sk = rivalTime.scale(_e);
+        if(!_e.wfx || _e.wfx.k != sk){ _e.wfx = new RivalWarp(sk); _e.wfx.shoot(_e.look); }
         var lv = _e.lv || 0;
         var start = (_e.mode == "warp" && (_e._pm != "warp" || _e.count > _e._pc)) || (_e.mode == "flee" && _e._pm != "flee");
         if(start || !_e.wfx.snap) _e.wfx.shoot(_e.look);
@@ -1849,25 +1832,29 @@ var rival = {
         if(_e.sayT > 0) this.drawSay(_e);
     },
     //体：背中の文字盤・ハチマキの端・ドローン君の絵・ハチマキ・合図の光(translate済み。第二形態と分身は紫がかった色)
+    //第二形態(と同じ姿の分身)は大きく、暗い炎・歯車のかけら・時計の針の翼・光る目をまとう(rivalTime.js)
     drawBody:function(_e,_body,_alpha){
-        var k = RIVAL_SCALE, f2 = (_e.clone && !_e.echo) || this.second(_e);
-        _e.look.tint = _e.echo ? RIVAL_TINT : f2 ? RIVAL2_TINT : RIVAL_TINT;
+        var k = rivalTime.scale(_e), f2 = (_e.clone && !_e.echo && !_e.era) || this.second(_e);
+        _e.look.tint = _e.era ? (_e.era == "past" ? CT_ERA_PAST : CT_ERA_FUTURE).tint : _e.echo ? RIVAL_TINT : f2 ? RIVAL2_TINT : RIVAL_TINT;
         ctx.globalAlpha = _alpha;
-        enemyArt.halo(0, 0, 30 + Math.sin(_e.t*0.12)*2, f2 ? RIVAL2_GLOW : WARP_COLOR, (_e.mode == "hold" || _e.mode == "rstop") ? 0.5 : 0.18);
-        if(!_e.clone || _e.mode != "fade") this.drawDial(_e, f2, _alpha);
+        enemyArt.halo(0, 0, (30 + Math.sin(_e.t*0.12)*2)*k/RIVAL_SCALE, f2 ? RIVAL2_GLOW : WARP_COLOR, (_e.mode == "hold" || _e.mode == "rstop") ? 0.5 : f2 ? 0.26 : 0.18);
+        if(f2) rivalTime.drawAura(_e, k, _alpha);
+        if(!_e.clone || _e.mode != "fade") this.drawDial(_e, f2, _alpha, k);
+        if(f2) rivalTime.drawWings(_e, k, _alpha);
         this.drawBand(_e, k, false);
         if(_body) ctx.globalAlpha = _alpha*0.6;
         _e.look.draw(0, 0, k);
         ctx.globalAlpha = _alpha;
+        if(!_e.era || _e.era == "future") rivalTime.drawEyes(_e, k, _alpha, f2 || _e.era == "future");
         this.drawBand(_e, k, true);
         this.drawGlint(_e, k, _alpha);
         ctx.globalAlpha = 1;
     },
     //背中の文字盤：細い輪と12の目盛り。拍ごとに秒針が1目盛り進み(少し行きすぎて止まる)、その目盛りが光る。
     //小節の頭で輪が脈打つ。第二形態は外にもう1つ点線の輪が逆へ回り、秒針は逆向きに進む(時を戻す力)
-    drawDial:function(_e,_f2,_alpha){
+    drawDial:function(_e,_f2,_alpha,_k){
         var b = this.viewBeat(_e), bi = Math.floor(b), fr = b - bi, down = ((bi % 4) + 4) % 4 == 0;
-        var pulse = Math.exp(-fr*7)*(down ? 1 : 0.4), R = DIAL_R*(1 + 0.07*pulse);
+        var pulse = Math.exp(-fr*7)*(down ? 1 : 0.4), R = DIAL_R*(1 + 0.07*pulse)*(_k || RIVAL_SCALE)/RIVAL_SCALE;
         var col = _f2 ? RIVAL2_TIME : RIVAL_TIME, dir = _f2 ? -1 : 1;
         var u = Math.min(1, fr/DIAL_TICK), ease = 1 - Math.pow(1 - u, 3) + 0.18*Math.sin(Math.PI*u)*(1 - u);
         var hand = -Math.PI/2 + dir*(bi - 1 + ease)*Math.PI/6, lit = (((bi*dir) % 12) + 12) % 12;
@@ -1938,6 +1925,12 @@ var rival = {
         var a = 1;
         if(_c.mode == "warp") a = 1 - _c.count/(_c.wt || RIVAL_WARP_T[_c.lv || 0]);
         if(_c.mode == "fade") a = _c.count/RIVAL2_FADE_T;
+        //別の時間から連れてきた自分(rivalTime.js)
+        if(_c.era){
+            rivalTime.drawEra(_c, _body, Math.max(0, a));
+            if(_c.sayT > 0) this.drawSay(_c);
+            return;
+        }
         if(_c.mode == "stay") a = _c.hour ? 0.85 : 0.7;
         if(_c.mode == "wait") a = 0.35;
         if(!_c.echo && (_c.t + _c.id*13) % RIVAL2_FLICKER < 4) a *= 0.45;
@@ -2001,6 +1994,11 @@ var rival = {
     //体と同じように弾んで傾く(DroneLook.draw と同じ動き)。端は点の列を体の動きの慣性・重さ・はためきで動かす(rival.scarfStep)
     drawBand:function(_e,_k,_front){
         var L = _e.look, y = RIVAL_BAND_Y*_k;
+        //第二形態(と同じ姿の分身)は、暗い赤で長くなびく
+        var f2 = !_e.echo && !_e.era && (_e.clone || this.second(_e));
+        this.scf = f2 ? RIVAL2_SCARF : RIVAL_SCARF;
+        this.sch = f2 ? RIVAL2_SCARF_HI : RIVAL_SCARF_HI;
+        this.scSegs = f2 ? RIVAL2_SCARF_SEGS : SCARF_SEGS;
         if(!_front){
             var sp = Math.hypot(_e.vx + (_e.mvx || 0),_e.vy + (_e.mvy || 0));
             var want = sp > 0.8 ? Math.atan2(-(_e.vy + (_e.mvy || 0)),-(_e.vx + (_e.mvx || 0))) : (L.yaw > 0 ? 0.5 : Math.PI - 0.5);
@@ -2016,17 +2014,17 @@ var rival = {
             //帯：黒いふち・赤・上側に光
             ctx.beginPath(); ctx.moveTo(-RIVAL_BAND_W*_k, y); ctx.lineTo(RIVAL_BAND_W*_k, y);
             ctx.strokeStyle = RIVAL_INK; ctx.lineWidth = 4.6*_k; ctx.stroke();
-            ctx.strokeStyle = RIVAL_SCARF; ctx.lineWidth = 2.8*_k; ctx.stroke();
+            ctx.strokeStyle = this.scf; ctx.lineWidth = 2.8*_k; ctx.stroke();
             ctx.beginPath(); ctx.moveTo(-RIVAL_BAND_W*_k*0.8, y - 0.7*_k); ctx.lineTo(RIVAL_BAND_W*_k*0.8, y - 0.7*_k);
-            ctx.strokeStyle = RIVAL_SCARF_HI; ctx.lineWidth = 0.8*_k; ctx.stroke();
+            ctx.strokeStyle = this.sch; ctx.lineWidth = 0.8*_k; ctx.stroke();
             //結び目：小さな2つの輪と、まんなかの結び
             for(var s=-1; s<=1; s+=2){
                 ctx.beginPath(); ctx.ellipse(kx + s*2.2*_k*side, y - 0.4*_k, 2.2*_k, 1.5*_k, s*0.5, 0, Math.PI*2);
-                ctx.fillStyle = RIVAL_SCARF; ctx.fill();
+                ctx.fillStyle = this.scf; ctx.fill();
                 ctx.strokeStyle = RIVAL_INK; ctx.lineWidth = 1.2; ctx.stroke();
             }
             ctx.beginPath(); ctx.arc(kx, y, 1.8*_k, 0, Math.PI*2);
-            ctx.fillStyle = RIVAL_SCARF; ctx.fill();
+            ctx.fillStyle = this.scf; ctx.fill();
             ctx.strokeStyle = RIVAL_INK; ctx.lineWidth = 1.4; ctx.stroke();
         }else{
             this.scarfStep(_e, _k, kx, y, side);
@@ -2042,11 +2040,12 @@ var rival = {
     //体が動いた分の一部だけ取り残されて後ろへなびき、重さで垂れ、速いほどはためく
     scarfStep:function(_e,_k,_ax,_ay,_side){
         var S = _e.scarf, seg = SCARF_SEG*_k;
-        if(!S || S.side != _side){
-            S = _e.scarf = { side:_side, tails:[], px:_e.x, py:_e.y, f:-1 };
-            for(var s=0; s<SCARF_SEGS.length; s++){
+        var SG = this.scSegs || SCARF_SEGS;
+        if(!S || S.side != _side || S.segs != SG){
+            S = _e.scarf = { side:_side, tails:[], px:_e.x, py:_e.y, f:-1, segs:SG };
+            for(var s=0; s<SG.length; s++){
                 var pts = [];
-                for(var i=0; i<=SCARF_SEGS[s]; i++){
+                for(var i=0; i<=SG[s]; i++){
                     var x = _ax + _side*i*seg*0.8, y = _ay + i*seg*(0.45 + s*0.25);
                     pts.push({ x:x, y:y, ox:x, oy:y });
                 }
@@ -2102,11 +2101,11 @@ var rival = {
         for(var i=n - 1; i>=0; i--) ctx.lineTo(Rr[i][0], Rr[i][1]);
         ctx.closePath();
         ctx.strokeStyle = RIVAL_INK; ctx.lineWidth = 2.6; ctx.stroke();
-        ctx.fillStyle = RIVAL_SCARF; ctx.fill();
+        ctx.fillStyle = this.scf; ctx.fill();
         ctx.beginPath();
         ctx.moveTo(L[0][0], L[0][1]);
         for(var i=1; i<n - 1; i++) ctx.lineTo(L[i][0]*0.7 + _P[i].x*0.3, L[i][1]*0.7 + _P[i].y*0.3);
-        ctx.strokeStyle = RIVAL_SCARF_HI; ctx.lineWidth = 0.9; ctx.stroke();
+        ctx.strokeStyle = this.sch; ctx.lineWidth = 0.9; ctx.stroke();
     },
     //せりふの吹き出し(translate済み。画面の外に出ないようにずらす)
     drawSay:function(_e){
@@ -2348,8 +2347,7 @@ var rival = {
     },
     //登場・目覚めの演出の文字(揺れ・拡大の外。mainScreen.draw から)：上下の黒い帯・名前と異名・時が止まった案内
     drawUi:function(){
-        var c = this.cutOf();
-        if(c) this.drawCut(c);
+        rivalTime.drawUi();     //今かかっている時の介入(rivalTime.js)
         var e = this.introOf();
         if(!e) return;
         var aw = e.mode == "awaken", S = this.stage(e), age = S.age, lv = e.lv || 0, N = aw ? RIVAL2 : RIVAL;
@@ -2412,83 +2410,11 @@ var rival = {
         ctx.fillStyle = "#000";
     },
 
-    //時ノ奔流のカットイン(揺れ・拡大の外)：画面を暗くし、斜めの帯が右から入って左へ抜ける。帯の中にクロノを大きく、右に技の名前
-    drawCut:function(_e){
-        var T = RIVAL_OD_CUT, age = T - _e.count, f2 = this.second(_e);
-        var inK = Math.min(1, age/10), outK = Math.min(1, _e.count/10), k = Math.min(inK, outK);
-        var off = (1 - (1 - Math.pow(1 - inK, 3)))*CW - (1 - outK)*(1 - outK)*CW;
-        var cy = CH/2 - 10, H = 170, sk = 40;
-        ctx.save();
-        ctx.fillStyle = "rgba(5,8,20," + (0.5*k) + ")";
-        ctx.fillRect(0, 0, CW, CH);
-        ctx.translate(off, 0);
-        var band = function(){
-            ctx.beginPath();
-            ctx.moveTo(-40, cy - H/2 + sk); ctx.lineTo(CW + 40, cy - H/2 - sk);
-            ctx.lineTo(CW + 40, cy + H/2 - sk); ctx.lineTo(-40, cy + H/2 + sk);
-            ctx.closePath();
-        };
-        band();
-        ctx.fillStyle = f2 ? "rgba(32,16,58,0.95)" : "rgba(14,22,48,0.95)";
-        ctx.fill();
-        ctx.save();
-        band();
-        ctx.clip();
-        //流れる光の筋(左へ)
-        ctx.strokeStyle = "rgba(255,255,255,0.14)";
-        ctx.lineWidth = 2;
-        for(var i=0; i<16; i++){
-            var y = cy - H/2 - sk + ((i*53) % (H + sk*2)), x = CW + 100 - ((age*38 + i*211) % (CW + 300));
-            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 90 + (i % 3)*40, y - 6); ctx.stroke();
-        }
-        //大きな文字盤とクロノ
-        this.drawFace(250, cy, 150, 0.6, f2 ? RIVAL2_TIME : RIVAL_TIME, -Math.PI/2 + age*0.09, -Math.PI/2 + age*0.0075, true, 0);
-        ctx.save();
-        ctx.translate(250, cy + 8);
-        ctx.scale(3.4, 3.4);
-        this.drawBody(_e, null, 1);
-        ctx.restore();
-        //目が光る：帯を横切る白い筋
-        if(age >= 16 && age < 30){
-            var g = 1 - (age - 16)/14;
-            ctx.fillStyle = "rgba(255,255,255," + (0.85*g) + ")";
-            ctx.fillRect(0, cy - 4 - 2*g, CW, 4 + 4*g);
-        }
-        ctx.restore();
-        //帯のふち(ハチマキの赤と白)
-        ctx.lineWidth = 5;
-        ctx.strokeStyle = RIVAL_SCARF;
-        ctx.beginPath(); ctx.moveTo(-40, cy - H/2 + sk); ctx.lineTo(CW + 40, cy - H/2 - sk); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(-40, cy + H/2 + sk); ctx.lineTo(CW + 40, cy + H/2 - sk); ctx.stroke();
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = "rgba(255,255,255,0.8)";
-        ctx.beginPath(); ctx.moveTo(-40, cy - H/2 + sk + 6); ctx.lineTo(CW + 40, cy - H/2 - sk + 6); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(-40, cy + H/2 + sk - 6); ctx.lineTo(CW + 40, cy + H/2 - sk - 6); ctx.stroke();
-        //技の名前(少し遅れて現れる)
-        var tk = Math.min(1, Math.max(0, (age - 8)/12));
-        ctx.globalAlpha = tk;
-        ctx.textAlign = "left";
-        ctx.textBaseline = "middle";
-        ctx.font = "bold 18px sans-serif";
-        ctx.fillStyle = RIVAL_SCARF;
-        ctx.fillText((f2 ? RIVAL2.name : RIVAL.name) + "　" + RIVAL_OD.en, 470 + 30*(1 - tk), cy - 52);
-        ctx.font = "900 76px serif";
-        ctx.lineJoin = "round";
-        ctx.lineWidth = 10;
-        ctx.strokeStyle = "rgba(0,0,0,0.6)";
-        ctx.strokeText(RIVAL_OD.name, 466 + 30*(1 - tk), cy + 18);
-        ctx.fillStyle = "#fff";
-        ctx.fillText(RIVAL_OD.name, 466 + 30*(1 - tk), cy + 18);
-        ctx.lineJoin = "miter";
-        ctx.restore();
-        ctx.lineWidth = 1;
-    },
     //時ノ奔流の絵(translateしていない状態)：
-    //  カットイン中は時が止まった世界。加速は大きな文字盤の針が速く回り、まわりを光の筋が回り、昼と夜が入れかわるようにちらつく。
+    //  加速は大きな文字盤の針が速く回り、まわりを光の筋が回り、昼と夜が入れかわるようにちらつく。
     //  針の裁きは、次になぎ払う所を赤く(短針は紫に)見せ、光の針を描く
     drawOver:function(_e){
         var O = _e.ov, x = _e.x, y = _e.y;
-        if(O.ph == "cut"){ this.drawStopped(0.8, this.second(_e)); return; }
         if(O.ph == "accel"){
             var u = O.u || 0;
             //昼と夜が入れかわる(時が速く流れる)
@@ -2623,6 +2549,8 @@ var rival = {
             this.drawStopped(p*0.92, f2);
             if(stopped) this.drawStopWave(_e.x, _e.y, (sT - _e.count)/20, 700);
         }
+        //時を操る攻撃：裂け目・枷の輪・1拍先の弾(rivalTime.js)
+        rivalTime.drawAttack(_e);
         //時戻し：逆回りの矢印の輪と、上へ流れる横の走査線(テープを巻き戻すように)
         if(_e.rewFx > 0){
             var u = 1 - _e.rewFx/30;
