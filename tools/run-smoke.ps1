@@ -1,8 +1,9 @@
 ﻿# ドローン君の動作確認(スモークテスト)
-#   使い方:  powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
-# ヘッドレスのEdge(なければChrome)で tools/smoke-test.html(1人用)と
-# tools/coop-test.html(協力プレイ)を開き、結果を表示する。
+#   使い方:  powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1 [-Coop]
+# ヘッドレスのEdge(なければChrome)で tools/smoke-test.html(1人用)を開き、結果を表示する。
+# 協力プレイ・対戦は開発・テストの対象にしていない(凍結。CLAUDE.md)ので、tools/coop-test.html は -Coop を付けたときだけ流す。
 # すべてOKなら終了コード0、NGがあれば1。
+param([switch]$Coop)
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 
@@ -39,7 +40,9 @@ function Run-Page($name){
 
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $allOk = $true
-foreach($name in @("smoke-test.html", "coop-test.html")){
+$pages = @("smoke-test.html")
+if($Coop){ $pages += "coop-test.html" }
+foreach($name in $pages){
     Write-Output "== $name"
     $result = Run-Page $name
     Write-Output $result
