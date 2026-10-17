@@ -66,7 +66,6 @@ function bot(){
     if(tx || ty){ MouseX = drone.X + tx*2; MouseY = drone.Y + ty*2; }
     MouseX = Math.max(30, Math.min(CW-30, MouseX)); MouseY = Math.max(30, Math.min(CH-30, MouseY));
 }
-function skipStory(){ var n = 0; while(page.number == 4 && n < 300){ Click = 1; storyScreen.update(); Click = 0; n++; } }
 function setup(w, owned, slots, lv){ save.clearAll(); game.reset(); game.wave = w; game.owned = owned; game.slots = slots; game.slotCount = 3; for(var k in game.level) game.level[k] = lv; game.seen = { prologue:true, s3:true, s5:true, s8:true, s10:true, s12:true, reveal:w > REVEAL_WAVE, s17:true, s19:true }; }
 
 try{
@@ -77,20 +76,19 @@ try{
     MouseIn = true; MouseX = startButton.X + 10; MouseY = startButton.Y + 10; Click = 1; startScreen.update(); Click = 0;
     var diffOpen = startScreen.diffSel && page.number == 0;
     MouseX = diffCards[2].X + 10; MouseY = diffCards[2].Y + 10; Click = 1; startScreen.update(); Click = 0;     //ハードを選ぶ
-    check("出撃 → 難易度を選ぶ → プロローグ", diffOpen && page.number == 4 && storyScreen.id == "prologue" && game.diff == 2 && difficulty().id == "hard", "窓" + diffOpen + " 難易度" + game.diff);
+    check("出撃 → 難易度を選ぶ → WAVE1(ストーリーは流さない)", diffOpen && page.number == 1 && game.wave == 1 && game.diff == 2 && difficulty().id == "hard" && game.seen.prologue, "窓" + diffOpen + " 難易度" + game.diff + " 画面" + page.number);
     game.diff = DEFAULT_DIFF;
-    draw1(); skipStory();
-    check("プロローグ → WAVE1", page.number == 1 && game.wave == 1);
+    draw1();
     var flow = [];
     [3,5,15,19].forEach(function(w){
         game.wave = w; page.change(1);
         enemies = []; mainScreen.toSpawn = 0; mainScreen.state = "clear"; mainScreen.stateTime = 149; mainScreen.update();
-        flow.push(w + ":" + (page.number == 4 ? storyScreen.id : "-"));
-        draw1(); skipStory();
+        flow.push(w + ":" + page.number);
+        draw1();
     });
-    check("WAVEクリア後のストーリー", flow.join(" ") == "3:s3 5:s5 15:reveal 19:s19", flow.join(" "));
+    check("WAVEクリア後はすぐ強化画面(ストーリーなし)", flow.join(" ") == "3:2 5:2 15:2 19:2", flow.join(" "));
     game.wave = FINAL_WAVE; page.change(1); enemies = []; mainScreen.toSpawn = 0; mainScreen.state = "clear"; mainScreen.stateTime = 149; mainScreen.update();
-    skipStory(); draw1();
+    draw1();
     check("WAVE20クリア → エンディング", page.number == 5);
 
     // 2. 通常の戦闘(序盤・人間との戦い・ボス)
@@ -1661,24 +1659,20 @@ try{
     var noLink = !debugUrl();
     tap(debugButton);
     ["KeyB","KeyQ"].forEach(function(c){ document.dispatchEvent(new KeyboardEvent("keydown", { code:c })); });
-    check("#debug がないとデバッグに入れない(ボタンなし・B/Qキーも効かない)", noLink && !bossDebug.menu && !storyDebug.active && page.number == 0);
+    check("#debug がないとデバッグに入れない(ボタンなし・B/Qキーも効かない)", noLink && !bossDebug.menu && page.number == 0);
     history.replaceState(null, "", location.pathname + "#debug");
     tap(debugButton);
     var menuOpen = bossDebug.menu;
-    tap(bossDebug.tools()[0]);
-    check("ストーリー確認モード", menuOpen && page.number == 4 && storyDebug.active);
-    draw1();
-    tap(backBtn());
-    check("「DEBUG：戻る」でメニューへ", page.number == 0 && !storyDebug.active && bossDebug.menu);
+    check("#debug でデバッグのメニューが開く", menuOpen && page.number == 0);
     var saveBefore = localStorage.getItem("dronekun_save"), bestBefore = localStorage.getItem("dronekun_best");
     draw1();
-    tap(bossDebug.tools()[2]);    //装備「最強」
+    tap(bossDebug.tools()[1]);    //装備「最強」
     tap(bossDebug.rows()[1]);
     check("ボス戦デバッグ → WAVE10", page.number == 1 && game.wave == 10 && mainScreen.bossWave && bossDebug.gear == 2);
     var fb = 0; while(page.number == 1 && fb < 60*150){ bot(); fb++; mainScreen.hp = mainScreen.maxHp; mainScreen.update(); if(fb % 20 == 0) draw1(); }
     check("ボスを倒すとメニューへ戻る", page.number == 0 && bossDebug.menu && bossDebug.msg.indexOf("撃破") >= 0, bossDebug.msg);
     check("ボス戦デバッグでセーブ・ハイスコアは変わらない", localStorage.getItem("dronekun_save") == saveBefore && localStorage.getItem("dronekun_best") == bestBefore);
-    tap(bossDebug.tools()[3]);    //無敵
+    tap(bossDebug.tools()[2]);    //無敵
     tap(bossDebug.rows()[0]);
     var hpB = mainScreen.hp; mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.damage();
     var godOk = mainScreen.hp == hpB;
@@ -1742,7 +1736,7 @@ try{
           "落ちる" + gWreck + " 燃える" + gBurn + " 背景" + battleBg.far.toFixed(2) + " " + bossDebug.msg);
     //武器試用：選んだ装備で、尽きずに出てくる雑魚敵と戦う(無敵。与えたダメージを数える)
     bossDebug.god = false;    //武器試用は無敵の設定によらず無敵
-    tap(bossDebug.tools()[1]);
+    tap(bossDebug.tools()[0]);
     var pickOpen = bossDebug.picking;
     tap(bossDebug.trialOpts()[3]);    //選び直す
     ["fire","disc","freeze","gun"].forEach(function(id){ tap(bossDebug.armButtons()[WEAPON_IDS.indexOf(id)]); });   //4つ目は入らない
@@ -1763,7 +1757,7 @@ try{
     tap(bossDebug.trialGo()[1]);
     bossDebug.trialArms = ["gun","missile","tesla"]; bossDebug.trialLv = MAX_WEAPON_LEVEL;
     //時止めワープ(試作。timeStop.js)：被弾の瞬間に時が止まり、選んだ場所へ粒子になって移る。ダメージは受けない
-    tap(bossDebug.tools()[5]);    //時止めワープ「オン」
+    tap(bossDebug.tools()[4]);    //時止めワープ「オン」
     tap(bossDebug.rows()[0]);
     var wErr = errors.length, fw = 0;
     while(mainScreen.state != "play" && fw < 400){ mainScreen.update(); fw++; }
@@ -1783,7 +1777,7 @@ try{
     mainScreen.guard = 0; mainScreen.damage();
     tap(backBtn());
     check("時止めワープ：止まったまま「DEBUG：戻る」で戻っても元に戻る", !timeStop.active && page.number == 0 && bossDebug.menu);
-    tap(bossDebug.tools()[5]);    //時止めワープ「オフ」
+    tap(bossDebug.tools()[4]);    //時止めワープ「オフ」
     tap(bossDebug.rows()[0]);
     var hpN = mainScreen.hp; mainScreen.state = "play"; mainScreen.invincible = 0; mainScreen.guard = 0; mainScreen.damage();
     check("時止めワープ：オフなら、いつもどおりダメージを受ける", !bossDebug.warp && !timeStop.active && mainScreen.hp == hpN - 1);
@@ -1879,11 +1873,11 @@ try{
         }
     };
     for(var i=0; i<bgmTrial.list.length; i++){
-        if(i > 0) tap(bossDebug.tools()[7]);
+        if(i > 0) tap(bossDebug.tools()[6]);
         bgmNames.push(bgmTrial.v());
         ["title","heroic","battle","boss","kai2","revolt"].forEach(bgmSteps);
     }
-    tap(bossDebug.tools()[7]);    //今の音に戻る
+    tap(bossDebug.tools()[6]);    //今の音に戻る
     //本格版(bgmFull.js)：楽譜に書き間違いがなく、どの曲も全部の区切り(最初と最後の小節)を鳴らせる
     var fullErr = errors.length, fullWarn = bgmFull.checkAll().length, fullSecs = 0;
     bgmTrial.pick = 1;
@@ -1907,25 +1901,29 @@ try{
     check("BGMの本格版：楽譜に書き間違いがなく、全曲の全部の区切りを鳴らせる",
           fullWarn == 0 && errors.length == fullErr && fullSecs == 45 && bgmTrial.list[1].v == "full",
           BGM_FULL_WARN.join(" ") + " 区切り" + fullSecs + " " + errors.slice(fullErr).join(" "));
-    tap(bossDebug.tools()[8]);    //最終局面「原点回帰」
+    tap(bossDebug.tools()[7]);    //最終局面「原点回帰」
     var finaleOn = bgmTrial.trackFor("kai2") == "finale" && bgmTrial.trackFor("boss") == "boss";
     bgmSteps("finale");
-    tap(bossDebug.tools()[8]);    //最終局面「Lyria」(録音の曲。music/monarch.js を読み込み始める)
+    tap(bossDebug.tools()[7]);    //最終局面「Lyria」(録音の曲。music/monarch.js を読み込み始める)
     var monarchOn = bgmTrial.trackFor("kai2") == "monarch" && bgmTrial.finaleName() == "Lyria" && TRACKS.monarch && typeof monarch.tick == "function";
-    tap(bossDebug.tools()[8]);    //最終局面「Suno」(録音の曲。music/triumph.js を読み込み始める。finaleTriumph.js)
+    tap(bossDebug.tools()[7]);    //最終局面「Suno」(録音の曲。music/triumph.js を読み込み始める。finaleTriumph.js)
     var triumphOn = bgmTrial.trackFor("kai2") == "triumph" && bgmTrial.finaleName() == "Suno" && TRACKS.triumph && typeof triumph.finish == "function";
-    tap(bossDebug.tools()[8]);    //今の曲に戻る
-    tap(bossDebug.tools()[9]);    //戦闘曲「Suno」(録音の曲。music/sunoHeroic.js・sunoBattle.js・sunoBoss.js・sunoRival.js を読み込み始める)
+    tap(bossDebug.tools()[7]);    //今の曲に戻る
+    tap(bossDebug.tools()[8]);    //戦闘曲「Suno」(録音の曲。music/sunoHeroic.js・sunoBattle.js・sunoBoss.js・sunoRival.js・sunoRevolt.js・sunoTitle.js・sunoShop.js を読み込み始める)
     var sunoOn = bgmTrial.trackFor("heroic") == "sunoHeroic" && bgmTrial.trackFor("battle") == "sunoBattle" && bgmTrial.trackFor("boss") == "sunoBoss" &&
                  bgmTrial.trackFor("rival") == "sunoRival" && bgmTrial.fightName() == "Suno" && bgmTrial.fightOf("sunoBoss") == "boss" && bgmTrial.fightOf("sunoRival") == "rival" &&
-                 TRACKS.sunoHeroic && TRACKS.sunoBattle && TRACKS.sunoBoss && TRACKS.sunoRival && sunoHeroic.loading && sunoBattle.loading && sunoBoss.loading && sunoRival.loading;
-    tap(bossDebug.tools()[9]);    //今の曲に戻る
+                 TRACKS.sunoHeroic && TRACKS.sunoBattle && TRACKS.sunoBoss && TRACKS.sunoRival && sunoHeroic.loading && sunoBattle.loading && sunoBoss.loading && sunoRival.loading &&
+                 //人間との戦い・タイトル・強化画面の曲も Suno に替わる
+                 bgmTrial.trackFor("revolt") == "sunoRevolt" && bgmTrial.trackFor("title") == "sunoTitle" && bgmTrial.trackFor("shop") == "sunoShop" &&
+                 bgmTrial.fightOf("sunoTitle") == "title" && TRACKS.sunoRevolt && TRACKS.sunoTitle && TRACKS.sunoShop &&
+                 sunoRevolt.loading && sunoTitle.loading && sunoShop.loading;
+    tap(bossDebug.tools()[8]);    //今の曲に戻る
     sound.ctx = keepSnd.ctx; sound.bgmGain = keepSnd.bgmGain; sound.noiseBuf = keepSnd.noiseBuf; sound.track = null; sound.trackName = null;
-    check("BGMの試し聞き：案を順に選べ、どの案・原点回帰でも曲を鳴らせる。最終局面は Lyria・Suno、序盤・中盤の戦闘曲・ボス戦・ライバル戦の曲は Suno の曲も選べる",
+    check("BGMの試し聞き：案を順に選べ、どの案・原点回帰でも曲を鳴らせる。最終局面は Lyria・Suno、序盤・中盤の戦闘曲・ボス戦・ライバル戦・人間との戦い・タイトル・強化画面の曲は Suno の曲も選べる",
           bgmNames.join(",") == "orig,full,d,f,h,i" && bgmTrial.v() == "orig" && finaleOn && monarchOn && triumphOn && sunoOn && !bgmTrial.finale && !bgmTrial.fight &&
           errors.length == bgmErr,
           bgmNames.join(",") + " " + errors.slice(bgmErr).join(" "));
-    tap(bossDebug.tools()[4]);    //閉じる
+    tap(bossDebug.tools()[3]);    //閉じる
     bossDebug.god = false; bossDebug.gear = 1;
     check("閉じるでメニューを閉じる", !bossDebug.menu);
     history.replaceState(null, "", location.pathname);

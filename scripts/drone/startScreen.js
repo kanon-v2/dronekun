@@ -105,7 +105,7 @@ var startScreen = {
         return settingsButton.contains(_x,_y) || (debugUrl() && debugButton.contains(_x,_y));
     },
     //新しい周を始める(_d：難易度の番号)。パーツ・能力・見たストーリーは残す。この周の進み具合は消す
-    //はじめてならプロローグからWAVE1へ。2周目からは強化画面(集めたパーツで能力を上げてから出撃)
+    //はじめてならすぐWAVE1へ。2周目からは強化画面(集めたパーツで能力を上げてから出撃)
     //2周目からは、前の周の最後の装備で、その難易度のいちばん先のWAVEから(強化画面の「出撃先」でクリア済みのWAVEを選び直せる)
     //_wave：始めるWAVE(省くと、その難易度のいちばん先のWAVE。「始めるWAVEを選択」で選んだとき)
     startRun:function(_d,_wave){
@@ -116,7 +116,9 @@ var startScreen = {
             game.wave = Math.max(1, Math.min(_wave || FINAL_WAVE, game.reachOf(_d)));
         }
         if(!game.seen.prologue){
-            storyScreen.start("prologue",function(){ page.change(1); });
+            //ストーリーは流さない。1周目が済んだ印として prologue を使う(前の作りのセーブとそろえるため)
+            game.seen.prologue = true;
+            page.change(1);
         }else{
             page.change(2);     //WAVEのあとのストーリーは流さない(まだWAVE1の前なので)
         }

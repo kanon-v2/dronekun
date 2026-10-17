@@ -1,5 +1,5 @@
 //------------------------------------------------------------------------------
-//  デバッグのメニュー(ボス戦だけを遊ぶ・武器試用・ストーリー確認)
+//  デバッグのメニュー(ボス戦だけを遊ぶ・武器試用)
 //  入口は専用のリンクだけ：URL に #debug を付けて開くと、タイトルに「DEBUG」ボタンが出る(キーボードの操作はない)。
 //  ボス・装備の強さ・無敵を選んで、すぐボスのWAVEを始める。演出や強さの確認用
 //  武器試用：好きな装備を3つまで選び、尽きずに出てくる雑魚敵を相手に試す(無敵。与えたダメージを毎秒で出す)
@@ -62,8 +62,6 @@ var bossDebug = {
     prepare:function(_w){
         game.reset();
         game.wave = _w;
-        //ストーリーは見たことにして、ボスまで流れないように
-        for(var i=0; i<STORY_ORDER.length; i++) game.seen[STORY_ORDER[i]] = true;
         var lv, wl;
         if(this.trial){
             lv = this.trialStat;
@@ -176,10 +174,10 @@ var bossDebug = {
         for(var i=0; i<n; i++) out.push(new drawRect(CW/2 + (i - (n - 1)/2)*GS*3.3, GS*5.4 + BOSS_DEBUG_WAVES.length*GS*1.45, GS*3.15, GS*1.25));
         return out;
     },
-    //メニューの下のボタン：ストーリー確認・武器試用・装備・無敵・閉じる・(下の段に)時止めワープ・攻撃の試作・BGMの案・最終局面の曲
+    //メニューの下のボタン：武器試用・装備・無敵・閉じる・(下の段に)時止めワープ・攻撃の試作・BGMの案・最終局面の曲
     tools:function(){
         var out = [];
-        for(var i=0; i<5; i++) out.push(new drawRect(CW/2 + (i - 2)*116, GS*12.8, 110, 36));
+        for(var i=0; i<4; i++) out.push(new drawRect(CW/2 + (i - 1.5)*116, GS*12.8, 110, 36));
         for(var i=0; i<5; i++) out.push(new drawRect(CW/2 + (i - 2)*118, GS*14.1, 114, 32));
         return out;
     },
@@ -204,8 +202,6 @@ var bossDebug = {
     toggleGear:function(){ this.gear = (this.gear + 1) % BOSS_DEBUG_GEAR.length; sound.play("click"); },
     toggleGod:function(){ this.god = !this.god; sound.play("click"); },
     toggleWarp:function(){ this.warp = !this.warp; sound.play("click"); },
-    //メニューは開いたままにする(ストーリー確認が終わるとメニューに戻る)
-    startStory:function(){ storyDebug.start(); },
     openTrial:function(){ this.picking = true; this.msg = ""; sound.play("click"); },
     //装備を押す：選んでいれば外す、3つ未満なら足す
     pickArm:function(_id){
@@ -230,23 +226,22 @@ var bossDebug = {
             }
         }
         var t = this.tools();
-        if(t[0].clicked()){ this.startStory(); return; }
-        if(t[1].clicked()){ this.openTrial(); return; }
-        if(t[2].clicked()){ this.toggleGear(); return; }
-        if(t[3].clicked()){ this.toggleGod(); return; }
-        if(t[4].clicked()){ this.close(); return; }
-        if(t[5].clicked()){ this.toggleWarp(); return; }
-        if(t[6].clicked()){ this.startLab(); return; }
-        if(t[7].clicked()){ bgmTrial.next(); this.msg = "BGM：" + bgmTrial.name() + "(このあと遊ぶ曲もこの案で鳴ります)"; sound.play("click"); return; }
-        if(t[8].clicked()){
+        if(t[0].clicked()){ this.openTrial(); return; }
+        if(t[1].clicked()){ this.toggleGear(); return; }
+        if(t[2].clicked()){ this.toggleGod(); return; }
+        if(t[3].clicked()){ this.close(); return; }
+        if(t[4].clicked()){ this.toggleWarp(); return; }
+        if(t[5].clicked()){ this.startLab(); return; }
+        if(t[6].clicked()){ bgmTrial.next(); this.msg = "BGM：" + bgmTrial.name() + "(このあと遊ぶ曲もこの案で鳴ります)"; sound.play("click"); return; }
+        if(t[7].clicked()){
             bgmTrial.toggleFinale();
             this.msg = bgmTrial.finale ? "ドローン君改の第二形態で「" + bgmTrial.finaleName() + "」が流れます" : "ドローン君改の第二形態は今の曲です";
             sound.play("click");
             return;
         }
-        if(t[9].clicked()){
+        if(t[8].clicked()){
             bgmTrial.toggleFight();
-            this.msg = bgmTrial.fight ? "序盤・中盤の戦闘(WAVE1～15)とボス戦で「" + bgmTrial.fightName() + "」の曲が流れます" : "序盤・中盤の戦闘とボス戦は今の曲です";
+            this.msg = bgmTrial.fight ? "戦闘・ボス戦・ライバル戦・タイトル・強化画面で「" + bgmTrial.fightName() + "」の曲が流れます" : "戦闘・タイトル・強化画面は今の曲です";
             sound.play("click");
             return;
         }
@@ -294,11 +289,11 @@ var bossDebug = {
             ctx.font = "bold 14px sans-serif";
             for(var i=0; i<rr.length; i++) rr[i].button(i < RIVAL_WAVES.length ? "ライバル W" + RIVAL_WAVES[i] : i == RIVAL_WAVES.length ? "改・第二形態" : "ヘリ(試作)");
             var t = this.tools();
-            var labels = ["ストーリー確認", "武器試用", "装備「" + BOSS_DEBUG_GEAR[this.gear] + "」", "無敵「" + (this.god ? "オン" : "オフ") + "」", "閉じる",
+            var labels = ["武器試用", "装備「" + BOSS_DEBUG_GEAR[this.gear] + "」", "無敵「" + (this.god ? "オン" : "オフ") + "」", "閉じる",
                           "時止めワープ「" + (this.warp ? "オン" : "オフ") + "」", "攻撃の試作",
                           "BGM「" + bgmTrial.short() + "」", "最終局面「" + bgmTrial.finaleName() + "」", "戦闘曲「" + bgmTrial.fightName() + "」"];
             for(var i=0; i<t.length; i++){
-                ctx.font = i < 5 ? "bold 14px sans-serif" : "bold 11px sans-serif";
+                ctx.font = i < 4 ? "bold 14px sans-serif" : "bold 11px sans-serif";
                 t[i].button(labels[i]);
             }
         }

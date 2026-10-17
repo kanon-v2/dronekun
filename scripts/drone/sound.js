@@ -789,11 +789,11 @@ var sound = {
     //------------------------------------------------------------ 画面右下のON/OFFボタン
     //BGM・SEはいつでも。当たり判定・ポインタは戦闘中だけ出す(when)。on：ONか　label：文字(関数なら今の状態で変わる)
     buttons:[
-        //デバッグのボス戦・ストーリー確認の途中で、メニューへ戻る(Esc と同じ。キーボードのないスマホ用。bossDebug.js)
+        //デバッグのボス戦の途中で、メニューへ戻る(Esc と同じ。キーボードのないスマホ用。bossDebug.js)
         { key:"debugBack", label:"DEBUG：戻る", rect:new drawRect(CW - 392, CH - 30, 84, 22),
           on:function(){ return true; },
-          toggle:function(){ if(storyDebug.active) storyDebug.stop(); else bossDebug.finish("quit"); },
-          when:function(){ return storyDebug.active || (bossDebug.active && page.number == 1); } },
+          toggle:function(){ bossDebug.finish("quit"); },
+          when:function(){ return bossDebug.active && page.number == 1; } },
         { key:"graze", rect:new drawRect(CW - 407, CH - 30, 112, 22),
           label:function(){ return "かすり範囲：" + (viewOpt.graze ? "表示" : "非表示"); },
           on:function(){ return viewOpt.graze; },

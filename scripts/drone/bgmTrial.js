@@ -13,6 +13,8 @@
 //          (前奏のあとをループ用に切り抜いたもの。ライバル戦の曲は最後の山をくり返す)を、
 //          はじめて選んだときに読み込む。
 //          録音なので、WAVEが進んでも速くならない
+//          人間との戦い(revolt)・タイトル(title)・強化画面(shop)の曲も、同じく Suno の曲(sunoRevolt「Final Surge」・
+//          sunoTitle「遠景の丘」・sunoShop)に替える。music/sunoRevolt.js・sunoTitle.js・sunoShop.js
 //  選んだものは覚えない(読み込み直すと今の音に戻る)。選ばなければ sound.js のまま
 //  sound.music・sound.playStep を包んで差し替える(このファイルを読まないページは今のまま)
 //------------------------------------------------------------------------------
@@ -28,6 +30,12 @@ const SUNO_BOSS_SRC = "music/sunoBoss.js";      //Suno でカバーしたボス�
 const SUNO_BOSS_VOL = 0.9;                      //その音量(今のボス戦の曲と同じくらいの大きさになるよう測った値)
 const SUNO_RIVAL_SRC = "music/sunoRival.js";    //Suno でカバーしたライバル戦の曲「Chronos Duel」のファイル(BGM_SUNO_RIVAL を作る)
 const SUNO_RIVAL_VOL = 1.0;                     //その音量(ほかの Suno の曲と同じくらいの大きさになるよう、平均の大きさの比から決めた値)
+const SUNO_REVOLT_SRC = "music/sunoRevolt.js";  //Suno の人間との戦い(WAVE16～)の曲「Final Surge」のファイル(BGM_SUNO_REVOLT を作る)
+const SUNO_REVOLT_VOL = 0.8;                    //その音量(ほかの Suno の戦闘曲と同じくらいの大きさになるよう、平均の大きさの比から決めた値)
+const SUNO_TITLE_SRC = "music/sunoTitle.js";    //Suno のタイトルの曲「遠景の丘」のファイル(BGM_SUNO_TITLE を作る)
+const SUNO_TITLE_VOL = 0.65;                    //その音量(戦闘曲より少し小さめ。平均の大きさの比から決めた値)
+const SUNO_SHOP_SRC = "music/sunoShop.js";      //Suno の強化画面の曲(无标题曲)のファイル(BGM_SUNO_SHOP を作る)
+const SUNO_SHOP_VOL = 0.55;                     //その音量(戦闘曲より少し小さめ。平均の大きさの比から決めた値)
 
 var bgmTrial = {
     list:[
@@ -46,10 +54,11 @@ var bgmTrial = {
         { v:"triumph", name:"Suno" }
     ],
     finale:0,
-    //序盤・中盤の戦闘・ボス戦・ライバル戦で流す曲(fights の番号。0 は今の曲)。v は 今の曲の名前 → 代わりに流す曲の名前
+    //序盤・中盤の戦闘・ボス戦・ライバル戦・人間との戦い・タイトル・強化画面で流す曲(fights の番号。0 は今の曲)。v は 今の曲の名前 → 代わりに流す曲の名前
     fights:[
         { v:null, name:"今の曲" },
-        { v:{ heroic:"sunoHeroic", battle:"sunoBattle", boss:"sunoBoss", rival:"sunoRival" }, name:"Suno" }
+        { v:{ heroic:"sunoHeroic", battle:"sunoBattle", boss:"sunoBoss", rival:"sunoRival",
+              revolt:"sunoRevolt", title:"sunoTitle", shop:"sunoShop" }, name:"Suno" }
     ],
     fight:0,
 
@@ -79,7 +88,7 @@ var bgmTrial = {
     isFinal:function(_n){ return _n == "kai2" || _n == "finale" || _n == "monarch" || _n == "triumph"; },
     //戦闘曲(差し替えたものも)なら、もとの曲の名前。ちがえば null
     fightOf:function(_n){
-        if(_n == "heroic" || _n == "battle" || _n == "boss" || _n == "rival") return _n;
+        if(this.fights[1].v[_n]) return _n;
         for(var i=1; i<this.fights.length; i++){
             for(var k in this.fights[i].v) if(this.fights[i].v[k] == _n) return k;
         }
@@ -202,8 +211,12 @@ var sunoHeroic = recorded(SUNO_HEROIC_SRC, "BGM_SUNO_HEROIC", SUNO_HEROIC_VOL);
 var sunoBattle = recorded(SUNO_BATTLE_SRC, "BGM_SUNO_BATTLE", SUNO_BATTLE_VOL);
 var sunoBoss = recorded(SUNO_BOSS_SRC, "BGM_SUNO_BOSS", SUNO_BOSS_VOL);
 var sunoRival = recorded(SUNO_RIVAL_SRC, "BGM_SUNO_RIVAL", SUNO_RIVAL_VOL);     //曲の拍に合わせて戦う(rival.js の rival.beat)
+var sunoRevolt = recorded(SUNO_REVOLT_SRC, "BGM_SUNO_REVOLT", SUNO_REVOLT_VOL);
+var sunoTitle = recorded(SUNO_TITLE_SRC, "BGM_SUNO_TITLE", SUNO_TITLE_VOL);
+var sunoShop = recorded(SUNO_SHOP_SRC, "BGM_SUNO_SHOP", SUNO_SHOP_VOL);
 //TRACKS の名前 → 録音の曲
-recorded.list = { monarch:monarch, triumph:triumph, sunoHeroic:sunoHeroic, sunoBattle:sunoBattle, sunoBoss:sunoBoss, sunoRival:sunoRival };
+recorded.list = { monarch:monarch, triumph:triumph, sunoHeroic:sunoHeroic, sunoBattle:sunoBattle, sunoBoss:sunoBoss, sunoRival:sunoRival,
+                  sunoRevolt:sunoRevolt, sunoTitle:sunoTitle, sunoShop:sunoShop };
 
 (function(){
     var actx = null;    //sound.ctx(ゲームの ctx はキャンバスなので別の名前にする)
@@ -716,6 +729,9 @@ recorded.list = { monarch:monarch, triumph:triumph, sunoHeroic:sunoHeroic, sunoB
     TRACKS.sunoBattle = { bpm:138 };
     TRACKS.sunoBoss = { bpm:153 };
     TRACKS.sunoRival = { bpm:170 };
+    TRACKS.sunoRevolt = { bpm:145 };
+    TRACKS.sunoTitle = { bpm:94 };
+    TRACKS.sunoShop = { bpm:98 };
     var FINAL_ARP   = ["x...x...x...x...", "x.x.x.x.x.x.x.x.", "xxxxxxxxxxxxxxxx", "x.x.x.x.x.x.x.x."];
     var FINAL_KICK  = ["x...............", "x...x...x...x...", "x..x..x.x..x..x.", "x.......x......."];
     var FINAL_SNARE = ["................", "....x.......x...", "....x.......x..x", "................"];

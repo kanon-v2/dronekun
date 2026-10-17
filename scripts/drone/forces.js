@@ -128,8 +128,8 @@ var forces = {
     draw:function(_e,_body){
         switch(_e.type){
             case "kin":
-                //認識阻害が効いている間は、ときどき輪郭がずれる(ノイズ)
-                if(!game.seen.reveal && (_e.t + Math.floor(_e.seed*10)) % 50 < 5){
+                //認識阻害が効いている間(真実が明かされる REVEAL_WAVE まで)は、ときどき輪郭がずれる(ノイズ)
+                if(game.wave <= REVEAL_WAVE && (_e.t + Math.floor(_e.seed*10)) % 50 < 5){
                     ctx.globalAlpha = 0.5;
                     ctx.fillStyle = "rgba(255,0,60,0.5)";
                     ctx.fillRect(-18 + (Math.random()-0.5)*8,-6,36,4);

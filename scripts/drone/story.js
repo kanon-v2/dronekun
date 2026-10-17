@@ -100,39 +100,9 @@ const STORY_ZOOM_TIME = 900;//寄りきるまでの時間
 //このWAVEをクリアしたあとに流れるストーリー
 const STORY_AFTER = { 3:"s3", 5:"s5", 8:"s8", 10:"s10", 12:"s12", 15:"reveal", 17:"s17", 19:"s19" };
 
-//------------------------------------------------------------------------------
-//  デバッグ：ストーリー確認モード
-//  デバッグのメニュー(#debug。bossDebug.js)から始める → 戦闘なしで全ストーリーを順に流す。右下の「DEBUG：戻る」で戻る
-//  (セーブ・見たストーリーの記録・ハイスコア・クリア済みの印は変えない)
-//------------------------------------------------------------------------------
-const STORY_ORDER = ["prologue","s3","s5","s8","s10","s12","reveal","s17","s19","ending"];
-var storyDebug = {
-    active:false,
-    i:0,
-    start:function(){
-        this.active = true;
-        this.i = 0;
-        this.next();
-    },
-    next:function(){
-        if(this.i >= STORY_ORDER.length){ this.stop(); return; }
-        var self = this;
-        storyScreen.start(STORY_ORDER[this.i++],function(){ self.next(); });
-    },
-    stop:function(){
-        this.active = false;
-        page.change(0);
-    }
-};
-
-//強化画面へ進む(まだ見ていないストーリーがあれば先に流す)
+//強化画面へ進む(ストーリーは流さない)
 function goUpgrade(){
-    var id = STORY_AFTER[game.wave - 1];
-    if(id && !game.seen[id]){
-        storyScreen.start(id,function(){ page.change(2); });
-    }else{
-        page.change(2);
-    }
+    page.change(2);
 }
 
 var skipButton = new drawRect(CW - 76 , 14 , 120 , 30);
@@ -196,7 +166,7 @@ var storyScreen = {
     //読み終わった：暗転してから次へ(暗転し終わったら done を呼ぶ)
     finish:function(){
         if(this.fadeOut > 0) return;
-        if(!storyDebug.active) game.seen[this.id] = true;  //デバッグで見た分は記録しない
+        game.seen[this.id] = true;
         this.fadeOut = STORY_FADE;
     },
     complete:function(){
@@ -369,12 +339,6 @@ var storyScreen = {
         ctx.font = "bold 13px " + TITLE_UI_FONT;
         ctx.fillStyle = "#eee";
         skipButton.text("スキップ ▶▶");
-        if(storyDebug.active){
-            ctx.textAlign = "left";
-            ctx.fillStyle = "#f44";
-            ctx.font = "bold 13px sans-serif";
-            ctx.fillText("DEBUG ストーリー確認 " + storyDebug.i + "/" + STORY_ORDER.length + "「" + this.id + "」　スキップで次の話・右下の「DEBUG：戻る」で戻る",40,52);
-        }
     },
 
     //------------------------------------------------------------------ 背景の空
