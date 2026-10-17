@@ -419,7 +419,7 @@ var mainScreen = {
             this.toSpawn = game.wave >= FINAL_WAVE ? 0 : Math.floor(this.toSpawn/3);
             if(!this.isKaiWave()) sound.play("warning");   //ドローン君改は静かな鼓動から始まる
         }
-        if(bossDebug.rival) this.toSpawn = 0;     //デバッグのライバル戦：雑魚敵なしで、すぐライバルが現れる
+        if(bossDebug.rival || rival.level() >= 0) this.toSpawn = 0;     //ライバルのWAVE(デバッグのライバル戦も)：雑魚敵なしで、すぐライバルが現れる(一騎打ち)
         rival.reset();          //中ボス(ライバル)が現れるWAVEか・いつ現れるか(rival.js)
         this.rares = 0;
         this.rareMsgTime = 0;
@@ -651,7 +651,7 @@ var mainScreen = {
             this.toSpawn = 1;
             if(enemies.length >= TRIAL_MAX_ENEMIES) return;
         }
-        //中ボス(ライバル)：WAVEの最後に現れる。いる間は雑魚敵を出さない(rival.js)
+        //中ボス(ライバル)：雑魚敵を出さず、WAVEの始めに現れる(rival.js)
         if(rival.check()) return;
         if(this.toSpawn <= 0) return;
         this.spawnTimer--;

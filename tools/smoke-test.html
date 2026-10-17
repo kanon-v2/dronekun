@@ -1237,18 +1237,18 @@ try{
     for(var i=0; i<CANOPY_WRECK_T + 10; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
     check("天蓋母艦：倒すと砲台も壊れ、船体が崩れ落ちて消える", cvWreck && !mainScreen.wreck && special.ceiling() == 0 && errors.length == cvErr, "崩れ" + cvWreck);
 
-    // ライバル(中ボス。rival.js)：決まったWAVEの途中で現れ、ワープで動き回る。いる間は雑魚敵が出ない。突進を弾ける。体力0で去り、報酬カプセルを落とす
-    setup(4, { gun:3 }, ["gun",null,null], 6);
+    // ライバル(中ボス。rival.js)：決まったWAVEに雑魚敵なしで現れ、ワープで動き回る。突進を弾ける。体力0で去り、報酬カプセルを落とす
+    setup(3, { gun:3 }, ["gun",null,null], 6);
     page.change(1);
     var rvNone = rival.done;
-    setup(8, { gun:3 }, ["gun",null,null], 6);
+    setup(9, { gun:3 }, ["gun",null,null], 6);
     page.change(1); MouseIn = true;
     var rvErr = errors.length, rv = null, rvF = 0;
     var findRv = function(){ return enemies.filter(function(e){ return e.type == "chrono"; })[0]; };
     while(!rv && rvF < 60*120){ bot(); mainScreen.hp = 99; if(mainScreen.toSpawn > 1) mainScreen.toSpawn = 1; enemies.slice().forEach(function(e){ if(e.type != "chrono" && !e.dead) mainScreen.hitEnemy(e, 99999, "gun"); }); mainScreen.update(); rvF++; rv = findRv(); if(rvF % 30 == 0) draw1(); }
     var rvAt = mainScreen.spawned, rvLast = rv && mainScreen.toSpawn == 0 && enemies.length == 1 && mainScreen.state == "play";
-    check("ライバル：WAVE8の最後(雑魚敵が出尽くして全部倒したところ)で、登場の演出から現れる。現れないWAVEもある", rvNone && rv && rvLast && rv.mode == "intro" && rv.lv == 1 && rv.harmless && rv.phased,
-          (rv ? "段階" + rv.lv + " " + rv.mode : "出ない") + " 最後" + rvLast + " 出た数" + rvAt + " WAVE4は" + (rvNone ? "出ない" : "出る"));
+    check("ライバル：WAVE9は雑魚敵が出ず、すぐ登場の演出から現れる。現れないWAVEもある", rvNone && rv && rvLast && rvAt == 0 && rv.mode == "intro" && rv.lv == 1 && rv.harmless && rv.phased,
+          (rv ? "段階" + rv.lv + " " + rv.mode : "出ない") + " 最後" + rvLast + " 出た数" + rvAt + " WAVE3は" + (rvNone ? "出ない" : "出る"));
     // 登場の演出：時が止まり(ほかの敵・弾・ドローン君は動かず、撃たない)、名乗ってから戦いが始まる(少しのあいだ無敵)
     var rvOther = enemies.filter(function(e){ return e != rv; })[0], rvOx = rvOther ? rvOther.x : 0, rvDx = drone.X, rvShots = arms.bullets.length;
     MouseX = drone.X + 200; MouseY = drone.Y;
@@ -1299,14 +1299,14 @@ try{
     rv.mode = "idle"; rv.timer = 999; rv.dodgeCd = 0; rv.hpMark = rv.hp; rv.hp -= rv.maxHp*RIVAL_DODGE*1.2;
     mainScreen.update();
     check("ライバル：突進はジャスト・カウンターで弾けて、削られすぎるとワープでよける", rvCan && rvParry && rv.mode == "warp" && rv.next == "idle", "カウンター" + rvCan + "/" + rvParry + " よけ" + rv.mode);
-    // 第二形態(WAVE8から)：第一形態の体力が0になると、時が止まって目覚め(第一形態の体力に RIVAL2_HP_MUL を掛けた体力)、分身で戦う
+    // 第二形態(WAVE9から)：第一形態の体力が0になると、時が止まって目覚め(第一形態の体力に RIVAL2_HP_MUL を掛けた体力)、分身で戦う
     for(var i=0; i<RIVAL_WARP_T[1] + 2; i++) mainScreen.update();
     var rvMax1 = rv.maxHp;
     mainScreen.hitEnemy(rv, 99999, "gun");
     var rvAwake = rv.mode == "awaken" && !rv.dead && special.holdFire() && rv.harmless;
     for(var i=0; i<RIVAL2_AWAKEN_T; i++){ mainScreen.update(); if(i % 15 == 0) draw1(); }
     var rv2 = rv.form == 2 && rv.mode == "idle" && rv.maxHp == Math.round(rvMax1*RIVAL2_HP_MUL) && rv.hp == rv.maxHp && rv.sayText == RIVAL2_LINES[0];
-    check("ライバルの第二形態：WAVE8から、第一形態を倒すと時が止まって目覚め、体力が満ちる", rvAwake && rv2 && errors.length == rvErr,
+    check("ライバルの第二形態：WAVE9から、第一形態を倒すと時が止まって目覚め、体力が満ちる", rvAwake && rv2 && errors.length == rvErr,
           "目覚め" + rvAwake + " 第二形態" + rv2 + " 体力" + Math.round(rv.hp) + "/" + rv.maxHp + "(第一形態" + rvMax1 + ")");
     var rvModes2 = {}, rvClones = 0, rvCloneKinds = {}, rvCloneParry = false, rvRewHeld = 0, rvRewBack = 0, rvPast = 0, rvPastShots = 0, rvMirror = 0, rvMirrorN = 0, rvPulls = [];
     rival.lastPull = null;
@@ -1378,16 +1378,16 @@ try{
     for(var i=0; i<240; i++){ bot(); mainScreen.hp = 99; mainScreen.update(); }
     check("ライバル：体力が0になると捨てぜりふを残して去り、報酬カプセルを落とす。分身も消え、去るとWAVEクリア", rvFlee && !findRv() && !enemies.some(function(e){ return e.clone; }) && !rival.musicOn && (mainScreen.state == "clear" || page.number == 2) && errors.length == rvErr,
           "去る" + rvFlee + " " + mainScreen.state + " page" + page.number);
-    // WAVE3(Lv.1)は第二形態がなく、第一形態を倒すとそのまま去る
-    setup(3, { gun:3 }, ["gun",null,null], 6);
+    // WAVE4(Lv.1)は第二形態がなく、第一形態を倒すとそのまま去る
+    setup(4, { gun:3 }, ["gun",null,null], 6);
     page.change(1);
     var rv3 = rival.make(); enemies.push(rv3);
     for(var i=0; i<RIVAL_INTRO_T + 2; i++) mainScreen.update();
     while(rv3.mode == "warp") mainScreen.update();
     mainScreen.hitEnemy(rv3, 99999, "gun");
-    check("ライバル：WAVE3は第二形態がなく、倒すとそのまま去る", rv3.mode == "flee" && (rv3.form || 1) == 1 && errors.length == rvErr, rv3.mode);
+    check("ライバル：WAVE4は第二形態がなく、倒すとそのまま去る", rv3.mode == "flee" && (rv3.form || 1) == 1 && errors.length == rvErr, rv3.mode);
     // 時ノ奔流(山場)：第一形態で本気になると、まんなかへワープしてすぐ加速(時は止めない。カットインはない)(針が速くなり、撃つ間が細かくなる) → 針の裁き(光の針がなぎ払う) → 巻き戻って疲れる
-    setup(8, { gun:3 }, ["gun",null,null], 6);
+    setup(9, { gun:3 }, ["gun",null,null], 6);
     page.change(1);
     var od = rival.make(); enemies.push(od);
     for(var i=0; i<RIVAL_INTRO_T + 2; i++) mainScreen.update();
@@ -1424,9 +1424,9 @@ try{
     check("ライバルの時ノ奔流：本気になるとすぐ加速(時は止めず、ドローン君は少し遅くなる。針が速くなり、撃つ間が拍・半拍・16分と細かくなる) → 光の針がなぎ払う → 針が巻き戻って疲れる",
           odCut && odStill && odSlow < 0.9 && rivalTime.droneK == 1 && odK >= RIVAL_OD_KMAX[1]*0.98 && odDiv[1] && odDiv[2] && odDiv[4] && odShots > 20 && odJudge && odHit && odBack >= odShots && odTired && errors.length == rvErr,
           "すぐ加速" + odCut + "/" + odStill + " ドローン君の時" + odSlow.toFixed(2) + " 時の速さ" + odK.toFixed(2) + " 撃つ間" + Object.keys(odDiv).join(",") + " 撃った" + odShots + " 裁き" + odJudge + " 被弾" + odHit + " 戻る針" + odBack + " 疲れる" + odTired + " " + odF + "コマ");
-    // WAVE13からの第二形態は、近づいたドローン君の弾を1秒に RIVAL2_INTERCEPT_PER_SEC 発まで撃ち落とす(WAVE8はしない。ワープ中もしない)
+    // WAVE14からの第二形態は、近づいたドローン君の弾を1秒に RIVAL2_INTERCEPT_PER_SEC 発まで撃ち落とす(WAVE9はしない。ワープ中もしない)
     var rv8Int = !!rv.intercept;
-    setup(13, { gun:3 }, ["gun",null,null], 6);
+    setup(14, { gun:3 }, ["gun",null,null], 6);
     page.change(1);
     var rv13 = rival.make(); enemies.push(rv13);
     for(var i=0; i<RIVAL_INTRO_T + 2; i++) mainScreen.update();
@@ -1447,9 +1447,9 @@ try{
     var rv13Warp = rv13.intercept ? rvShots() : -1;
     rv13.harmless = false; arms.bullets = [];
     var rv13Clone = enemies.some(function(e){ return e.clone && e.intercept; });
-    check("ライバルの第二形態：WAVE13からはドローン君の弾を1秒に" + RIVAL2_INTERCEPT_PER_SEC[2] + "発まで撃ち落とす(WAVE8・第一形態・ワープ中・分身はしない)",
+    check("ライバルの第二形態：WAVE14からはドローン君の弾を1秒に" + RIVAL2_INTERCEPT_PER_SEC[2] + "発まで撃ち落とす(WAVE9・第一形態・ワープ中・分身はしない)",
           !rv8Int && !rv13Before && rv13.form == 2 && rv13Down == RIVAL2_INTERCEPT_PER_SEC[2] && rv13Warp == 0 && !rv13Clone && errors.length == rvErr,
-          "W8" + rv8Int + " 第一形態" + rv13Before + " 撃ち落とした" + rv13Down + " ワープ中" + rv13Warp + " 分身" + rv13Clone);
+          "W9" + rv8Int + " 第一形態" + rv13Before + " 撃ち落とした" + rv13Down + " ワープ中" + rv13Warp + " 分身" + rv13Clone);
 
     // 時を操る攻撃(rivalTime.js)：時の枷・加速世界・時飛ばし・時の裂け目・別の時間の自分。第二形態は大きく描く
     enemies.forEach(function(e){ if(e.clone) e.dead = true; });

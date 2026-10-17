@@ -1,6 +1,6 @@
 //------------------------------------------------------------------------------
 //  中ボス：ライバル「クロノ」
-//  ドローン君と同じ時止めワープ(timeStop.js)を使いこなすライバル。決まったWAVE(RIVAL_WAVES)の最後に現れ、会うたびに強くなる。
+//  ドローン君と同じ時止めワープ(timeStop.js)を使いこなすライバル。決まったWAVE(RIVAL_WAVES。雑魚敵は出ない)の始めに現れ、会うたびに強くなる。
 //  体が粒子にほどけて別の場所で組み上がるワープで、すばやく動き回る。
 //  曲の拍に合わせて戦う(rival.beat)：撃つ・時計の針が進む・止めた弾が動き出す・分身が飛び出すのは拍の上。
 //  曲は Suno の「Chronos Duel」(sunoRival。デバッグのメニューの「戦闘曲」で選ぶ)か今の曲で、どちらでも拍を読む。
@@ -14,7 +14,7 @@
 //    ・時計盤(clock。Lv.2から)：自分を中心に文字盤を出し、拍ごとに長針が1目盛り進んで、その向きへ針の列を撃つ。
 //      次に進む所は薄く見える。撃っている間は動かない(隙)
 //    ・攻撃の合間に削られすぎると、ワープでよける(RIVAL_DODGE)
-//  第二形態(WAVE8から。RIVAL2_*)：分身は「過去の自分」
+//  第二形態(WAVE9から。RIVAL2_*)：分身は「過去の自分」
 //    ・過去の自分(echo)：動き回って撃つクロノの通った道と撃った弾を、少しずつ遅れた分身がそのままくり返す
 //    ・鏡像(mirror)：画面のまんなかを鏡にして、ドローン君の動きを映した場所に本物と分身が立ち、拍ごとに順に撃つ
 //    ・分身の輪舞(waltz)：輪になって回り、まんなかへ撃つ
@@ -33,7 +33,7 @@
 //  協力プレイ：ホストが動かし、ワープの出発点・長さは coop.packEnemy の b の12～14番目で届く
 //  (新しい攻撃の動き(clock・echo・twelve・wait)は協力プレイへまだ取り込んでいない。ゲストの画面では正しく出なくてよい)
 //------------------------------------------------------------------------------
-const RIVAL_WAVES    = [3,8,13,18];     //出てくるWAVE(何番目かが強さの段階 Lv.1～4)
+const RIVAL_WAVES    = [4,9,14,19];     //出てくるWAVE(何番目かが強さの段階 Lv.1～4。そのWAVEは雑魚敵が出ず、クロノとの一騎打ち)
 //登場の演出(時が止まり、光が集まって組み上がり、名乗る。この間は周りが止まる)
 const RIVAL_INTRO_T  = 210;             //登場の演出の長さ(フレーム)
 const RIVAL_INTRO_STOP = 24;            //はじめの「時が止まる」(色の反転した輪が広がり、色が抜ける)
@@ -136,9 +136,9 @@ const RIVAL_LINES = [                   //せりふ(現れたとき・本気に�
     ["時の速さに、ついてこられるか？", "おもしろくなってきた！", "次こそは…必ず！"],
     ["これが最後の勝負だ、ドローン君！", "全力でいくぞ！", "…強くなったな、ドローン君"]
 ];
-//第二形態(WAVE8から)：第一形態(上の値のまま)の体力が0になると、時を止めて分身の力に目覚める
+//第二形態(WAVE9から)：第一形態(上の値のまま)の体力が0になると、時を止めて分身の力に目覚める
 const RIVAL2          = { name:"クロノ・ミラージュ", en:"CHRONO MIRAGE", title:"時を分かつ幻影" };
-const RIVAL2_FROM     = 1;          //第二形態がある段階(lv。1 = WAVE8から)
+const RIVAL2_FROM     = 1;          //第二形態がある段階(lv。1 = WAVE9から)
 const RIVAL2_HP_MUL   = 4/3;        //第二形態の体力(第一形態の体力に掛ける。第一形態を3倍にしたとき、第二形態は前の2倍になるように)
 const RIVAL2_TINT     = "70,35,125";    //第二形態と分身の体の色(紫がかった紺)
 const RIVAL2_GLOW     = "200,130,255";  //第二形態のまわりの光の色
@@ -205,12 +205,12 @@ const RIVAL_OD_SPEED  = 2.0;        //渦の針の速さ(弾幕の倍率と時�
 const RIVAL_OD_JUDGE  = 12;         //針の裁きの長さ(拍。はじめの1拍は予告で、光の針は当たらない)
 const RIVAL_OD_BEAM_W = 9;          //光の針の当たる太さの半分(px)
 const RIVAL_OD_SWEEP  = 0.2;        //光の針が1目盛り進む動きの長さ(拍に対する割合)
-const RIVAL_OD_HOUR_FROM = 1;       //短針も光る段階(lv。1 = WAVE8から。短針は2拍ごとに逆へ1目盛り)
+const RIVAL_OD_HOUR_FROM = 1;       //短針も光る段階(lv。1 = WAVE9から。短針は2拍ごとに逆へ1目盛り)
 const RIVAL_OD_FACE_R = 250;        //画面に出す大きな文字盤の半径(px)
 const RIVAL_OD_BACK   = 1.6;        //巻き戻るとき、針が戻ってくる速さ(撃ったときの速さに掛ける)
 const RIVAL_OD_TIRED  = 150;        //大技のあと、疲れて動けない長さ(フレーム。隙)
 const RIVAL2_OD_HP    = 0.2;        //第二形態はこの割合を切ったときに使う
-const RIVAL2_INTERCEPT_FROM = 2;    //第二形態でドローン君の弾を撃ち落とす(迎撃)段階(lv。2 = WAVE13から)
+const RIVAL2_INTERCEPT_FROM = 2;    //第二形態でドローン君の弾を撃ち落とす(迎撃)段階(lv。2 = WAVE14から)
 const RIVAL2_INTERCEPT_PER_SEC = [0,0,3,4];   //迎撃：1秒に撃ち落とせる数(Lv.1～4)
 const RIVAL2_INTERCEPT_RANGE = 130; //迎撃：撃ち落とす範囲(体の中心から。px)
 const RIVAL2_FADE_T   = 20;         //分身が消える長さ
@@ -509,7 +509,7 @@ var rival = {
         if(age >= RIVAL2_SPLIT_AT) _e.hp = _e.maxHp*Math.min(1, (age - RIVAL2_SPLIT_AT)/RIVAL2_FILL_T);
         if(--_e.count <= 0){
             _e.form = 2;
-            //WAVE13からは、近づいたドローン君の弾を撃ち落とす(迎撃。shotLab.js。本物だけで、分身はしない)
+            //WAVE14からは、近づいたドローン君の弾を撃ち落とす(迎撃。shotLab.js。本物だけで、分身はしない)
             if(_e.lv >= RIVAL2_INTERCEPT_FROM)
                 _e.intercept = { cd:0, zap:0, per:RIVAL2_INTERCEPT_PER_SEC[_e.lv], range:RIVAL2_INTERCEPT_RANGE, color:RIVAL2_GLOW, quiet:true };
             _e.hp = _e.maxHp;
@@ -1643,7 +1643,7 @@ var rival = {
     },
     //体力が0になった：倒れずに、捨てぜりふを残して去る(special.revive から。true で倒さない)
     retreat:function(_e){
-        //WAVE8から：第一形態は倒れず、第二形態に目覚める
+        //WAVE9から：第一形態は倒れず、第二形態に目覚める
         if(_e.lv >= RIVAL2_FROM && (_e.form || 1) == 1) return this.awaken(_e);
         if(_e.mode == "awaken") return true;
         _e.hp = 0;
