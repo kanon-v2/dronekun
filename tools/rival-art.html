@@ -3,7 +3,8 @@
   ライバル「クロノ」(rival.js)の見た目の確認。戦いの場面を作って、1枚に並べる(撮影用)。
   ヘッドレスEdgeで撮る：
     msedge --headless=new --disable-gpu --allow-file-access-from-files --virtual-time-budget=3000 --window-size=1920,1080 --screenshot=<出力.png> "file:///…/tools/rival-art.html"
-  #close：クロノの体を大きく(背中の文字盤・ハチマキ・残響の見え方)
+  #close：クロノの体を大きく(背中の文字盤・ハチマキ・残響の見え方・第二形態の針の翼)
+  #time：時を操る攻撃(rivalTime.js。時の枷・加速世界・時飛ばし・時の裂け目・別の時間の自分)
   #only=番号：その場面だけを等倍で(0から数える)
   #seed=数：乱数の種(場面の並び・動きが変わる)
   セーブ(localStorage)は読み書きしない(始める前の状態に戻す)
@@ -43,6 +44,7 @@
 <script src="scripts/drone/timeStop.js"></script>
 <script src="scripts/drone/dodge.js"></script>
 <script src="scripts/drone/rival.js"></script>
+<script src="scripts/drone/rivalTime.js"></script>
 <script src="scripts/drone/shotLab.js"></script>
 <script src="scripts/drone/finaleSync.js"></script>
 <script src="scripts/drone/finaleTriumph.js"></script>
@@ -96,7 +98,7 @@ function force(_e,_p){
 function until(_e,_f,_max){ for(var i=0; i<(_max || 900) && !_f(); i++) step(_e, 1); }
 
 var sheet = document.getElementById("sheet"), SH = sheet.getContext("2d");
-var closeUp = /close/.test(location.hash);
+var closeUp = /close/.test(location.hash), timeMode = /time/.test(location.hash);
 var scenes = [], sc = closeUp ? 1 : 0.5;
 function shot(_label){
     ctx.fillStyle = "white"; ctx.fillRect(0,0,CW,CH);
@@ -133,7 +135,39 @@ try{
         grab(e, "第二形態(過去の自分)");
         var ec = enemies.filter(function(c){ return c.past && c.mode == "echo"; })[0];
         if(ec) grab(ec, "過去の自分の分身");
+        force(e, "dash"); until(e, function(){ return e.mode == "aim" && e.count <= 8; });
+        grab(e, "第二形態：突進の合図");
+        force(e, "era"); until(e, function(){ return enemies.some(function(c){ return c.era && c.mode == "era"; }); }, 2000); step(e, 30);
+        enemies.filter(function(c){ return c.era && c.mode == "era"; }).forEach(function(c){ grab(c, c.name); });
         scenes = zoom;
+    }else if(timeMode){
+        var e = start(13);
+        force(e, "shackle"); until(e, function(){ return rivalTime.rings.length && rivalTime.rings[0].n <= 2; }, 2000);
+        shot("時の枷(輪が縮む)");
+        //輪の中で待つ → 枷がかかる
+        for(var i=0; i<600 && !(rivalTime.shackleF > 0 && rivalTime.droneK < 1); i++){
+            if(rivalTime.rings.length){ drone.X = rivalTime.rings[0].x; drone.Y = rivalTime.rings[0].y; }
+            MouseX = drone.X; MouseY = drone.Y; mainScreen.hp = 99; mainScreen.update(); screens[page.number].draw();
+        }
+        for(var i=0; i<30; i++){ MouseX = drone.X + 60; MouseY = drone.Y; mainScreen.hp = 99; mainScreen.update(); screens[page.number].draw(); }
+        shot("時の枷(ドローン君の時が遅い)");
+        force(e, "haste"); until(e, function(){ return rivalTime.worldK > 1.5; }, 2000); step(e, 40);
+        shot("加速世界");
+        force(e, "rift"); until(e, function(){ return e.mode == "rift" && rivalTime.rifts.length && rivalTime.rifts[0].open >= 1; }, 2000); step(e, 90);
+        shot("時の裂け目(過去・未来)");
+        e = start(13, true);
+        step(e, 30);
+        shot("第二形態(動き回る)");
+        force(e, "skip"); until(e, function(){ return rivalTime.preview > 0 && rivalTime.preview < rival.beatF(); }, 3000);
+        shot("時飛ばし(1拍先が見える)");
+        until(e, function(){ return rivalTime.skipFx > 0 && rivalTime.skipFx < 20; }, 600);
+        shot("時飛ばし(時が飛んだ)");
+        force(e, "era"); until(e, function(){ return rivalTime.rifts.some(function(r){ return r.big && r.open > 0.8; }); }, 2000);
+        shot("別の時間の自分(大きな裂け目)");
+        until(e, function(){ return enemies.some(function(c){ return c.era && c.mode == "era"; }); }, 2000); step(e, 50);
+        shot("別の時間の自分(過去と未来のクロノ)");
+        step(e, 160);
+        shot("別の時間の自分(未来の時計盤)");
     }else{
         var e = start(8);
         force(e, "shoot"); until(e, function(){ return e.mode == "shoot"; }); step(e, 70);
@@ -147,9 +181,9 @@ try{
         e.hp = e.maxHp*0.4; e.enraged = true; e.odDue = true;
         while(e.mode != "idle") step(e, 1);
         e.timer = 1;
-        until(e, function(){ return e.mode == "over" && e.ov && e.ov.ph == "cut"; });
-        for(var i=0; i<40; i++){ mainScreen.update(); screens[page.number].draw(); }
-        shot("時ノ奔流(カットイン)");
+        until(e, function(){ return e.mode == "over" && e.ov; });
+        step(e, 20);
+        shot("時ノ奔流(加速の始まり。時は止めない)");
         until(e, function(){ return e.ov && e.ov.ph == "accel" && e.ov.u > 0.8; }, 2000);
         shot("時ノ奔流(加速)");
         until(e, function(){ return e.ov && e.ov.ph == "judge" && e.ov.armed && e.ov.t > 60; }, 2000);

@@ -723,7 +723,6 @@ var special = {
             var e = enemies[i];
             if(e.type == "kai" && (e.mode == "down" || e.mode == "revive")) return true;
             if(e.type == "chrono" && (e.mode == "intro" || e.mode == "awaken")) return true;     //ライバルの登場・目覚めの間(rival.js)
-            if(e.type == "chrono" && e.mode == "over" && e.ov && e.ov.ph == "cut") return true; //ライバルの時ノ奔流のカットインの間(rival.js)
         }
         return false;
     },
