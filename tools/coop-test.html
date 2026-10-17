@@ -143,9 +143,9 @@ var steps = [
         waitFor(function(){ return both(function(s){ return s.page == 1 && s.wave == 2; }); }, 30000, function(ok){
             check("WAVE2へ一緒に出撃", ok, desc());
             //拾ったパーツはふたりとも受け取る(相手が拾った数が、自分にも足されている)。
-            //拾った直後は相手にまだ届いていないことがあり、誰も拾っていないこともあるので、数が合って1つ以上拾うまで待つ
-            var parts = function(){ var h = st.host, g = st.guest; return h.partsGot + g.partsGot > 0 && h.partnerParts == g.partsGot && g.partnerParts == h.partsGot; };
-            waitFor(parts, 20000, function(ok2){
+            //拾った直後は相手にまだ届いていないことがあるので、数が合うまで少しだけ待つ(長く待つと WAVE2 が進んで、あとの確かめがずれる)
+            var parts = function(){ var h = st.host, g = st.guest; return h.partnerParts == g.partsGot && g.partnerParts == h.partsGot; };
+            waitFor(parts, 5000, function(ok2){
                 var h = st.host, g = st.guest;
                 check("拾ったパーツをふたりとも受け取る", ok2,
                       "ホストが拾った" + h.partsGot + "・ゲストが拾った" + g.partsGot + "　受け取り ホスト" + h.partnerParts + "・ゲスト" + g.partnerParts);
