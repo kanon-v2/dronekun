@@ -23,6 +23,11 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
 <script src="scripts/drone/common.js"></script>
 <script src="scripts/drone/sound.js"></script>
 <script src="scripts/drone/bgmTrial.js"></script>
+<script>
+//ふつうに遊ぶときは Suno の曲だが、テストは今の曲で行う(録音の曲を読み込まない・曲に合わせて動く最終局面にしない)
+var bgmDefault = { finale:bgmTrial.finales[bgmTrial.finale].v, fight:bgmTrial.fightName() };
+bgmTrial.finale = 0; bgmTrial.fight = 0;
+</script>
 <script src="scripts/drone/bgmFull.js"></script>
 <script src="scripts/drone/equipment.js"></script>
 <script src="scripts/drone/armsExtra.js"></script>
@@ -1907,7 +1912,8 @@ try{
     tap(bossDebug.tools()[7]);    //最終局面「Lyria」(録音の曲。music/monarch.js を読み込み始める)
     var monarchOn = bgmTrial.trackFor("kai2") == "monarch" && bgmTrial.finaleName() == "Lyria" && TRACKS.monarch && typeof monarch.tick == "function";
     tap(bossDebug.tools()[7]);    //最終局面「Suno」(録音の曲。music/triumph.js を読み込み始める。finaleTriumph.js)
-    var triumphOn = bgmTrial.trackFor("kai2") == "triumph" && bgmTrial.finaleName() == "Suno" && TRACKS.triumph && typeof triumph.finish == "function";
+    //(戦闘曲が今の曲のときは、クラシックの設定と同じく、曲は今の曲で戦いは Suno 版。Suno の曲は音を消して流す)
+    var triumphOn = bgmTrial.trackFor("kai2") == "kai2" && bgmTrial.clock() && bgmTrial.finaleName() == "Suno" && TRACKS.triumph && typeof triumph.finish == "function";
     tap(bossDebug.tools()[7]);    //今の曲に戻る
     tap(bossDebug.tools()[8]);    //戦闘曲「Suno」(録音の曲。music/sunoHeroic.js・sunoBattle.js・sunoBoss.js・sunoRival.js・sunoRevolt.js・sunoTitle.js・sunoShop.js を読み込み始める)
     var sunoOn = bgmTrial.trackFor("heroic") == "sunoHeroic" && bgmTrial.trackFor("battle") == "sunoBattle" && bgmTrial.trackFor("boss") == "sunoBoss" &&
@@ -1923,6 +1929,38 @@ try{
           bgmNames.join(",") == "orig,full,d,f,h,i" && bgmTrial.v() == "orig" && finaleOn && monarchOn && triumphOn && sunoOn && !bgmTrial.finale && !bgmTrial.fight &&
           errors.length == bgmErr,
           bgmNames.join(",") + " " + errors.slice(bgmErr).join(" "));
+    //ふつうに遊ぶときは Suno の曲。録音の曲は、今の場面とこの先に使いそうなものだけ読み込む(実際には読み込まず、選んだものだけ数える)
+    var keepRec = {}, wantRec = function(_wave,_now){
+        var got = [];
+        for(var k in recorded.list){
+            var r = recorded.list[k];
+            keepRec[k] = keepRec[k] || { load:r.load, drop:r.drop };
+            r.load = (function(_k){ return function(){ got.push(_k); }; })(k);
+            r.drop = function(){};
+        }
+        var keepWave = game.wave, keepPage = page.number; game.wave = _wave; page.number = 1;    //戦闘中として選ぶ(タイトルの曲は選ばない)
+        bgmTrial.prefetch(_now);
+        game.wave = keepWave; page.number = keepPage;
+        return got.sort().join(",");
+    };
+    //タイトルの設定の曲：標準は Suno、クラシックは今の曲。最終局面の戦いはどちらも Suno 版(クラシックでは Suno の曲を音を消して流す)
+    var keepMusic = viewOpt.music, keepTrack = sound.trackName;
+    sound.trackName = null;
+    bgmTrial.finale = FINALE_DEFAULT;
+    viewOpt.music = "suno"; bgmTrial.useSetting();
+    var sunoSet = bgmTrial.fight == FIGHT_DEFAULT && bgmTrial.trackFor("kai2") == "triumph" && bgmTrial.trackFor("heroic") == "sunoHeroic" && !bgmTrial.clock();
+    var pre4 = wantRec(4, "sunoRival"), pre20 = wantRec(20, "sunoRevolt");
+    viewOpt.music = "classic"; bgmTrial.useSetting();
+    var classicSet = bgmTrial.fight == 0 && bgmTrial.trackFor("kai2") == "kai2" && bgmTrial.trackFor("heroic") == "heroic" && bgmTrial.clock() && finaleTri.on();
+    var preClassic = wantRec(20, "boss");
+    bgmTrial.finale = 0;
+    var preOrig = wantRec(20, "boss");
+    for(var k in keepRec){ recorded.list[k].load = keepRec[k].load; recorded.list[k].drop = keepRec[k].drop; }
+    viewOpt.music = keepMusic; bgmTrial.fight = 0; sound.trackName = keepTrack;
+    check("曲の設定：標準は Suno の曲、クラシックは今の曲。最終局面の戦いはどちらも Suno 版。録音の曲は今の場面とこの先に使うものだけ読み込む",
+          bgmDefault.finale == "triumph" && bgmDefault.fight == (keepMusic == "classic" ? "今の曲" : "Suno") && sunoSet && classicSet &&
+          pre4 == "sunoHeroic,sunoRival,sunoShop" && pre20 == "sunoBoss,sunoRevolt,triumph" && preClassic == "triumph" && preOrig == "",
+          JSON.stringify(bgmDefault) + " " + sunoSet + "/" + classicSet + " " + pre4 + " / " + pre20 + " / " + preClassic + " / " + preOrig);
     tap(bossDebug.tools()[3]);    //閉じる
     bossDebug.god = false; bossDebug.gear = 1;
     check("閉じるでメニューを閉じる", !bossDebug.menu);
@@ -2233,6 +2271,17 @@ function finish2(){
         battleBg.reset();
         check("設定で戦闘画面の方眼を「なし」「細かい」「大きい」(公開版と同じ方眼・ジャストの演出。空と街の絵はどれも出す)にでき、覚える。戻せる", gridOk && backGrid && largeOk && classicFx && fineN == 85 && errors.length == bgErr2, "細かいのひし形 " + fineN + "マス");
         viewOpt.grid = keepGrid; viewOpt.gridSize = keepSize;
+        //曲の設定のボタン(押すとすぐ戦闘曲が替わり、覚える。テストは今の曲のまま進めるので、終わったら戻す)
+        var keepMusic2 = viewOpt.music, keepFight = bgmTrial.fight;
+        clickAt(musicButtons[1].rect);
+        var musicClassic = viewOpt.music == "classic" && bgmTrial.fight == 0 && JSON.parse(localStorage.getItem(viewOpt.KEY)).music == "classic";
+        var keepPrefetch = bgmTrial.prefetch;
+        bgmTrial.prefetch = function(){};     //押したときに録音の曲を読み込まないように
+        clickAt(musicButtons[0].rect);
+        bgmTrial.prefetch = keepPrefetch;
+        var musicSuno = viewOpt.music == "suno" && bgmTrial.fight == FIGHT_DEFAULT && JSON.parse(localStorage.getItem(viewOpt.KEY)).music == "suno";
+        check("設定で曲を「クラシック」(今の曲)・「標準」(Suno)にでき、覚える", musicClassic && musicSuno);
+        viewOpt.music = keepMusic2; bgmTrial.fight = keepFight;
         try{ if(keepView) localStorage.setItem(viewOpt.KEY, keepView); else localStorage.removeItem(viewOpt.KEY); }catch(e){}
         clickAt(settingsClose);
         check("閉じるボタンで設定を閉じる", !startScreen.settings);

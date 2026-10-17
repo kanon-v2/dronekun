@@ -15,7 +15,11 @@
 //          録音なので、WAVEが進んでも速くならない
 //          人間との戦い(revolt)・タイトル(title)・強化画面(shop)の曲も、同じく Suno の曲(sunoRevolt「Final Surge」・
 //          sunoTitle「遠景の丘」・sunoShop)に替える。music/sunoRevolt.js・sunoTitle.js・sunoShop.js
-//  選んだものは覚えない(読み込み直すと今の音に戻る)。選ばなければ sound.js のまま
+//  ふつうに遊ぶときの曲は、タイトルの「設定」で選ぶ(viewOpt.music。bgmTrial.useSetting)：標準は Suno の曲、クラシックは今の曲
+//  最終局面(ドローン君改の第二形態)の戦いは、どちらでも Suno 版(finaleTriumph.js。FINALE_DEFAULT)。クラシックでは曲は今の曲(kai2)を流し、
+//  戦いの時刻を決める Suno の曲は音を消して裏で流す(bgmTrial.clock・recTrack の mute)。曲と演出は合わないが、そのままにしている
+//  録音の曲は、今の場面とこの先に使いそうなものだけを読み込んでおき(bgmTrial.prefetch)、ほかは手放す(曲を開いた音はメモリを多く使うため)
+//  選んだものは覚えない(読み込み直すとはじめの選び方に戻る)
 //  sound.music・sound.playStep を包んで差し替える(このファイルを読まないページは今のまま)
 //------------------------------------------------------------------------------
 const MONARCH_SRC = "music/monarch.js";   //Lyria の曲のファイル(BGM_MONARCH を作る)
@@ -36,6 +40,8 @@ const SUNO_TITLE_SRC = "music/sunoTitle.js";    //Suno のタイトルの曲「�
 const SUNO_TITLE_VOL = 0.65;                    //その音量(戦闘曲より少し小さめ。平均の大きさの比から決めた値)
 const SUNO_SHOP_SRC = "music/sunoShop.js";      //Suno の強化画面の曲(无标题曲)のファイル(BGM_SUNO_SHOP を作る)
 const SUNO_SHOP_VOL = 0.55;                     //その音量(戦闘曲より少し小さめ。平均の大きさの比から決めた値)
+const FINALE_DEFAULT = 3;       //はじめの最終局面の曲(bgmTrial.finales の番号。3 は Suno)
+const FIGHT_DEFAULT = 1;        //設定が標準のときの戦闘曲(bgmTrial.fights の番号。1 は Suno)
 
 var bgmTrial = {
     list:[
@@ -53,14 +59,14 @@ var bgmTrial = {
         { v:"monarch", name:"Lyria" },
         { v:"triumph", name:"Suno" }
     ],
-    finale:0,
+    finale:FINALE_DEFAULT,
     //序盤・中盤の戦闘・ボス戦・ライバル戦・人間との戦い・タイトル・強化画面で流す曲(fights の番号。0 は今の曲)。v は 今の曲の名前 → 代わりに流す曲の名前
     fights:[
         { v:null, name:"今の曲" },
         { v:{ heroic:"sunoHeroic", battle:"sunoBattle", boss:"sunoBoss", rival:"sunoRival",
               revolt:"sunoRevolt", title:"sunoTitle", shop:"sunoShop" }, name:"Suno" }
     ],
-    fight:0,
+    fight:FIGHT_DEFAULT,    //設定(viewOpt.music)に合わせる(下の useSetting)
 
     v:function(){ return this.list[this.pick].v; },
     name:function(){ return this.list[this.pick].name; },
@@ -85,6 +91,16 @@ var bgmTrial = {
         for(var k in v) recorded.list[v[k]].load();     //戦う前に読み込んでおく
         if(this.fightOf(sound.trackName)) this.restart();
     },
+    //タイトルの設定(viewOpt.music)に合わせて戦闘曲を選び、流れている曲を鳴らし直す
+    useSetting:function(){
+        var f = viewOpt.music == "classic" ? 0 : FIGHT_DEFAULT;
+        if(f == this.fight) return;
+        this.fight = f;
+        var n = sound.trackName;
+        if(n && (this.fightOf(n) || this.isFinal(n))) this.restart();
+    },
+    //最終局面は Suno 版の戦いで、曲は今の曲か(Suno の曲は音を消して時刻だけ使う)
+    clock:function(){ return this.finales[this.finale].v == "triumph" && !this.fight; },
     isFinal:function(_n){ return _n == "kai2" || _n == "finale" || _n == "monarch" || _n == "triumph"; },
     //戦闘曲(差し替えたものも)なら、もとの曲の名前。ちがえば null
     fightOf:function(_n){
@@ -104,10 +120,27 @@ var bgmTrial = {
     },
     //実際に流す曲の名前
     trackFor:function(_name){
-        if(_name == "kai2" && this.finale) return this.finales[this.finale].v;
+        if(_name == "kai2" && this.finale) return this.clock() ? "kai2" : this.finales[this.finale].v;
         var f = this.fights[this.fight].v;
         if(f && f[_name]) return f[_name];
         return _name;
+    },
+    //録音の曲を、今流す曲(_now。TRACKS の名前)とこの先に使いそうなものだけ読み込み、ほかは手放す(sound.music のたびに呼ぶ)
+    //  この先：今のWAVEの戦闘曲・強化画面の曲・ボスWAVEはボス戦・ライバルのWAVEはライバル戦・最後のWAVEは最終局面。タイトルの曲はタイトルの画面でだけ
+    prefetch:function(_now){
+        var w = game.wave, want = {}, self = this;
+        var add = function(_n){ want[self.trackFor(_n)] = true; };
+        if(_now) want[_now] = true;
+        add(w > REVEAL_WAVE ? "revolt" : w < 8 ? "heroic" : "battle");
+        add(w > REVEAL_WAVE ? "revolt" : "shop");
+        if(w % BOSS_EVERY == 0) add("boss");
+        if(RIVAL_WAVES.indexOf(w) >= 0) add("rival");
+        if(w >= FINAL_WAVE){ add("kai2"); if(this.clock()) want.triumph = true; }
+        if(page.number == 0) add("title");
+        for(var k in recorded.list){
+            if(want[k]) recorded.list[k].load();
+            else recorded.list[k].drop();
+        }
     }
 };
 
@@ -120,6 +153,7 @@ function recTrack(_o){
         loading:false,
         src:null,       //流している音
         gain:null,
+        mute:false,     //音を消して流す(時刻だけ使う。bgmTrial.clock)
         startAt:0,      //曲のどこから流し始めるか(秒。最終局面の試作 finaleSync.js・finaleTriumph.js が決める)
         ended:null,     //くり返しを抜けて終わりへ切り替えた { t:切り替えた時刻(sound.ctx), p:そのときの曲の時刻 }
         info:function(){ return window[_o.key]; },
@@ -154,7 +188,7 @@ function recTrack(_o){
             s.loop = true;
             s.loopStart = I.loopStart;
             s.loopEnd = I.loopEnd;
-            g.gain.value = _o.vol;
+            g.gain.value = this.mute ? 0 : _o.vol;
             s.connect(g); g.connect(sound.bgmGain);     //BGMの音量・消音・こもらせ(ジャスト衝撃波)がそのまま効く
             s.start(_t, this.startAt);
             this.src = s; this.gain = g;
@@ -195,6 +229,10 @@ function recTrack(_o){
             this.ended = { t:T, p:p };
             return true;
         },
+        //開いた音を手放す(流している間は手放さない。ファイルは残るので、また使うときは開き直すだけ)
+        drop:function(){
+            if(!this.src) this.buf = null;
+        },
         stop:function(){
             if(!this.src) return;
             try{ this.src.stop(); }catch(e){}
@@ -217,6 +255,7 @@ var sunoShop = recorded(SUNO_SHOP_SRC, "BGM_SUNO_SHOP", SUNO_SHOP_VOL);
 //TRACKS の名前 → 録音の曲
 recorded.list = { monarch:monarch, triumph:triumph, sunoHeroic:sunoHeroic, sunoBattle:sunoBattle, sunoBoss:sunoBoss, sunoRival:sunoRival,
                   sunoRevolt:sunoRevolt, sunoTitle:sunoTitle, sunoShop:sunoShop };
+bgmTrial.fight = viewOpt.music == "classic" ? 0 : FIGHT_DEFAULT;     //はじめはタイトルの設定のとおり
 
 (function(){
     var actx = null;    //sound.ctx(ゲームの ctx はキャンバスなので別の名前にする)
@@ -803,7 +842,9 @@ recorded.list = { monarch:monarch, triumph:triumph, sunoHeroic:sunoHeroic, sunoB
     var stopMusic = sound.stopMusic;
     sound.music = function(_name,_bpm){
         music.call(this, bgmTrial.trackFor(_name), _bpm);
-        for(var k in recorded.list) if(k != this.trackName) recorded.list[k].stop();
+        var clock = this.trackName == "kai2" && bgmTrial.clock();     //最終局面をクラシックの曲で：裏の Suno の曲は止めない
+        for(var k in recorded.list) if(k != this.trackName && !(clock && k == "triumph")) recorded.list[k].stop();
+        bgmTrial.prefetch(_name ? bgmTrial.trackFor(_name) : null);
     };
     sound.stopMusic = function(){
         stopMusic.call(this);
@@ -811,7 +852,9 @@ recorded.list = { monarch:monarch, triumph:triumph, sunoHeroic:sunoHeroic, sunoB
     };
     sound.playStep = function(_t,_st){
         if(this.trackName == "finale"){ stepFinal(_t, _st); return; }
-        if(recorded.list[this.trackName]){ recorded.list[this.trackName].tick(_t); return; }
+        if(recorded.list[this.trackName]){ recorded.list[this.trackName].mute = false; recorded.list[this.trackName].tick(_t); return; }
+        //最終局面をクラシックの曲で：Suno 版の戦いの時刻を決める曲を、音を消して流す
+        if(this.trackName == "kai2" && bgmTrial.clock()){ triumph.mute = true; triumph.tick(_t); }
         var v = bgmTrial.v();
         if(v == "orig"){ playStep.call(this, _t, _st); return; }
         actx = this.ctx;

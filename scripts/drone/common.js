@@ -1377,6 +1377,7 @@ var viewOpt = {
     pointer:true,
     grid:true,
     gridSize:"large",   //はじめは大きい(公開版と同じ背景と演出)
+    music:"suno",       //曲："suno" 標準(Suno の録音の曲)／"classic" クラシック(今の曲)。bgmTrial.js の bgmTrial.useSetting
     load:function(){
         try{
             var d = JSON.parse(localStorage.getItem(this.KEY) || "{}");
@@ -1385,10 +1386,11 @@ var viewOpt = {
             if(d.pointer === false) this.pointer = false;
             if(d.grid === false) this.grid = false;
             if(["fine","normal","large"].indexOf(d.gridSize) >= 0) this.gridSize = d.gridSize;
+            if(d.music == "classic") this.music = "classic";
         }catch(e){}
     },
     save:function(){
-        try{ localStorage.setItem(this.KEY, JSON.stringify({ hitbox:this.hitbox, graze:this.graze, pointer:this.pointer, grid:this.grid, gridSize:this.gridSize })); }catch(e){}
+        try{ localStorage.setItem(this.KEY, JSON.stringify({ hitbox:this.hitbox, graze:this.graze, pointer:this.pointer, grid:this.grid, gridSize:this.gridSize, music:this.music })); }catch(e){}
     },
     toggle:function(_key){
         this[_key] = !this[_key];

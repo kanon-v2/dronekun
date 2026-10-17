@@ -42,11 +42,11 @@ for(var i=0; i<FINAL_WAVE; i++) wselWaves.push(new drawRect(CW/2 + (i%10 - 4.5)*
 var wselStart = new drawRect(CW/2 - 95, WSEL_Y + 300, 170, 42);
 var wselClose = new drawRect(CW/2 + 95, WSEL_Y + 300, 170, 42);
 
-//右上の設定ボタンと、設定の窓(ドローン君の見た目・戦闘画面の方眼を選ぶ)
+//右上の設定ボタンと、設定の窓(ドローン君の見た目・戦闘画面の方眼・曲を選ぶ)
 var settingsButton = new drawRect(CW - 78, 18, 104, 34);
 const SETTINGS_W = 520;     //設定の窓の大きさ
-const SETTINGS_H = 420;
-const SETTINGS_Y = 60;
+const SETTINGS_H = 500;
+const SETTINGS_Y = 30;
 var settingsClose = new drawRect(CW/2, SETTINGS_Y + SETTINGS_H - 58, 160, 40);
 var skinCards = [new drawRect(CW/2 - 118, SETTINGS_Y + 70, 210, 160), new drawRect(CW/2 + 118, SETTINGS_Y + 70, 210, 160)];
 //戦闘画面の方眼の設定(viewOpt.grid・gridSize。battleBg.js)：押すとすぐ切り替わり、覚える
@@ -58,6 +58,14 @@ var gridButtons = [
     { rect:new drawRect(CW/2 + 130, GRID_ROW_Y, 64, 34), key:"gridSize", val:"normal", label:"普通" },
     { rect:new drawRect(CW/2 + 198, GRID_ROW_Y, 64, 34), key:"gridSize", val:"large",  label:"大きい" }
 ];
+//曲の設定(viewOpt.music。bgmTrial.js の bgmTrial.useSetting)：押すとすぐ流れている曲が替わり、覚える
+const MUSIC_ROW_Y = SETTINGS_Y + 396;   //ボタンの並ぶ高さ
+var musicButtons = [
+    { rect:new drawRect(CW/2 - 126, MUSIC_ROW_Y, 132, 34), key:"music", val:"suno",    label:"標準" },
+    { rect:new drawRect(CW/2 + 14,  MUSIC_ROW_Y, 132, 34), key:"music", val:"classic", label:"クラシック" }
+];
+//設定の窓のボタン(方眼・曲)。並びがマウスの乗っている番号になる
+var optButtons = gridButtons.concat(musicButtons);
 
 //遠くを横切るドローン君の影(背景の飾り)
 var titleShadows = [];
@@ -645,13 +653,13 @@ var startScreen = {
         ctx.fillText("DEBUG", b.X + b.width/2, b.Y + b.height/2 + 1);
     },
 
-    //設定の窓：ドローン君の見た目・戦闘画面の方眼を選ぶ。選ぶとすぐ切り替わり、覚える。Esc か「閉じる」で閉じる
+    //設定の窓：ドローン君の見た目・戦闘画面の方眼・曲を選ぶ。選ぶとすぐ切り替わり、覚える。Esc か「閉じる」で閉じる
     updateSettings:function(){
         var h = -1;
-        //マウスが乗っているもの(0,1：見た目のカード 2〜6：方眼のボタン 7：閉じる)
+        //マウスが乗っているもの(0,1：見た目のカード 2〜6：方眼のボタン 7,8：曲のボタン 9：閉じる)
         for(var i=0; i<skinCards.length; i++) if(skinCards[i].contains(MouseX,MouseY)) h = i;
-        for(var i=0; i<gridButtons.length; i++) if(gridButtons[i].rect.contains(MouseX,MouseY)) h = skinCards.length + i;
-        if(settingsClose.contains(MouseX,MouseY)) h = skinCards.length + gridButtons.length;
+        for(var i=0; i<optButtons.length; i++) if(optButtons[i].rect.contains(MouseX,MouseY)) h = skinCards.length + i;
+        if(settingsClose.contains(MouseX,MouseY)) h = skinCards.length + optButtons.length;
         if(h != this.setHover && h >= 0) sound.play("hover");
         this.setHover = h;
         for(var i=0; i<skinCards.length; i++){
@@ -661,12 +669,13 @@ var startScreen = {
                 return;
             }
         }
-        for(var i=0; i<gridButtons.length; i++){
-            var g = gridButtons[i];
+        for(var i=0; i<optButtons.length; i++){
+            var g = optButtons[i];
             if(g.rect.clicked()){
                 sound.play("click");
                 viewOpt[g.key] = g.val;
                 viewOpt.save();
+                if(g.key == "music") bgmTrial.useSetting();
                 return;
             }
         }
@@ -753,8 +762,8 @@ var startScreen = {
         ctx.fillStyle = TITLE_INK;
         ctx.fillText("表示", px + 26, GRID_ROW_Y + 17);
         ctx.fillText("大きさ", px + 236, GRID_ROW_Y + 17);
-        for(var i=0; i<gridButtons.length; i++){
-            var g = gridButtons[i], r = g.rect;
+        for(var i=0; i<optButtons.length; i++){
+            var g = optButtons[i], r = g.rect;
             var sel = viewOpt[g.key] === g.val, on = this.setHover == skinCards.length + i;
             //方眼なしのときは大きさが効かないので、大きさのボタンを薄く出す(押すことはできる)
             ctx.globalAlpha = g.key == "gridSize" && !viewOpt.grid ? 0.4 : 1;
@@ -788,8 +797,17 @@ var startScreen = {
         ctx.strokeRect(sx + 0.5, sy + 0.5, sw - 1, sh - 1);
         ctx.setLineDash([]);
 
+        //曲：標準(Suno)・クラシック(今の曲)。最終局面の戦いはどちらも同じ
+        ctx.textAlign = "left";
+        ctx.font = "bold 12px " + TITLE_UI_FONT;
+        ctx.fillStyle = "#6a6f6c";
+        ctx.fillText("曲", px + 26, MUSIC_ROW_Y - 26);
+        ctx.font = "11px " + TITLE_UI_FONT;
+        ctx.fillStyle = "#8a8f8b";
+        ctx.fillText(viewOpt.music == "classic" ? "前からの曲" : "新しい曲", CW/2 + 94, MUSIC_ROW_Y + 17);
+
         //閉じる
-        var b = settingsClose, on = this.setHover == skinCards.length + gridButtons.length;
+        var b = settingsClose, on = this.setHover == skinCards.length + optButtons.length;
         ctx.fillStyle = on ? TITLE_INK : "#fff";
         ctx.fillRect(b.X, b.Y, b.width, b.height);
         ctx.strokeStyle = TITLE_INK;
