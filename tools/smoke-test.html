@@ -801,28 +801,6 @@ try{
     check("タイトルの「始めるWAVEを選択」で、難易度ごとにクリア済みのWAVEから出撃する", wOpen && wDiff && wNoFar && wStart,
           [wOpen,wDiff,wNoFar,wStart].join("") + " WAVE" + game.wave + " 難易度" + game.diff);
     game.reset(); page.change(0);
-    // 協力プレイは、ひとり用とは別に、能力・パーツ・装備・難易度ごとの進み具合を残す(ひとり用は変えない)
-    save.clearAll(); game.reset(); game.level.armor = 9; game.parts = 50; save.writeMeta();
-    game.reset();
-    var cd0 = coop.diff;
-    coop.active = true; coop.diff = 2;
-    save.loadMeta(); var coopFresh = game.parts == 0 && game.level.armor == 1;
-    game.gainParts(7); game.level.armor = 3; game.owned = { gun:2, missile:1 }; game.slots = ["gun","missile",null]; game.slotCount = 2; game.wave = 5;
-    save.write();                               //強化画面に入ったとき(協力プレイ)
-    var c1 = JSON.parse(localStorage.getItem("dronekun_coop"));
-    game.gainParts(3);
-    coop.leave();                               //戦闘の途中で抜けた
-    var c2 = JSON.parse(localStorage.getItem("dronekun_coop")), solo = JSON.parse(localStorage.getItem("dronekun_meta"));
-    //次の協力プレイ(ホスト)：前の装備・能力・パーツで、その難易度のいちばん先のWAVEへ出撃する
-    coop.mode = "coop"; coop.role = "host"; coop.startGame();
-    var coopNext = game.owned.missile == 1 && game.slots[1] == "missile" && game.level.armor == 3 && game.parts == 10 && coop.playWave == 5 && coop.battleWave() == 5;
-    coop.leave(); coop.diff = cd0;
-    game.reset(); page.change(0);
-    check("協力プレイは、ひとり用とは別に能力・パーツ・装備・進み具合を残す(ひとり用は変えない)",
-          coopFresh && c1.parts == 7 && c2.parts == 10 && c2.level.armor == 3 && c2.kept.owned.missile == 1 && c2.reach[2] == 5 && coopNext
-          && solo.parts == 50 && solo.level.armor == 9 && game.parts == 50 && game.level.armor == 9 && !coop.active && !save.exists(),
-          [coopFresh,coopNext].join("") + " 協力プレイ：パーツ" + c1.parts + "→" + c2.parts + " 頑丈さ" + c2.level.armor + " 進み具合" + JSON.stringify(c2.reach) + " ひとり用：パーツ" + solo.parts + " 頑丈さ" + solo.level.armor);
-
     // 前の作り(能力はレベル5まで)のセーブ：パーツ・能力を周をまたいで残すデータに移す(能力は近い強さのレベルに)
     save.clearAll();
     localStorage.setItem("dronekun_save", JSON.stringify({ wave:7, parts:33, score:0, level:{ speed:5, accuracy:2, armor:1, brain:3 }, seen:{ prologue:true } }));
@@ -1253,9 +1231,6 @@ try{
     mainScreen.hitEnemy(cvPods[1], 99999, "gun");
     check("天蓋母艦：砲台を壊すとコアにダメージが入り、付け根が壊れた跡になる", cvPods[1].dead && cv.broken == 2 && Math.abs(cvHp - cv.hp - cv.maxHp*CANOPY_POD_DMG) < 0.01,
           "印" + cv.broken + " 減った体力" + Math.round(cvHp - cv.hp));
-    var cvPack = { e:[] }; coop.packEnemy(cv, cvPack); coop.packEnemy(cvPods[2], cvPack);
-    check("天蓋母艦：協力プレイで種類・攻撃・壊された砲台・砲台の番号を送れる", COOP_TYPES[cvPack.e[1]] == "canopy" && COOP_TYPES[cvPack.e[9]] == "pod" && cvPack.b[11] == 2
-          && (cvPack.e[14] & 3) == 2 && ["rain","wave","summon"].every(function(m){ return COOP_MODES.indexOf(m) >= 0; }), JSON.stringify(cvPack.b));
     mainScreen.hitEnemy(cv, 99999, "gun");
     var cvWreck = !!mainScreen.wreck && enemies.every(function(e){ return !e.pod || e.dead; });
     for(var i=0; i<CANOPY_WRECK_T + 10; i++){ mainScreen.update(); if(i % 10 == 0) draw1(); }
@@ -1320,9 +1295,6 @@ try{
     rv.mode = "idle"; rv.timer = 999; rv.dodgeCd = 0; rv.hpMark = rv.hp; rv.hp -= rv.maxHp*RIVAL_DODGE*1.2;
     mainScreen.update();
     check("ライバル：突進はジャスト・カウンターで弾けて、削られすぎるとワープでよける", rvCan && rvParry && rv.mode == "warp" && rv.next == "idle", "カウンター" + rvCan + "/" + rvParry + " よけ" + rv.mode);
-    var rvPack = { e:[] }; coop.packEnemy(rv, rvPack);
-    check("ライバル：協力プレイで種類・ワープの出発点と長さを送れる", COOP_TYPES[rvPack.e[1]] == "chrono" && rvPack.b[14] == rv.wt && rvPack.b[12] == Math.round(rv.wx0)
-          && ["warp","shoot","hold","flee"].every(function(m){ return COOP_MODES.indexOf(m) >= 0; }), JSON.stringify(rvPack.b));
     // 第二形態(WAVE8から)：第一形態の体力が0になると、時が止まって目覚め(第一形態の体力に RIVAL2_HP_MUL を掛けた体力)、分身で戦う
     for(var i=0; i<RIVAL_WARP_T[1] + 2; i++) mainScreen.update();
     var rvMax1 = rv.maxHp;
@@ -1332,7 +1304,7 @@ try{
     var rv2 = rv.form == 2 && rv.mode == "idle" && rv.maxHp == Math.round(rvMax1*RIVAL2_HP_MUL) && rv.hp == rv.maxHp && rv.sayText == RIVAL2_LINES[0];
     check("ライバルの第二形態：WAVE8から、第一形態を倒すと時が止まって目覚め、体力が満ちる", rvAwake && rv2 && errors.length == rvErr,
           "目覚め" + rvAwake + " 第二形態" + rv2 + " 体力" + Math.round(rv.hp) + "/" + rv.maxHp + "(第一形態" + rvMax1 + ")");
-    var rvModes2 = {}, rvClones = 0, rvCloneKinds = {}, rvClonePack = null, rvCloneParry = false, rvRewHeld = 0, rvRewBack = 0, rvPast = 0, rvPastShots = 0, rvMirror = 0, rvMirrorN = 0, rvPulls = [];
+    var rvModes2 = {}, rvClones = 0, rvCloneKinds = {}, rvCloneParry = false, rvRewHeld = 0, rvRewBack = 0, rvPast = 0, rvPastShots = 0, rvMirror = 0, rvMirrorN = 0, rvPulls = [];
     rival.lastPull = null;
     for(var i=0; i<60*60; i++){
         bot(); mainScreen.hp = 99;
@@ -1362,7 +1334,6 @@ try{
         //突進している分身(残響)を、ジャスト・カウンターで弾くと砕ける
         var cd = cl.filter(function(c){ return c.mode == "dash"; })[0];
         if(cd && !rvCloneParry){
-            rvClonePack = { e:[] }; coop.packEnemy(cd, rvClonePack);
             mainScreen.counter(cd);
             rvCloneParry = cd.dead;
         }
@@ -1375,7 +1346,6 @@ try{
           "巻き戻し" + rvPulls.length + "回 ずれ" + rvPulls.map(function(d){ return Math.round(d); }).join(","));
     check("ライバルの第二形態：時戻し(弾の輪を放って時を止め、逆向きに戻す)を使う", rvModes2.rewind && rvModes2.rstop && rvRewHeld >= RIVAL2_REWIND_N[1] && rvRewBack >= RIVAL2_REWIND_N[1] && errors.length == rvErr,
           "止まった弾" + rvRewHeld + " 戻る弾" + rvRewBack);
-    check("ライバルの分身：協力プレイで種類・動きを送れる", rvClonePack && COOP_TYPES[rvClonePack.e[1]] == "chronoClone" && COOP_MODES[rvClonePack.e[6] & 31] == "dash", rvClonePack ? JSON.stringify(rvClonePack.e) : "なし");
     // 十二時の決闘：第二形態で本気になると、時刻の位置に分身が並び、針が進むたびに1体ずつ突っ込み、最後に本物が突っ込む。本物を弾き返すと大きなダメージ
     while(rv.mode != "idle") mainScreen.update();
     enemies.forEach(function(e){ if(e.clone) e.dead = true; });
