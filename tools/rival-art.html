@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<!--
+  ライバル「クロノ」(rival.js)の見た目の確認。戦いの場面を作って、1枚に並べる(撮影用)。
+  ヘッドレスEdgeで撮る：
+    msedge --headless=new --disable-gpu --allow-file-access-from-files --virtual-time-budget=3000 --window-size=1920,1080 --screenshot=<出力.png> "file:///…/tools/rival-art.html"
+  #close：クロノの体を大きく(背中の文字盤・ハチマキ・残響の見え方)
+  #only=番号：その場面だけを等倍で(0から数える)
+  #seed=数：乱数の種(場面の並び・動きが変わる)
+  セーブ(localStorage)は読み書きしない(始める前の状態に戻す)
+-->
+<html lang="ja"><head><meta charset="UTF-8"><base href="../"><title>ライバルの見た目</title>
+<style>body{margin:0;background:#222}#Bigbox{position:absolute;left:-3000px;top:0}canvas#sheet{display:block}</style></head>
+<body><div id="Bigbox"><canvas id="Canvas"></canvas></div><canvas id="sheet"></canvas>
+<script>
+//乱数を決まった種から出す(毎回同じ絵にする)
+(function(){
+    var m = /seed=(\d+)/.exec(location.hash), a = m ? +m[1] : 7;
+    Math.random = function(){
+        a = (a + 0x6D2B79F5) | 0;
+        var t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0)/4294967296;
+    };
+})();
+</script>
+<script src="scripts/drone/common.js"></script>
+<script src="scripts/drone/sound.js"></script>
+<script src="scripts/drone/bgmTrial.js"></script>
+<script src="scripts/drone/bgmFull.js"></script>
+<script src="scripts/drone/equipment.js"></script>
+<script src="scripts/drone/armsExtra.js"></script>
+<script src="scripts/drone/bosses.js"></script>
+<script src="scripts/drone/startScreen.js"></script>
+<script src="scripts/drone/mainScreen.js"></script>
+<script src="scripts/drone/forces.js"></script>
+<script src="scripts/drone/enemyArt.js"></script>
+<script src="scripts/drone/upgradeScreen.js"></script>
+<script src="scripts/drone/gameoverScreen.js"></script>
+<script src="scripts/drone/story.js"></script>
+<script src="scripts/drone/battleBg.js"></script>
+<script src="scripts/drone/bgScene.js"></script>
+<script src="scripts/drone/bossDebug.js"></script>
+<script src="scripts/drone/timeStop.js"></script>
+<script src="scripts/drone/dodge.js"></script>
+<script src="scripts/drone/rival.js"></script>
+<script src="scripts/drone/shotLab.js"></script>
+<script src="scripts/drone/finaleSync.js"></script>
+<script src="scripts/drone/finaleTriumph.js"></script>
+<script src="scripts/drone/gunship.js"></script>
+<script src="scripts/drone/emotion.js"></script>
+<script src="scripts/drone/emotionHint.js"></script>
+<script src="lib/peerjs.min.js"></script>
+<script src="scripts/drone/coop.js"></script>
+<script src="scripts/drone/versus.js"></script>
+<script src="scripts/drone/draw.js"></script>
+<script>
+var KEYS = ["dronekun_save","dronekun_meta","dronekun_best","dronekun_cleared","dronekun_view","dronekun_skin","dronekun_sound"];
+var kept = {};
+KEYS.forEach(function(k){ try{ kept[k] = localStorage.getItem(k); }catch(e){} });
+var frames = 0;
+//よけながら円を描いて飛ぶ(smoke-test.html の bot と同じ)
+function bot(){
+    frames++; MouseIn = true;
+    MouseX = 480 + 260*Math.cos(frames/60); MouseY = 300 + 150*Math.sin(frames/45);
+    var tx = 0, ty = 0, list = enemyShots.concat(enemies.filter(function(e){ return !e.harmless; }));
+    for(var i=0; i<list.length; i++){ var o = list[i], dx = drone.X - o.x, dy = drone.Y - o.y, d = Math.hypot(dx,dy) || 1, R = (o.r || 5) + 70; if(d < R){ tx += dx/d*(R-d); ty += dy/d*(R-d); } }
+    if(tx || ty){ MouseX = drone.X + tx*2; MouseY = drone.Y + ty*2; }
+    MouseX = Math.max(30, Math.min(CW-30, MouseX)); MouseY = Math.max(30, Math.min(CH-30, MouseY));
+}
+//WAVE _w でライバルを出し、登場を飛ばす(_f2：第二形態まで進める)
+function start(_w,_f2){
+    game.reset(); game.wave = _w; game.owned = { gun:3 }; game.slots = ["gun",null,null]; game.slotCount = 3;
+    for(var k in game.level) game.level[k] = 6;
+    game.seen = { prologue:true, s3:true, s5:true, s8:true, s10:true, s12:true, reveal:_w > REVEAL_WAVE, s17:true, s19:true };
+    page.change(1); MouseIn = true;
+    enemies = []; enemyShots = []; mainScreen.toSpawn = 0;
+    var e = rival.make(); enemies.push(e);
+    for(var i=0; i<RIVAL_INTRO_T + 2; i++) mainScreen.update();
+    if(_f2){ mainScreen.hitEnemy(e, 99999, "gun"); for(var i=0; i<RIVAL2_AWAKEN_T + 2; i++) mainScreen.update(); }
+    return e;
+}
+//1コマずつ進める(ゲームと同じく毎コマ描く。ハチマキの揺れ・演出の残り時間は描くたびに進むため)
+function step(_e,_n){
+    for(var i=0; i<_n; i++){
+        bot(); mainScreen.hp = 99; mainScreen.guard = 9; mainScreen.update(); _e.hp = _e.maxHp*(_e.enraged ? 0.4 : 1); _e.hpMark = _e.hp;
+        screens[page.number].draw();
+    }
+}
+//次の攻撃を _p にする
+function force(_e,_p){
+    var list = (_e.form == 2 ? RIVAL2_PATTERNS : RIVAL_PATTERNS)[_e.lv];
+    if(_p != "twelve") _e.cycle = list.indexOf(_p);
+    while(_e.mode != "idle") step(_e, 1);
+    _e.timer = 1;
+}
+function until(_e,_f,_max){ for(var i=0; i<(_max || 900) && !_f(); i++) step(_e, 1); }
+
+var sheet = document.getElementById("sheet"), SH = sheet.getContext("2d");
+var closeUp = /close/.test(location.hash);
+var scenes = [], sc = closeUp ? 1 : 0.5;
+function shot(_label){
+    ctx.fillStyle = "white"; ctx.fillRect(0,0,CW,CH);
+    screens[page.number].draw();
+    scenes.push({ img:(function(){ var c = document.createElement("canvas"); c.width = canvas.width; c.height = canvas.height; c.getContext("2d").drawImage(canvas,0,0); return c; })(), label:_label });
+}
+try{
+    if(closeUp){
+        //体を大きく：ふつうの体・残響・第二形態の体
+        var e = start(8);
+        step(e, 60);
+        e.x = 480; e.y = 270;
+        force(e, "dash"); until(e, function(){ return e.mode == "dash"; }); step(e, 4);
+        shot("残響突進(本物が飛び出した直後。残響が出番を待つ)");
+        //体のまわりを拡大して並べる(ふつう・合図・第二形態・分身)
+        var zoom = [];
+        var grab = function(_e,_label){
+            ctx.fillStyle = "white"; ctx.fillRect(0,0,CW,CH);
+            screens[page.number].draw();
+            var c = document.createElement("canvas"), k = 3, w = 150, rs = renderScale;
+            c.width = w*k; c.height = w*k;
+            var g = c.getContext("2d");
+            g.imageSmoothingEnabled = true;
+            g.drawImage(canvas, (_e.x - w/2)*rs, (_e.y - w/2)*rs, w*rs, w*rs, 0, 0, w*k, w*k);
+            zoom.push({ img:c, label:_label });
+        };
+        e = start(8); step(e, 90);
+        force(e, "shoot"); until(e, function(){ return e.mode == "shoot"; }); step(e, 40);
+        grab(e, "刻み撃ち中(動き回る)");
+        force(e, "dash"); until(e, function(){ return e.mode == "aim" && e.count <= 8; });
+        grab(e, "突進の合図");
+        e = start(13, true); step(e, 60);
+        force(e, "echo"); until(e, function(){ return e.mode == "echo"; }); step(e, 120);
+        grab(e, "第二形態(過去の自分)");
+        var ec = enemies.filter(function(c){ return c.past && c.mode == "echo"; })[0];
+        if(ec) grab(ec, "過去の自分の分身");
+        scenes = zoom;
+    }else{
+        var e = start(8);
+        force(e, "shoot"); until(e, function(){ return e.mode == "shoot"; }); step(e, 70);
+        shot("刻み撃ち(W8)");
+        force(e, "dash"); until(e, function(){ return e.mode == "aim" && e.count <= 10; });
+        shot("残響突進の合図");
+        until(e, function(){ return e.mode == "dash"; }); step(e, 12);
+        shot("残響突進(残響が出番を待つ)");
+        //時ノ奔流(第一形態の山場)
+        e = start(13);
+        e.hp = e.maxHp*0.4; e.enraged = true; e.odDue = true;
+        while(e.mode != "idle") step(e, 1);
+        e.timer = 1;
+        until(e, function(){ return e.mode == "over" && e.ov && e.ov.ph == "cut"; });
+        for(var i=0; i<40; i++){ mainScreen.update(); screens[page.number].draw(); }
+        shot("時ノ奔流(カットイン)");
+        until(e, function(){ return e.ov && e.ov.ph == "accel" && e.ov.u > 0.8; }, 2000);
+        shot("時ノ奔流(加速)");
+        until(e, function(){ return e.ov && e.ov.ph == "judge" && e.ov.armed && e.ov.t > 60; }, 2000);
+        shot("時ノ奔流(針の裁き)");
+        until(e, function(){ return e.mode == "stagger"; }, 2000); step(e, 30);
+        shot("時ノ奔流(巻き戻る針)");
+        e = start(13);
+        force(e, "clock"); until(e, function(){ return e.mode == "clock" && e.ticks <= 6; });
+        step(e, 8);
+        shot("時計盤(W13)");
+        force(e, "phantom"); until(e, function(){ return e.mode == "hold"; }); step(e, 20);
+        shot("時止め(止まった針)");
+        e = start(13, true);
+        force(e, "echo"); until(e, function(){ return e.mode == "echo"; }); step(e, 200);
+        shot("過去の自分(第二形態)");
+        e.hp = e.maxHp*0.4; e.enraged = true; e.since12 = 99;
+        force(e, "twelve"); until(e, function(){ return e.tw && e.tw.hour >= 3; }, 2000); step(e, 6);
+        shot("十二時の決闘");
+        force(e, "waltz"); until(e, function(){ return e.mode == "waltz" && e.count < 140; });
+        shot("分身の輪舞");
+        force(e, "mirror"); until(e, function(){ return e.mode == "mirror" && e.count < 200; });
+        shot("鏡像");
+        force(e, "rewind"); until(e, function(){ return e.mode == "rstop"; });
+        //止まっている間に遠くへ逃げる(巻き戻される道すじが見えるように)
+        for(var i=0; i<30; i++){ MouseX = 860; MouseY = 470; mainScreen.hp = 99; mainScreen.update(); screens[page.number].draw(); }
+        shot("時戻し(巻き戻される先)");
+        for(var i=0; i<200 && !rival.pull; i++){ MouseX = 860; MouseY = 470; mainScreen.hp = 99; mainScreen.update(); screens[page.number].draw(); }
+        for(var i=0; i<14; i++){ mainScreen.hp = 99; mainScreen.update(); screens[page.number].draw(); }
+        shot("時戻し(巻き戻される)");
+        until(e, function(){ return e.mode == "twelve" || (e.final && e.mode == "aim" && e.count < 12); }, 3000);
+        until(e, function(){ return e.final && e.mode == "aim" && e.count < 12; }, 3000);
+        shot("十二時の決闘(最後の本物)");
+    }
+}catch(err){ scenes.push({ err:String(err.stack || err) }); }
+KEYS.forEach(function(k){ try{ if(kept[k] == null) localStorage.removeItem(k); else localStorage.setItem(k, kept[k]); }catch(e){} });
+//#only=番号：その場面だけを等倍で
+var only = /only=(\d+)/.exec(location.hash);
+if(only){ scenes = [scenes[+only[1]]]; sc = 1; closeUp = true; }
+//1枚に並べる(4列)
+var cols = closeUp ? (only ? 1 : 2) : 4, SW = closeUp && !only ? 450 : CW*sc, SHH = closeUp && !only ? 450 : CH*sc;
+sheet.width = SW*cols; sheet.height = SHH*Math.ceil(scenes.length/cols);
+SH.fillStyle = "#222"; SH.fillRect(0,0,sheet.width,sheet.height);
+scenes.forEach(function(s,i){
+    var x = (i % cols)*SW, y = Math.floor(i/cols)*SHH;
+    if(s.err){ SH.fillStyle = "#f66"; SH.font = "14px monospace"; s.err.split("\n").forEach(function(l,j){ SH.fillText(l, x + 8, y + 20 + j*16); }); return; }
+    SH.drawImage(s.img, 0, 0, s.img.width, s.img.height, x, y, SW, SHH);
+    SH.fillStyle = "rgba(0,0,0,0.6)"; SH.fillRect(x, y + SHH - 22, SW, 22);
+    SH.fillStyle = "#fff"; SH.font = "bold 14px sans-serif"; SH.fillText(s.label, x + 8, y + SHH - 6);
+});
+//ゲームのループを止める(撮るまでに場面が動かないように)
+page.change = function(){}; screens.forEach(function(s){ s.update = function(){}; s.draw = function(){}; });
+</script>
+</body></html>

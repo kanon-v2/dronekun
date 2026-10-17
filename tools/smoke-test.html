@@ -1285,19 +1285,33 @@ try{
     mainScreen.update();
     check("ライバルの登場：時が止まって名乗り、終わると戦いが始まる(ドローン君は少し無敵)", rvFrozen && rvSaid && rv.mode == "idle" && !rv.harmless && mainScreen.guard > 0 && errors.length == rvErr,
           "止まる" + rvFrozen + " せりふ" + rvSaid + " " + rv.mode + " 無敵" + mainScreen.guard);
-    var rvModes = {}, rvPlant = 0, rvRelease = 0;
-    for(var i=0; i<60*30 && rv; i++){
+    var rvModes = {}, rvPlant = 0, rvRelease = 0, rvTicks = 0, rvEchoDash = 0, rvOffBeat = 0, rvBeatShots = 0, rvRelBeat = true, rvNeedle = true;
+    for(var i=0; i<60*40 && rv; i++){
         bot(); mainScreen.hp = 99;
+        var n0 = enemyShots.length, m0 = rv.mode, tk0 = rv.ticks, held0 = enemyShots.filter(function(b){ return b.held; }).length;
         mainScreen.update(); if(i % 10 == 0) draw1();
         rv.hp = rv.maxHp; rv.hpMark = rv.hp;
         rvModes[rv.mode + (rv.mode == "warp" ? "-" + rv.next : "")] = true;
         var held = enemyShots.filter(function(b){ return b.held; }).length;
         rvPlant = Math.max(rvPlant, held);
-        if(rv.mode == "hold" && rv.count == 1) rvRelease = held;
+        //刻み撃ち・時計盤は拍の上でだけ撃つ
+        if((m0 == "shoot" || m0 == "clock") && rv.mode == m0 && enemyShots.length > n0){ rvBeatShots++; if(!rv.onBeat) rvOffBeat++; }
+        if(m0 == "clock" && rv.mode == "clock" && rv.ticks < tk0) rvTicks++;
+        //止めた針は拍の上で動き出す
+        if(m0 == "hold" && held < held0 && !rv.onBeat) rvRelBeat = false;
+        //残響突進：本物のあとを、残響が同じ道で突っ込む
+        rvEchoDash = Math.max(rvEchoDash, enemies.filter(function(e){ return e.echo && e.mode == "dash"; }).length);
+        if(enemyShots.slice(n0).some(function(b){ return b.kind != "chrono"; })) rvNeedle = false;   //クロノの撃つ弾はすべて針
     }
-    check("ライバル：ワープで回り込み、狙い撃ち・突進・幻影包囲(止まった弾を置き、時が動くと飛ぶ)を使う。いる間は雑魚敵が出ない",
-          rvModes.shoot && rvModes.dash && rvModes["warp-blink"] && rvModes.hold && rvPlant >= RIVAL_PHANTOM_SHOTS*RIVAL_PHANTOM_N[1] && mainScreen.spawned == rvAt && rival.musicOn && errors.length == rvErr,
-          Object.keys(rvModes).join(",") + " 置いた弾" + rvPlant + " 雑魚" + rvAt + "→" + mainScreen.spawned);
+    check("ライバル：ワープで回り込み、刻み撃ち・残響突進(残響が同じ道を追う)・時計盤(拍ごとに長針が進んで撃つ)・時止め(止まった針を置き、時が動くと飛ぶ)を使う。いる間は雑魚敵が出ない",
+          rvModes.shoot && rvModes.dash && rvModes.clock && rvModes["warp-blink"] && rvModes.hold && rvPlant >= RIVAL_PHANTOM_SHOTS*RIVAL_PHANTOM_N[1] &&
+          rvTicks >= RIVAL_CLOCK_TICKS[1] && rvEchoDash >= RIVAL_ECHO_N[1] && rvNeedle && mainScreen.spawned == rvAt && rival.musicOn && errors.length == rvErr,
+          Object.keys(rvModes).join(",") + " 置いた弾" + rvPlant + " 時計盤" + rvTicks + "目盛り 残響" + rvEchoDash + " 針" + rvNeedle + " 雑魚" + rvAt + "→" + mainScreen.spawned);
+    // 拍：曲の時刻から拍を読む(Suno の曲は小節の頭の表から)。撃つ・止めた針が動き出すのは拍の上
+    var rvSong = rival.songBeat(RIVAL_SONG_BARS[10]) == 40 && Math.abs(rival.songBeat((RIVAL_SONG_BARS[10] + RIVAL_SONG_BARS[11])/2) - 42) < 1e-9 &&
+                 [149.8790, 183.0313].every(function(t){ var b = rival.songBeat(t); return Math.abs(b - Math.round(b/4)*4) < 0.05; });   //music/sunoRival.js の loopStart・loopEnd
+    check("ライバル：曲の拍に合わせて撃ち、止めた針は拍の上で動き出す(Suno の曲のくり返しは小節の頭でつながる)", rvBeatShots > 10 && rvOffBeat == 0 && rvRelBeat && rvSong,
+          "拍で撃った" + rvBeatShots + " 拍の外" + rvOffBeat + " 動き出し" + rvRelBeat + " 曲の拍" + rvSong);
     // 突進をジャスト・カウンターで弾く・削られすぎるとワープでよける
     rv.mode = "dash"; rv.count = 10; rv.aimX = 1; rv.aimY = 0; rv.x = drone.X - 60; rv.y = drone.Y; rv.vx = RIVAL_DASH_SPEED; rv.vy = 0;
     var rvHp = rv.hp, rvCan = mainScreen.canCounter(rv);
@@ -1318,8 +1332,9 @@ try{
     var rv2 = rv.form == 2 && rv.mode == "idle" && rv.maxHp == Math.round(rvMax1*RIVAL2_HP_MUL) && rv.hp == rv.maxHp && rv.sayText == RIVAL2_LINES[0];
     check("ライバルの第二形態：WAVE8から、第一形態を倒すと時が止まって目覚め、体力が満ちる", rvAwake && rv2 && errors.length == rvErr,
           "目覚め" + rvAwake + " 第二形態" + rv2 + " 体力" + Math.round(rv.hp) + "/" + rv.maxHp + "(第一形態" + rvMax1 + ")");
-    var rvModes2 = {}, rvClones = 0, rvCloneKinds = {}, rvClonePack = null, rvCloneParry = false, rvRewHeld = 0, rvRewBack = 0;
-    for(var i=0; i<60*50; i++){
+    var rvModes2 = {}, rvClones = 0, rvCloneKinds = {}, rvClonePack = null, rvCloneParry = false, rvRewHeld = 0, rvRewBack = 0, rvPast = 0, rvPastShots = 0, rvMirror = 0, rvMirrorN = 0, rvPulls = [];
+    rival.lastPull = null;
+    for(var i=0; i<60*60; i++){
         bot(); mainScreen.hp = 99;
         mainScreen.update(); if(i % 10 == 0) draw1();
         rv.hp = rv.maxHp; rv.hpMark = rv.hp;
@@ -1330,7 +1345,21 @@ try{
         //時戻し：止まった弾の数と、戻ってくる弾の数(放った向きの逆へ動く)
         if(rv.mode == "rstop") rvRewHeld = Math.max(rvRewHeld, enemyShots.filter(function(b){ return b.rew == rv.id && b.held == rv.id; }).length);
         rvRewBack = Math.max(rvRewBack, enemyShots.filter(function(b){ return b.rvx != null && !b.held && b.vx*b.rvx + b.vy*b.rvy < 0; }).length);
-        //突進している分身を、ジャスト・カウンターで弾くと砕ける
+        //過去の自分：分身が本物の通った道をたどり、同じ向きへ撃つ
+        cl.forEach(function(c){
+            if(c.past && c.mode == "echo" && c.hi > 0){
+                var h = c.hist[c.hi - 1];
+                if(h && Math.abs(c.x - h.x) < 0.01 && Math.abs(c.y - h.y) < 0.01) rvPast++;
+                if(h && h.f) rvPastShots++;
+            }
+        });
+        //鏡像：本物と分身が、ドローン君を画面のまんなかで映した場所の近くにいる
+        enemies.filter(function(c){ return c.mode == "mirror" && (c.type == "chrono" || c.clone) && RIVAL2_MIRROR_T - c.count > 40; }).forEach(function(c){
+            var p = rival.mirrorAt(c.slot || 0); rvMirrorN++; if(Math.hypot(c.x - p.x, c.y - p.y) < 40) rvMirror++;
+        });
+        //時戻し：ドローン君が、最初の輪を放ったときの場所まで巻き戻される
+        if(rival.lastPull){ rvPulls.push(Math.hypot(rival.lastPull.x - rival.lastPull.to.x, rival.lastPull.y - rival.lastPull.to.y)); rival.lastPull = null; }
+        //突進している分身(残響)を、ジャスト・カウンターで弾くと砕ける
         var cd = cl.filter(function(c){ return c.mode == "dash"; })[0];
         if(cd && !rvCloneParry){
             rvClonePack = { e:[] }; coop.packEnemy(cd, rvClonePack);
@@ -1338,12 +1367,34 @@ try{
             rvCloneParry = cd.dead;
         }
     }
-    check("ライバルの第二形態：分身の陣・分身突進・分身の輪舞・幻影包囲(分身が残る)で、本物と分身が一緒に戦う。突進する分身は弾くと砕ける",
-          rvModes2.split && rvModes2.aim && rvModes2.waltz && rvModes2.hold && rvClones >= RIVAL2_CLONES[1] && rvCloneKinds.split && rvCloneKinds.dash && rvCloneKinds.waltz && rvCloneKinds.stay && rvCloneParry && errors.length == rvErr,
-          "本物" + Object.keys(rvModes2).join(",") + " 分身" + rvClones + "体 " + Object.keys(rvCloneKinds).join(",") + " 弾く" + rvCloneParry);
+    check("ライバルの第二形態：過去の自分(分身が通った道と撃った弾をくり返す)・鏡像(ドローン君を映した場所から撃つ)・分身の輪舞・時止め(分身が残る)で、本物と分身が一緒に戦う。突進する残響は弾くと砕ける",
+          rvModes2.echo && rvModes2.mirror && rvModes2.aim && rvModes2.waltz && rvModes2.hold && rvClones >= RIVAL2_CLONES[1] && rvCloneKinds.echo && rvCloneKinds.mirror && rvCloneKinds.dash && rvCloneKinds.waltz && rvCloneKinds.stay &&
+          rvPast > 100 && rvPastShots > 3 && rvMirrorN > 100 && rvMirror > rvMirrorN*0.8 && rvCloneParry && errors.length == rvErr,
+          "本物" + Object.keys(rvModes2).join(",") + " 分身" + rvClones + "体 " + Object.keys(rvCloneKinds).join(",") + " 道をたどる" + rvPast + " くり返して撃つ" + rvPastShots + " 鏡像" + rvMirror + "/" + rvMirrorN + " 弾く" + rvCloneParry);
+    check("ライバルの時戻し：弾が戻るとき、ドローン君も最初の輪を放ったときの場所まで巻き戻される", rvPulls.length > 0 && rvPulls.every(function(d){ return d < 1; }) && !rival.pull,
+          "巻き戻し" + rvPulls.length + "回 ずれ" + rvPulls.map(function(d){ return Math.round(d); }).join(","));
     check("ライバルの第二形態：時戻し(弾の輪を放って時を止め、逆向きに戻す)を使う", rvModes2.rewind && rvModes2.rstop && rvRewHeld >= RIVAL2_REWIND_N[1] && rvRewBack >= RIVAL2_REWIND_N[1] && errors.length == rvErr,
           "止まった弾" + rvRewHeld + " 戻る弾" + rvRewBack);
     check("ライバルの分身：協力プレイで種類・動きを送れる", rvClonePack && COOP_TYPES[rvClonePack.e[1]] == "chronoClone" && COOP_MODES[rvClonePack.e[6] & 31] == "dash", rvClonePack ? JSON.stringify(rvClonePack.e) : "なし");
+    // 十二時の決闘：第二形態で本気になると、時刻の位置に分身が並び、針が進むたびに1体ずつ突っ込み、最後に本物が突っ込む。本物を弾き返すと大きなダメージ
+    while(rv.mode != "idle") mainScreen.update();
+    enemies.forEach(function(e){ if(e.clone) e.dead = true; });
+    enemyShots = [];
+    rv.hp = rv.maxHp*RIVAL_RAGE_HP*0.9; rv.hpMark = rv.hp; rv.timer = 1;
+    var rv12 = { hours:{}, dashed:{}, final:false, at:0 }, rv12F = 0;
+    while(!(rv.final && rv.mode == "dash") && rv12F < 60*30){
+        bot(); mainScreen.hp = 99; mainScreen.guard = 99;
+        mainScreen.update(); rv12F++; if(rv12F % 10 == 0) draw1();
+        enemies.forEach(function(e){ if(e.hour){ e.hp = e.maxHp; rv12.hours[e.hour] = true; if(e.mode == "dash") rv12.dashed[e.hour] = true; } });   //分身は撃たれても消えないようにして数える
+    }
+    var rv12Hp = rv.hp;
+    rv.x = drone.X - 60; rv.y = drone.Y; rv.aimX = 1; rv.aimY = 0;
+    mainScreen.counter(rv);
+    var rv12Big = rv.mode == "stagger" && rv12Hp - rv.hp >= rv.maxHp*RIVAL2_TWELVE_DMG*0.99 && !rv.final;
+    for(var i=0; i<RIVAL2_TWELVE_STAGGER + RIVAL2_FADE_T + 5; i++) mainScreen.update();
+    check("ライバルの第二形態：本気になると十二時の決闘(一時～十一時の分身が順に突っ込み、最後に十二時の本物。弾き返すと大きなダメージ)",
+          Object.keys(rv12.hours).length == 11 && Object.keys(rv12.dashed).length == 11 && rv12Big && !enemies.some(function(e){ return e.hour && !e.dead; }) && errors.length == rvErr,
+          "並んだ" + Object.keys(rv12.hours).length + " 突っ込んだ" + Object.keys(rv12.dashed).length + " 弾く" + rv12Big + " " + rv12F + "コマ");
     // 撃退：第二形態の体力が0になると去る(報酬カプセル・パーツ)。分身も消える。去るとWAVEクリア
     while(rv.mode == "warp" || rv.mode == "awaken") mainScreen.update();
     var rvScore = game.score;
@@ -1361,6 +1412,42 @@ try{
     while(rv3.mode == "warp") mainScreen.update();
     mainScreen.hitEnemy(rv3, 99999, "gun");
     check("ライバル：WAVE3は第二形態がなく、倒すとそのまま去る", rv3.mode == "flee" && (rv3.form || 1) == 1 && errors.length == rvErr, rv3.mode);
+    // 時ノ奔流(山場)：第一形態で本気になると、カットイン(時が止まる) → 加速(針が速くなり、撃つ間が細かくなる) → 針の裁き(光の針がなぎ払う) → 巻き戻って疲れる
+    setup(8, { gun:3 }, ["gun",null,null], 6);
+    page.change(1);
+    var od = rival.make(); enemies.push(od);
+    for(var i=0; i<RIVAL_INTRO_T + 2; i++) mainScreen.update();
+    while(od.mode != "idle") mainScreen.update();
+    od.hp = od.maxHp*RIVAL_RAGE_HP*0.9; od.hpMark = od.hp; od.timer = 1;
+    var odF = 0, odCut = false, odStill = true, odDx = 0, odK = 1, odDiv = {}, odShots = 0, odJudge = false, odHit = false, odBack = 0;
+    while(!(od.mode == "over" && od.ov && od.ov.ph == "cut") && odF < 600){ bot(); mainScreen.hp = 99; mainScreen.update(); odF++; od.hp = od.maxHp*RIVAL_RAGE_HP*0.9; }
+    odCut = od.mode == "over" && special.holdFire();
+    //カットインの間は時が止まる(ドローン君は動かない)
+    MouseX = drone.X + 200; odDx = drone.X;
+    for(var i=0; i<RIVAL_OD_CUT - 2; i++){ mainScreen.update(); if(i % 15 == 0) draw1(); if(drone.X != odDx) odStill = false; }
+    while(od.ov && od.ov.ph != "judge" && odF < 3000){
+        var n0 = enemyShots.length;
+        bot(); mainScreen.hp = 99; mainScreen.guard = 99; mainScreen.update(); odF++; od.hp = od.maxHp*0.4; if(odF % 10 == 0) draw1();
+        odK = Math.max(odK, rival.timeK);
+        if(enemyShots.length > n0){ odShots++; odDiv[od.ov && od.ov.u < 1/3 ? 1 : od.ov && od.ov.u < 2/3 ? 2 : 4] = true; }
+    }
+    //針の裁き：光の針の通り道にドローン君を置くと被弾する(はじめの1拍は予告で当たらない)
+    while(od.ov && od.ov.ph == "judge" && odF < 4000){
+        bot(); mainScreen.hp = 99; mainScreen.update(); odF++; od.hp = od.maxHp*0.4; if(odF % 10 == 0) draw1();
+        odJudge = true;
+        if(od.ov && od.ov.armed && !odHit){
+            var hp0 = mainScreen.hp; mainScreen.guard = 0;
+            var a = od.ov.m + od.ov.dir*0.2;
+            drone.X = od.x + Math.cos(a)*150; drone.Y = od.y + Math.sin(a)*150;
+            for(var j=0; j<60 && !odHit && od.ov && od.ov.ph == "judge"; j++){ MouseX = drone.X; MouseY = drone.Y; mainScreen.update(); odF++; if(mainScreen.hp < hp0) odHit = true; }
+        }
+        mainScreen.guard = 99;
+    }
+    odBack = enemyShots.filter(function(b){ return b.die > 0; }).length;     //加速で撃った針が、画面のふちから戻ってくる
+    var odTired = od.mode == "stagger" && od.count > RIVAL_OD_TIRED - 10 && rival.timeK == 1 && !od.odDue && (od.odDone & 1);
+    check("ライバルの時ノ奔流：本気になるとカットイン(時が止まる) → 加速(針が速くなり、撃つ間が拍・半拍・16分と細かくなる) → 光の針がなぎ払う → 針が巻き戻って疲れる",
+          odCut && odStill && odK >= RIVAL_OD_KMAX[1]*0.98 && odDiv[1] && odDiv[2] && odDiv[4] && odShots > 20 && odJudge && odHit && odBack >= odShots && odTired && errors.length == rvErr,
+          "カットイン" + odCut + "/" + odStill + " 時の速さ" + odK.toFixed(2) + " 撃つ間" + Object.keys(odDiv).join(",") + " 撃った" + odShots + " 裁き" + odJudge + " 被弾" + odHit + " 戻る針" + odBack + " 疲れる" + odTired + " " + odF + "コマ");
     // WAVE13からの第二形態は、近づいたドローン君の弾を1秒に RIVAL2_INTERCEPT_PER_SEC 発まで撃ち落とす(WAVE8はしない。ワープ中もしない)
     var rv8Int = !!rv.intercept;
     setup(13, { gun:3 }, ["gun",null,null], 6);
@@ -1752,13 +1839,13 @@ try{
     tap(bossDebug.tools()[8]);    //最終局面「Suno」(録音の曲。music/triumph.js を読み込み始める。finaleTriumph.js)
     var triumphOn = bgmTrial.trackFor("kai2") == "triumph" && bgmTrial.finaleName() == "Suno" && TRACKS.triumph && typeof triumph.finish == "function";
     tap(bossDebug.tools()[8]);    //今の曲に戻る
-    tap(bossDebug.tools()[9]);    //戦闘曲「Suno」(録音の曲。music/sunoHeroic.js・sunoBattle.js・sunoBoss.js を読み込み始める)
+    tap(bossDebug.tools()[9]);    //戦闘曲「Suno」(録音の曲。music/sunoHeroic.js・sunoBattle.js・sunoBoss.js・sunoRival.js を読み込み始める)
     var sunoOn = bgmTrial.trackFor("heroic") == "sunoHeroic" && bgmTrial.trackFor("battle") == "sunoBattle" && bgmTrial.trackFor("boss") == "sunoBoss" &&
-                 bgmTrial.trackFor("rival") == "rival" && bgmTrial.fightName() == "Suno" && bgmTrial.fightOf("sunoBoss") == "boss" &&
-                 TRACKS.sunoHeroic && TRACKS.sunoBattle && TRACKS.sunoBoss && sunoHeroic.loading && sunoBattle.loading && sunoBoss.loading;
+                 bgmTrial.trackFor("rival") == "sunoRival" && bgmTrial.fightName() == "Suno" && bgmTrial.fightOf("sunoBoss") == "boss" && bgmTrial.fightOf("sunoRival") == "rival" &&
+                 TRACKS.sunoHeroic && TRACKS.sunoBattle && TRACKS.sunoBoss && TRACKS.sunoRival && sunoHeroic.loading && sunoBattle.loading && sunoBoss.loading && sunoRival.loading;
     tap(bossDebug.tools()[9]);    //今の曲に戻る
     sound.ctx = keepSnd.ctx; sound.bgmGain = keepSnd.bgmGain; sound.noiseBuf = keepSnd.noiseBuf; sound.track = null; sound.trackName = null;
-    check("BGMの試し聞き：案を順に選べ、どの案・原点回帰でも曲を鳴らせる。最終局面は Lyria・Suno、序盤・中盤の戦闘曲・ボス戦の曲は Suno の曲も選べる",
+    check("BGMの試し聞き：案を順に選べ、どの案・原点回帰でも曲を鳴らせる。最終局面は Lyria・Suno、序盤・中盤の戦闘曲・ボス戦・ライバル戦の曲は Suno の曲も選べる",
           bgmNames.join(",") == "orig,full,d,f,h,i" && bgmTrial.v() == "orig" && finaleOn && monarchOn && triumphOn && sunoOn && !bgmTrial.finale && !bgmTrial.fight &&
           errors.length == bgmErr,
           bgmNames.join(",") + " " + errors.slice(bgmErr).join(" "));

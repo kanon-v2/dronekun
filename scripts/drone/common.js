@@ -1265,8 +1265,8 @@ var drone = {
 
         this.preX = this.X;
         this.preY = this.Y;
-        //回避ダッシュの間は、ポインタへ一気に飛ぶ(dodge.js)
-        var dashing = page.number == 1 && dodge.steer(this);
+        //回避ダッシュの間は、ポインタへ一気に飛ぶ(dodge.js)。ライバルの時戻しの間は、来た道を巻き戻される(rival.js)
+        var dashing = page.number == 1 && (dodge.steer(this) || rival.steer(this));
         //試作の場(風・鏡・クモの糸)が、目標と追従の遅れを変える(shotLab.js)
         if(!dashing){
             if(page.number == 1){

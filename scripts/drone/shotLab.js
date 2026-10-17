@@ -1265,6 +1265,7 @@ var shotLab = {
 
     //動き(mainScreen.updateShots から、位置を進める前に呼ぶ)。true なら弾を消す
     step:function(b){
+        if(rival.stepShot(b)) return true;                  //ライバルの針の弾(rival.js)
         if(b.t == null || coop.isGuest()) return false;     //ふつうの弾・ゲストの画面
         b.t++;
         var sp = Math.hypot(b.vx,b.vy);
@@ -1421,6 +1422,7 @@ var shotLab = {
 
     //絵(mainScreen.draw から)。true なら描いた
     draw:function(b){
+        if(rival.drawShot(b)) return true;                  //ライバルの針の弾(rival.js)
         var r = b.r || 5, ang = Math.atan2(b.vy,b.vx), sp = Math.hypot(b.vx,b.vy);
         var now = b.t != null ? b.t : Math.floor(performance.now()/16);
         switch(b.kind){
