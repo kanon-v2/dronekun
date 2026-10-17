@@ -46,7 +46,9 @@ const TR_LAST_DMG   = 0.15;     //最後の突進を弾いたが、倒しきれ�
 const TR_PARRY_DMG  = [0.1, 0.16];  //最高潮の頭で弾き返したときのダメージ(JUST・PERFECT)
 const TR_DAWN_POW   = 1.6;      //夜明けから、改へのダメージを何倍にするか
 const TR_JUST_SEC   = 0.42;     //着く前のこの秒数の間に衝撃波を出すと弾き返す(着く所の輪が水色に光る間)
-const TR_PERFECT_SEC = 0.14;    //そのうちこの秒数以内なら PERFECT
+const TR_LATE_SEC   = 0.12;     //着いたあとも、この秒数のうちに衝撃波を出せば弾き返す(曲の拍に合わせて押すと少し遅れやすいので)
+const TR_LATE_PERFECT = 0.06;   //着いたあとのうち、この秒数以内なら PERFECT
+const TR_PERFECT_SEC = 0.2;     //そのうちこの秒数以内なら PERFECT(縮む輪が縮みきる TR_RING_LEAD 秒前を挟んで、前 0.07秒・後 0.13秒)
 const TR_JUST_NEAR  = 70;       //弾き返せる、着く所からの距離(着く所の輪の半径に足す px)
 const TR_RAM_R      = 40;       //着いたときに当たる範囲の半径(px)
 //迫る(沈む・最後の突進のあと)：改の姿は見せない。タメ(奥で光をためる) → 予兆(狙いが止まり、拍ごとに奥から着く所へ光の脈) →
@@ -59,6 +61,7 @@ const TR_MORPH_SEC  = 1.1;      //奥へ飛び去った改の姿が、タメの�
 const TR_IMPACT_T   = 30;       //着いた衝撃(閃光・輪・放射の筋)の長さ(フレーム)
 const TR_MISS_STOP  = 8;        //弾き返せなかったときも、着いた瞬間に止まる(フレーム)
 const TR_RETICLE    = 130;      //照準のかぎ括弧が、狙いが止まったときに着く所の輪より広い分(px。拍ごとに一段ずつ締まる)
+const TR_RING_LEAD  = 0.13;     //縮む輪が着く所の輪へ重なるのを、着く瞬間よりこの秒数だけ早める(輪に合わせて押すと少し遅れるので、その分。遅れても PERFECT の間に入るように)
 const TR_SNAP_SEC   = 0.08;     //照準が拍で締まる・回る動きの長さ(秒)
 const TR_FLARE_W    = 520;      //奥の光の横に伸びる光の筋の長さ(片側 px。ためるほど伸びる)
 const TR_CHARGE_POW = 1.5;      //ためる進み方(大きいほど、はじめはゆっくりで、動き出す前に一気に強まる)
@@ -68,6 +71,8 @@ const TR_INVERT_F   = 2;        //着いた瞬間、画面の色を反転させ�
 const TR_AFTER_SCALE = 1.6;
 //戦闘中の動き(羽ばたかない)：滑空。速く動くほど翼を後ろへ引いて風に乗り(TR_GLIDE_*)、止まるときは翼を前へ広げてブレーキ(TR_BRAKE_*)。
 //曲がる・速さが変わるときは、ばねで行きすぎて戻りながら体を傾ける(TR_ROLL)。ゆっくり上下にうねり(TR_SOAR)、加速で体が遅れて沈む(TR_DIP)。
+//速く滑ると沈み、止まると浮き上がる(TR_SWOOP)。上がる・下がるときは、翼が風を受けて先ほど遅れてしなる(TR_FLEX)。
+//左右に動くときは、進む向きへ体を回す(TR_TURN)。翼は縦の軸のまわりに回して遠近をつけ、進む側の翼は奥へ、逆の翼は手前へ来る。
 //顔はいつもドローン君をにらむ。撃つ・攻撃するたびに反動でのけぞる
 const TR_GLIDE_SPEED = 4;       //この速さ(px/フレーム)で、翼をいちばん後ろへ引く
 const TR_GLIDE_ROT  = 0.3;      //翼を後ろへ引く角度(ラジアン)
@@ -77,6 +82,15 @@ const TR_ROLL       = [0.05, 0.6, 0.4];  //体の傾き：動く速さに対し�
 const TR_ROLL_SPRING = [0.06, 0.82];    //傾きのばね(引く強さ・勢いの残り。行きすぎて戻る)
 const TR_SOAR       = [4, 0.022];   //ゆっくりした上下のうねり(px・速さ(ラジアン/フレーム))
 const TR_DIP        = 10;       //縦の加速で体が遅れて沈む・浮く大きさ(px/(px/フレーム²))
+const TR_SWOOP      = [3, 12];  //速さと高さのやりとり：速く滑るほど沈み、止まると浮き上がる(px/(px/フレーム)・上限 px)
+const TR_SWOOP_SPRING = [0.05, 0.86];   //沈み・浮きのばね(引く強さ・勢いの残り。止まったときに少し浮きすぎて戻る)
+const TR_FLEX       = [0.07, 0.28];  //翼のしなり：見た目の縦の速さに対して(ラジアン/(px/フレーム))・上限。下がるときは風で先が持ち上がり、上がるときは先が垂れる
+const TR_FLEX_SPRING = [0.1, 0.8];      //しなりのばね(遅れてついて、少し行きすぎて戻る)
+const TR_FLEX_TIP   = 1.6;      //ひじから先は、つけ根の何倍しなるか(先ほど大きく曲がる)
+const TR_TURN       = [0.13, 1];  //左右に動くとき、進む向きへ体を回す角度：横の速さに対して(ラジアン/(px/フレーム))・上限(ラジアン)
+const TR_TURN_SPRING = [0.07, 0.8];     //回るばね(遅れてついて、少し行きすぎて戻る)
+const TR_TURN_BODY  = 0.7;      //体(顔)は翼の回りの何割だけ進む向きへ向くか(残りはドローン君をにらむ)
+const TR_TURN_DEPTH = 360;      //翼を回したときの遠近(小さいほど、奥の翼は小さく、手前の翼は大きく見える。改の大きさで px)
 const TR_GAZE       = [40, 0.6];    //ドローン君をにらむ向き：横の向きの上限(度)・見上げ／見下ろしの上限
 const TR_KICK       = [7, 12];  //反動でのけぞる大きさ(px。撃ったとき・攻撃を出したとき)     //着いたあとの改の大きさ(ふだんの何倍。だんだん戻る)
 const TR_SAFE       = 45;       //着いたあと、大きな改に触れても被弾しない時間(フレーム)
@@ -319,6 +333,12 @@ var finaleTri = {
         var p = this.pos();
         if(p < 0) return false;
         if(_e.trR0 == null){ _e.trR0 = _e.r; _e.trScale = 1; _e.trPulse = 0; _e.trCycle = 0; _e.trFlap = _e.trFlap || 0; _e.trFold = 0; _e.trFire = 0; }
+        //着いた瞬間までに衝撃波が出ていなければ、TR_LATE_SEC だけ待つ(その間は区切りを進めず、改は着く所で止まったまま)。
+        //最後の突進では、着いた瞬間に曲が頭へ戻ることがあるので、戻ったときも待つ
+        if(_e.trApproach && _e.trBlastP == null && !this.finished){
+            if(_e.trLate == null && (p >= _e.trHit || p < _e.trHit - 5)) _e.trLate = 0;
+            if(_e.trLate != null && ++_e.trLate <= TR_LATE_SEC*60) return true;
+        }
         var sec = this.section(p);
         var bf = this.beatAt(p), beat = Math.floor(bf + 1e-6), bar = Math.floor(beat/4);
         //曲がくり返して戻った：あとで出す予定のものは捨てる
@@ -590,8 +610,7 @@ var finaleTri = {
         if(toGo > TR_TELL_BEATS){
             _e.trTx += (aimAt.X - _e.trTx)*0.08; _e.trTy += (aimAt.Y - _e.trTy)*0.08;
         }else if(!_e.trLocked){
-            _e.trLocked = true;
-            sound.play("tell");
+            _e.trLocked = true;     //合図の音は鳴らさない(拍を数える音がうるさいので。合図は見た目だけ)
         }
         //奥(着く所の向こう)で光をためる。はじめは、飛び去った改の姿が光に溶けながら、その位置へなめらかに移る
         var P = shotLab.depthAt(_e.trTx, _e.trTy, 1);
@@ -605,7 +624,6 @@ var finaleTri = {
         if(_newBeat && _e.trLocked && toGo > TR_HOLD_BEATS){
             _e.trPulses.push({ t0:_p, n:TR_TELL_BEATS - toGo + 1 });
             fx.flare(_e.x, _e.y, 40, TR_FIRE, 8);
-            sound.play("tell");
         }
         //ため：動き出す(最後のタメ)まで、だんだん強くなる(はじめはゆっくり、動き出す前に一気に)
         var hold = toGo <= TR_HOLD_BEATS;
@@ -669,7 +687,9 @@ var finaleTri = {
         var e = this.boss();
         if(!e || !e.trApproach || e.trBlastP != null) return;
         var p = this.pos(), left = e.trHit - p;
-        if(left < 0 || left > TR_JUST_SEC) return;
+        //着いたあとに待っている間(step の trLate)：遅れた分を、待ったコマ数から決める(曲が頭へ戻っていても数えられるように)
+        if(e.trLate != null){ left = -e.trLate/60; p = e.trHit - left; }
+        if(left < -TR_LATE_SEC || left > TR_JUST_SEC) return;
         e.trBlastP = p;
         var near = Math.hypot(drone.X - e.trTx, drone.Y - e.trTy);
         if(e.trMode == "last" && near < TR_RAM_R + TR_JUST_NEAR && e.hp <= e.maxHp*TR_FINISH + 1){
@@ -692,10 +712,11 @@ var finaleTri = {
         battleBg.ripple(_e.x, _e.y, 70, 12, 110, TR_FIRE);
         battleBg.ripple(_e.x, _e.y, 50, 10, 90, TR_GLOW);
         fx.ring(_e.x, _e.y, 320, TR_GLOW, 30, 10);
-        var ok = (left >= 0 && left <= TR_JUST_SEC && near < TR_RAM_R + TR_JUST_NEAR) || (_last && this.finished);
+        var ok = (_e.trBlastP != null && left >= -TR_LATE_SEC && left <= TR_JUST_SEC && near < TR_RAM_R + TR_JUST_NEAR) || (_last && this.finished);
         _e.trApproach = false;
+        _e.trLate = null;
         if(ok){
-            var perfect = left <= TR_PERFECT_SEC;
+            var perfect = left <= TR_PERFECT_SEC && left >= -TR_LATE_PERFECT;
             this.result = perfect ? "perfect" : "just";
             _e.look.setFace("hurt", 50);
             popup(_e.x, _e.y - 70, perfect ? "PERFECT" : "JUST", "rgb(" + JUST_COLOR + ")", true);
@@ -1019,14 +1040,17 @@ var finaleTri = {
             for(var w=0; w<TR_WINGS.length; w++){
                 var W = TR_WINGS[w];
                 //骨をつけ根のまわりに回す(右の翼でマイナスが持ち上がる向き)
-                var glide = _e.trGlide || 0, brake = _e.trBrake || 0;
-                var rot = (-0.28*flap + 0.95*fold + Math.sin(t*0.045 + w)*0.05)*(w == 0 ? 0.6 : 1) + (-TR_GLIDE_ROT*glide + TR_BRAKE_ROT*brake)*(1 - fold), sc = 1 - 0.25*fold;
+                var glide = _e.trGlide || 0, brake = _e.trBrake || 0, flex = (_e.trFlex || 0)*(1 - fold)*(w == 0 ? 0.6 : 1);
+                var rot = (-0.28*flap + 0.95*fold + Math.sin(t*0.045 + w)*0.05)*(w == 0 ? 0.6 : 1) + (-TR_GLIDE_ROT*glide + TR_BRAKE_ROT*brake)*(1 - fold) + flex, sc = 1 - 0.25*fold;
                 var c = Math.cos(rot), n = Math.sin(rot);
                 var turn = function(_p){
                     var dx = (_p[0] - W.root[0])*sc, dy = (_p[1] - W.root[1])*sc;
                     return [W.root[0] + dx*c - dy*n, W.root[1] + dx*n + dy*c];
                 };
                 var r = W.root, e2 = turn(W.elbow), tp = turn(W.tip);
+                //ひじから先はさらにしなる(風を受けて先ほど曲がる)
+                var fb = flex*(TR_FLEX_TIP - 1), fc = Math.cos(fb), fn = Math.sin(fb), tx = tp[0] - e2[0], ty = tp[1] - e2[1];
+                tp = [e2[0] + tx*fc - ty*fn, e2[1] + tx*fn + ty*fc];
                 out.bone.push({ s:s, w:w, pts:[[s*r[0], r[1]], [s*e2[0], e2[1]], [s*tp[0], tp[1]]] });
                 //骨の上の位置(つけ根 0 → 先 1。ひじで折れる線をなめらかに)
                 var on = function(_u){
@@ -1052,7 +1076,27 @@ var finaleTri = {
                 }
             }
         }
+        this.turnWings(out, _e.trTurn || 0);
         return out;
+    },
+    //翼を縦の軸のまわりに _th(ラジアン。正で進む向きが右)だけ回し、遠近をつける。右へ回ると右の翼が奥へ(短く小さく)、左の翼が手前へ
+    turnWings:function(_G,_th){
+        if(Math.abs(_th) < 0.002) return;
+        var c = Math.cos(_th), n = Math.sin(_th);
+        var proj = function(_x,_y){ var f = TR_TURN_DEPTH/(TR_TURN_DEPTH + _x*n); return [_x*c*f, _y*f, f]; };
+        var feather = function(_f){
+            var b = proj(_f.x, _f.y), t = proj(_f.x + Math.cos(_f.a)*_f.len, _f.y + Math.sin(_f.a)*_f.len);
+            _f.x = b[0]; _f.y = b[1];
+            _f.a = Math.atan2(t[1] - b[1], t[0] - b[0]);
+            _f.len = Math.hypot(t[0] - b[0], t[1] - b[1]);
+            _f.w *= b[2];
+        };
+        for(var i=0; i<_G.f.length; i++) feather(_G.f[i]);
+        for(var i=0; i<_G.cov.length; i++) feather(_G.cov[i]);
+        for(var i=0; i<_G.bone.length; i++){
+            var B = _G.bone[i].pts;
+            for(var j=0; j<B.length; j++){ var q = proj(B[j][0], B[j][1]); B[j] = [q[0], q[1]]; }
+        }
     },
     //改の中心からの位置(大きさを掛ける前)を、画面の位置へ
     toWorld:function(_e,_x,_y){
@@ -1090,12 +1134,15 @@ var finaleTri = {
         ctx.save();
         if(!deep && _e.form == 2){
             var kick = _e.trKick || 0, soar = Math.sin((_e.t || 0)*TR_SOAR[1])*TR_SOAR[0];
-            ctx.translate(-Math.cos(_e.trKickA || 0)*kick*TR_KICK[1], -Math.sin(_e.trKickA || 0)*kick*TR_KICK[1] + (soar + (_e.trDip || 0))*s);
+            ctx.translate(-Math.cos(_e.trKickA || 0)*kick*TR_KICK[1], -Math.sin(_e.trKickA || 0)*kick*TR_KICK[1] + (soar + (_e.trDip || 0) + (_e.trLift || 0))*s);
         }
         if(_e.form == 2) ctx.rotate(_e.trRoll || 0);
         ctx.scale(s,s);
         this.drawWings(_e, _body);
+        ctx.save();
+        ctx.scale(Math.cos(_e.trTurn || 0), 1);     //冠(光の輪)も回った分だけ細く見せる
         this.drawCrown(_e, _body, pulse);
+        ctx.restore();
         _orig();
         ctx.restore();
         return true;
@@ -1116,11 +1163,25 @@ var finaleTri = {
         _e.trRollV = ((_e.trRollV || 0) + (roll - (_e.trRoll || 0))*TR_ROLL_SPRING[0])*TR_ROLL_SPRING[1];
         _e.trRoll = (_e.trRoll || 0) + _e.trRollV;
         //縦の加速で体が遅れる
-        _e.trDip = (_e.trDip || 0) + (-_e.trAy*TR_DIP*10 - (_e.trDip || 0))*0.1;
+        var dip0 = _e.trDip || 0;
+        _e.trDip = dip0 + (-_e.trAy*TR_DIP*10 - dip0)*0.1;
+        //速さと高さのやりとり：速く滑るほど沈み、止まると浮き上がる(ばねで少し行きすぎる)
+        var sw = Math.min(TR_SWOOP[1], sp*TR_SWOOP[0]);
+        _e.trLiftV = ((_e.trLiftV || 0) + (sw - (_e.trLift || 0))*TR_SWOOP_SPRING[0])*TR_SWOOP_SPRING[1];
+        _e.trLift = (_e.trLift || 0) + _e.trLiftV;
+        //翼のしなり：見た目の縦の速さ(動き・沈み浮き・うねり・遅れ)で、下がるときは先が持ち上がり(マイナス)、上がるときは垂れる
+        var t = _e.t || 0, vyApp = vy + _e.trLiftV + (_e.trDip - dip0) + TR_SOAR[0]*TR_SOAR[1]*Math.cos(t*TR_SOAR[1]);
+        var flex = Math.max(-TR_FLEX[1], Math.min(TR_FLEX[1], -vyApp*TR_FLEX[0]));
+        _e.trFlexV = ((_e.trFlexV || 0) + (flex - (_e.trFlex || 0))*TR_FLEX_SPRING[0])*TR_FLEX_SPRING[1];
+        _e.trFlex = (_e.trFlex || 0) + _e.trFlexV;
+        //左右に動くとき、進む向きへ体を回す(ばねで少し行きすぎる)
+        var turn = Math.max(-TR_TURN[1], Math.min(TR_TURN[1], vx*TR_TURN[0]));
+        _e.trTurnV = ((_e.trTurnV || 0) + (turn - (_e.trTurn || 0))*TR_TURN_SPRING[0])*TR_TURN_SPRING[1];
+        _e.trTurn = (_e.trTurn || 0) + _e.trTurnV;
         if(_e.trKick > 0) _e.trKick = Math.max(0, _e.trKick - 0.08);
         //顔：ドローン君をにらむ(横の向きと、見上げ・見下ろし)。bosses.js が動く向きへ向けたのを上書きする
         var tg = nearestPlayer(_e.x, _e.y), dx = tg.X - _e.x, dy = tg.Y - _e.y, L = _e.look;
-        var ty = -Math.max(-1, Math.min(1, dx/260))*TR_GAZE[0], te = Math.max(-TR_GAZE[1], Math.min(TR_GAZE[1], dy/260));
+        var ty = -Math.max(-1, Math.min(1, dx/260))*TR_GAZE[0]*(1 - TR_TURN_BODY) - _e.trTurn*180/Math.PI*TR_TURN_BODY, te = Math.max(-TR_GAZE[1], Math.min(TR_GAZE[1], dy/260));
         L.yaw += (ty - L.yaw)*0.12; L.yawV = 0;
         L.elev += (te - L.elev)*0.12; L.elevV = 0;
     },
@@ -1397,12 +1458,12 @@ var finaleTri = {
         }
         ctx.restore();
     },
-    //迫るタイミングの合図(いちばん手前)：狙いが止まった瞬間から、太い輪が一定の速さで縮み、着く瞬間に着く所の輪へちょうど重なる(拍ごとに光る)。
+    //迫るタイミングの合図(いちばん手前)：狙いが止まった瞬間から、太い輪が一定の速さで縮み、着く TR_RING_LEAD 秒前に着く所の輪へ重なる(拍ごとに光る)。
     //ジャスト衝撃波を出してよい間(TR_JUST_SEC)は、着く所の輪が水色に光る
     drawTiming:function(_e,_p){
         var hb = Math.round(this.beatAt(_e.trHit)), lt = this.beatTime(hb - TR_TELL_BEATS), left = _e.trHit - _p;
         if(left < -0.03) return;
-        var u = Math.max(0, Math.min(1, (_p - lt)/(_e.trHit - lt)));
+        var u = Math.max(0, Math.min(1, (_p - lt)/(_e.trHit - TR_RING_LEAD - lt)));
         var bf = this.beatAt(_p), b = Math.floor(bf + 1e-6), since = _p - this.beatTime(b), flash = Math.max(0, 1 - since/0.12);
         var just = left <= TR_JUST_SEC, col = just ? JUST_COLOR : "255,255,255";
         var x = _e.trTx, y = _e.trTy;

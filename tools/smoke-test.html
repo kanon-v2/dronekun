@@ -9,6 +9,16 @@
 <script>
 var errors = [];
 window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.filename || "").split("/").pop() + ":" + e.lineno); });
+//乱数を決まった種から出す(毎回同じ結果にする。乱数の運でたまに落ちる項目をなくすため)。#seed=数 で種を変えられる
+(function(){
+    var m = /seed=(\d+)/.exec(location.hash), a = m ? +m[1] : 20261017;
+    Math.random = function(){
+        a = (a + 0x6D2B79F5) | 0;
+        var t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0)/4294967296;
+    };
+})();
 </script>
 <script src="scripts/drone/common.js"></script>
 <script src="scripts/drone/sound.js"></script>
@@ -542,9 +552,10 @@ try{
     drone.X = CW/2; drone.Y = CH/2; MouseX = drone.X; MouseY = drone.Y;
     var rageN = function(){ return enemyShots.filter(function(b){ return b.kind == "rage"; }).length; };
     var ea = emotion.anger(CW/2, 80), spitN = 0, maxRage = 0;
-    for(var i=0; i<ANGER_SIMMER; i++){ mainScreen.invincible = 999; mainScreen.update(); spitN = Math.max(spitN, rageN()); maxRage = Math.max(maxRage, ea.rage); if(i % 40 == 0) draw1(); }
+    //止まる時間(ジャストなど)の間は怒りの時計が進まないので、回数ではなく怒りの時計が爆発の直前に届くまで進める
+    for(var i=0; i<ANGER_SIMMER*3 && ea.t < ANGER_SIMMER; i++){ mainScreen.invincible = 999; mainScreen.update(); spitN = Math.max(spitN, rageN()); maxRage = Math.max(maxRage, ea.rage); if(i % 40 == 0) draw1(); }
     var ringN0 = rageN();
-    mainScreen.update();     //爆発
+    for(var i=0; i<30 && ea.t <= ANGER_SIMMER; i++){ mainScreen.hitStop = 0; mainScreen.update(); }     //爆発
     var erupted = rageN() >= ringN0 + ANGER_RING_N - 2 && emotion.cracks.length == ANGER_CRACKS && ea.rage > 1;
     draw1();
     enemyShots = []; mainScreen.invincible = 0; mainScreen.guard = 0;
@@ -1096,11 +1107,14 @@ try{
     trRun(93.1, 104.9, function(){ trDeep = Math.max(trDeep, shotLab.deeps.length); MouseX = drone.X; MouseY = drone.Y; });
     var trHush = tb.trMode == "hush" && tb.trLocked && tb.phased && trDeep > 0 && battleBg.far > 0.8;
     draw1();
-    drone.X = tb.trTx; drone.Y = tb.trTy; mainScreen.yaruki = YARUKI_COST;
-    finaleTri.fakeT = finaleTri.sec("climax").from - 0.05; mainScreen.blast();
+    drone.X = tb.trTx; drone.Y = tb.trTy; MouseX = drone.X; MouseY = drone.Y;
+    //着いた瞬間に出さなくても、TR_LATE_SEC の間は待つ。少し遅れて(TR_LATE_PERFECT の内に)出しても PERFECT で弾き返す
     var trHp0 = tb.hp;
-    trRun(finaleTri.fakeT, finaleTri.sec("climax").from + 0.1);
-    var trParry = finaleTri.result == "perfect" && tb.trFire == 1 && trHp0 - tb.hp >= Math.round(tb.maxHp*TR_PARRY_DMG[1]) - 1 && tb.trMode == null;
+    trRun(104.9, finaleTri.sec("climax").from + 0.03, function(){ MouseX = drone.X; MouseY = drone.Y; });
+    var trWait = tb.trApproach && tb.trLate > 0 && tb.trMode == "hush";
+    mainScreen.yaruki = YARUKI_COST; mainScreen.blast();
+    trRun(finaleTri.fakeT, finaleTri.sec("climax").from + 0.2);
+    var trParry = trWait && finaleTri.result == "perfect" && tb.trFire == 1 && trHp0 - tb.hp >= Math.round(tb.maxHp*TR_PARRY_DMG[1]) - 1 && tb.trMode == null;
     //息つぎ → 放つ
     trRun(129.1, 131.9);
     var trBreath = tb.trMode == "breath" && tb.trFold > 0.8;
@@ -1120,7 +1134,7 @@ try{
     var trLast = tb.trMode == "last" && tb.trLocked;
     draw1();
     drone.X = tb.trTx + 200; drone.Y = tb.trTy;
-    trRun(TR_LOOP[0], TR_LOOP[0] + 0.1);
+    trRun(TR_LOOP[0], TR_LOOP[0] + TR_LATE_SEC + 0.1);     //着いたあと TR_LATE_SEC は待ってから決まる
     var trAgain = !tb.dead && tb.trMode == null && tb.trSec.name == "dawn" && finaleTri.result == "dodge";
     //もう一度：最後の和音に合わせてジャスト衝撃波を出すと、とどめ(曲はくり返しを抜けて最後まで)
     trRun(179.8, TR_LOOP[1] - 0.06, function(){ MouseX = drone.X; MouseY = drone.Y; });
@@ -1133,10 +1147,10 @@ try{
     draw1();
     var trClear = mainScreen.state == "clear";
     finaleTri.fakeT = null; bgmTrial.finale = 0; finaleTri.keepMusic = false; finaleTri.names();
-    check("最終局面の試作(Suno)：曲の頭から改が組み上がり、拍で撃ち、奥から迫る突進をジャストで弾き、夜明けに反撃して、最後の和音でとどめ",
+    check("最終局面の試作(Suno)：曲の頭から改が組み上がり、拍で撃ち、奥から迫る突進をジャストで弾き(着いたあと少し遅れても)、夜明けに反撃して、最後の和音でとどめ",
           trRebuild && trAwake && trOwn && trGate && trHush && trParry && trBreath && trRelease && trDawn && trLose && trLast && trAgain && trKill && trClear && errors.length == trErr && KAI2.name != TR_NAME.name,
           "再構築" + trRebuild + "(" + trWing.toFixed(1) + ") 完全体" + trAwake + "(" + trShots + ") 攻撃" + trOwn + "(" + Object.keys(trKinds).join(",") + " 柱" + trPil + "/" + trHits + ") 関門" + trGate +
-          " 迫る" + trHush + " 弾く" + trParry + " 息つぎ" + trBreath + "/" + trRelease + " 夜明け" + trDawn + "/" + trLose + " 最後" + trLast + " くり返し" + trAgain +
+          " 迫る" + trHush + " 弾く" + trWait + "/" + trParry + " 息つぎ" + trBreath + "/" + trRelease + " 夜明け" + trDawn + "/" + trLose + " 最後" + trLast + " くり返し" + trAgain +
           " とどめ" + trKill + " クリア" + trClear + " " + errors.slice(trErr).join(" "));
 
     // かすりコンボ：かするとコンボが増えて威力が上がり、時間切れ・被弾で途切れる

@@ -167,6 +167,9 @@ function recTrack(_o){
             var I = this.info();
             if(!this.src || this.ended || !I || I.endAt == null) return false;
             var ac = sound.ctx, T = ac.currentTime + 0.03, p = this.songAt(T);
+            //くり返しのつなぎ目のすぐあと(画面の時刻はスピーカーの遅れの分だけ手前なので、まだつなぎ目の前)なら、
+            //頭へ戻ったとみなさず、つなぎ目の先(終わりの部分)へ続ける。最後の和音がつなぎ目ちょうどの曲で、着く間際に押したとき用
+            if(!this.ended && p - I.loopStart < 0.5 && T - this.at >= I.loopEnd) p = I.loopEnd + (p - I.loopStart);
             if(p < I.endFrom){ T += I.endFrom - p; p = I.endFrom; }
             var s = ac.createBufferSource();
             s.buffer = this.buf;
