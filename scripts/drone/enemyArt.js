@@ -53,7 +53,11 @@ const KAI_PH_TEMPO  = 0.25;     //出力が1段上がるごとに動きが速く
 const KAI_LASER_AIM = 60;       //レーザーの予告の長さ(フレーム。bosses.js と同じ)
 const KAI_CIRCLE_T  = 40;       //五龍の陣の長さ(フレーム。bosses.js と同じ)
 const KAI_STRIKE_T  = 50;       //落雷の予告の長さ(フレーム。bosses.js と同じ)
-const KAI_BEAT      = 66;       //胸の光の鼓動の間隔(フレーム。登場の鼓動 KAI_BEAT_EVERY と同じ)
+//胴体の下のケーブル：節の数・節の長さ(px)・太さ(ふち・中 px)
+const KAI_CABLE     = [3, 9, 3.6, 1.6];
+const KAI_CABLE_ZAP = [80, 14, 0.6];    //ケーブル全体を電気が走る：間隔(フレーム)・長さ(フレーム)・その間隔ごとに走る割合(1本あたり約2秒に1回)
+const KAI_ZAP_COL   = ["150,135,255", "225,110,255"];  //電気の光の色(青紫・赤紫。芯は白)
+const KAI_ZAP_SHAPE = [3, 0.32, 2.6, 7];    //電気の形：絡む筋の数・折れの強さ(節の長さに対する割合)・折れの上限(px)・枝の数
 
 var enemyArt = {
     //描いたらtrue(この種類の絵がなければfalse)
@@ -453,9 +457,98 @@ var enemyArt = {
 
     //------------------------------------------------------------ ドローン君改(ボス)
     //本体は選んだスキンのドローン君の絵のまま、上(プロペラ・棒)と下(胴体)に切り分けて、上を遅れてしならせる。
-    //まわりに改造部品(左右の副砲・背中の装甲の輪・胴体の下のケーブル・胸の鼓動の光)を足し、別々に動かす。
+    //まわりに改造部品(左右の副砲・背中の装甲の輪・胴体の下のケーブル)を足し、別々に動かす。
     //使う値は t・vx・mode・count・angle・phase・form・circleT・strikes(協力プレイのゲストにも届く)と、狙う相手(nearestPlayer)だけ。
     //第二形態(form 2)は光と装甲の色が紫になる(KAI2_GLOW)。
+    //ドローン君改のケーブル1本(_pts：根元から先への節の点、_i：何本目、_glow：五龍の陣・落雷の予告で先が光る)
+    //細い線と先の赤い玉。ときどき電気がケーブル全体を走る(根元から先へ一気に伸び、線に沿ってぱちぱち震えて消える)
+    kaiCable:function(_pts,_i,_t,_body,_glow,_rgb,_zap){
+        var C = ENEMY_COLOR, tip = _pts[_pts.length - 1];
+        ctx.beginPath(); ctx.moveTo(_pts[0][0],_pts[0][1]);
+        for(var j=1; j<_pts.length; j++) ctx.lineTo(_pts[j][0],_pts[j][1]);
+        ctx.strokeStyle = C.ink; ctx.lineWidth = KAI_CABLE[2]; ctx.stroke();
+        ctx.strokeStyle = _body || "#5a1a1e"; ctx.lineWidth = KAI_CABLE[3]; ctx.stroke();
+        if(_glow > 0 && !_body) this.halo(tip[0],tip[1],5 + _zap*5,_rgb,_glow);
+        this.circle(tip[0],tip[1],2.6);
+        this.fillInk(_body || C.red, 1);
+        if(_body) return;
+        //電気が走るか(間隔ごとに、ケーブルごとにずらして、決まった割合だけ。乱数を使わず時刻で決める)
+        var Z = KAI_CABLE_ZAP, tt = Math.floor(_t) + _i*53, w = Math.floor(tt/Z[0]), ph = tt - w*Z[0];
+        var roll = Math.sin(w*12.9898 + _i*78.233)*43758.5453; roll -= Math.floor(roll);
+        if(ph >= Z[1] || roll > Z[2]) return;
+        //根元から先へ伸び(はじめの4コマ)、終わりへ向けて薄れる。形は2コマごとに変わる(ちらつき)
+        var head = Math.min(1, (ph + 1)/4), fade = 1 - Math.max(0, ph - 4)/(Z[1] - 4), fl = (ph % 2 == 0 ? 1 : 0.75)*fade;
+        var seed = Math.floor(_t/2)*977 + _i*131 + 7;
+        var rnd = function(){ seed = (seed*16807) % 2147483647; return seed/2147483647; };
+        var SH = KAI_ZAP_SHAPE, col = KAI_ZAP_COL, E = tip;
+        //2点の間を、まんなかをずらしながら細かく折る(_lv 段)。点は [x, y, u(根元0～先1)]
+        var bolt = function(_a,_b,_lv,_k){
+            var out = [_a];
+            var sub = function(_p,_q,_l){
+                if(_l <= 0){ out.push(_q); return; }
+                var dx = _q[0] - _p[0], dy = _q[1] - _p[1], L = Math.hypot(dx, dy) || 1;
+                var d = Math.max(-SH[2], Math.min(SH[2], (rnd()*2 - 1)*L*_k));
+                var mid = [(_p[0] + _q[0])/2 - dy/L*d, (_p[1] + _q[1])/2 + dx/L*d, (_p[2] + _q[2])/2];
+                sub(_p, mid, _l - 1); sub(mid, _q, _l - 1);
+            };
+            sub(_a, _b, _lv);
+            return out;
+        };
+        var m = _pts.length - 1, J = [];
+        for(var j=0; j<=m; j++) J.push([_pts[j][0], _pts[j][1], j/m]);
+        //伸びている所まで(u が head まで)を描く
+        var stroke = function(_P,_rgb,_w){
+            var w = [2.4*_w, 1.0*_w, 0.45*_w], al = [0.16, 0.45, 0.95];
+            for(var pass=0; pass<3; pass++){
+                ctx.beginPath();
+                var started = false;
+                for(var k=0; k<_P.length; k++){
+                    if(_P[k][2] > head + 1e-6) break;
+                    if(!started){ ctx.moveTo(_P[k][0], _P[k][1]); started = true; } else ctx.lineTo(_P[k][0], _P[k][1]);
+                }
+                ctx.strokeStyle = pass == 2 ? "rgba(255,250,255," + (al[2]*fl) + ")" : "rgba(" + _rgb + "," + (al[pass]*fl) + ")";
+                ctx.lineWidth = w[pass]; ctx.stroke();
+            }
+        };
+        ctx.globalCompositeOperation = "lighter";
+        ctx.lineJoin = "miter";
+        //絡む筋：節で束ねて、その間はそれぞれ別に折れる(合わさったり分かれたりして見える)
+        var main = null;
+        for(var r=0; r<SH[0]; r++){
+            var S = [J[0]];
+            for(var j=0; j<m; j++) S = S.concat(bolt(J[j], J[j + 1], 3, SH[1]*(r == 0 ? 1 : 1.4)).slice(1));
+            stroke(S, col[r % 2], r == 0 ? 1 : 0.6);
+            if(r == 0) main = S;
+        }
+        //枝：主な筋のところどころから外へ。枝の途中から、さらに小枝
+        var maxK = 0;
+        while(maxK < main.length - 1 && main[maxK + 1][2] <= head) maxK++;
+        for(var r=0; r<SH[3] && maxK > 2; r++){
+            var k = 1 + Math.floor(rnd()*(maxK - 1)), A = main[k], B = main[Math.min(main.length - 1, k + 1)];
+            var dir = Math.atan2(B[1] - A[1], B[0] - A[0]) + (rnd() < 0.5 ? -1 : 1)*(0.5 + rnd()*0.8);
+            var len = 3 + rnd()*5;
+            var end = [A[0] + Math.cos(dir)*len, A[1] + Math.sin(dir)*len, A[2]];
+            var br = bolt(A, end, 2, 0.35);
+            stroke(br, col[r % 2], 0.45);
+            if(rnd() < 0.6){
+                var C2 = br[Math.floor(br.length/2)], d2 = dir + (rnd() < 0.5 ? -1 : 1)*(0.4 + rnd()*0.6), l2 = len*0.5;
+                stroke(bolt(C2, [C2[0] + Math.cos(d2)*l2, C2[1] + Math.sin(d2)*l2, C2[2]], 1, 0.35), col[(r + 1) % 2], 0.35);
+            }
+        }
+        //走る途中は先頭が白く光る。届いたら先の玉が光り、玉から細い電気がはじける
+        if(head < 1){
+            var hq = main[maxK];
+            this.halo(hq[0], hq[1], 3, col[1], 0.9*fl);
+        }else{
+            this.halo(E[0], E[1], 3.5 + 2*fl, col[1], 0.8*fl);
+            for(var r=0; r<3; r++){
+                var a = rnd()*Math.PI*2, l = 2.5 + rnd()*3.5*fade;
+                stroke(bolt([E[0] + Math.cos(a)*2.4, E[1] + Math.sin(a)*2.4, 1], [E[0] + Math.cos(a)*(2.4 + l), E[1] + Math.sin(a)*(2.4 + l), 1], 2, 0.4), col[r % 2], 0.4);
+            }
+        }
+        ctx.lineJoin = "round";
+        ctx.globalCompositeOperation = "source-over";
+    },
     kai:function(_e,_body){
         var look = _e.look;
         if(!look) return;
@@ -502,27 +595,23 @@ var enemyArt = {
         ctx.restore();
 
         //---- 胴体の下のケーブル：本体の動きに遅れてしなる。五龍の陣で外へ広がり、落雷の予告で先が光る
-        var nCab = 1 + ph;
-        ctx.lineCap = "round";
+        //ときどき電気がケーブル全体を走る。電気は実際の時間で動かす(登場・変身の間は改の時計 t が止まるので、止まって見えないように)。
+        //enemyArt.zapClock を決めると、その時刻(フレーム)で描く(見比べのページ用)
+        var nCab = 1 + ph, zapT = this.zapClock != null ? this.zapClock : performance.now()*0.06;
+        ctx.lineCap = "round"; ctx.lineJoin = "round";
         for(var i=0; i<nCab; i++){
             var u = nCab == 1 ? 0 : i/(nCab - 1)*2 - 1;    //-1(左)～1(右)
             var x = u*20 + jit(i + 3), y = 34;
             var a = u*(0.35 + dragon*0.9);
             var pts = [[x,y]];
-            for(var j=0; j<3; j++){
+            for(var j=0; j<KAI_CABLE[0]; j++){
                 a += Math.sin(b*1.4 - i*0.9 - j*0.7)*0.22 - vx*0.035 + u*dragon*0.25;
-                x += Math.sin(a)*9; y += Math.cos(a)*9;
+                x += Math.sin(a)*KAI_CABLE[1]; y += Math.cos(a)*KAI_CABLE[1];
                 pts.push([x,y]);
             }
-            ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
-            for(var j=1; j<pts.length; j++) ctx.lineTo(pts[j][0],pts[j][1]);
-            ctx.strokeStyle = C.ink; ctx.lineWidth = 3.6; ctx.stroke();
-            ctx.strokeStyle = _body || "#5a1a1e"; ctx.lineWidth = 1.6; ctx.stroke();
-            var tip = pts[pts.length - 1];
-            if(zap > 0 || dragon > 0) self.halo(tip[0],tip[1],5 + zap*5,redRgb,Math.max(zap,dragon));
-            self.circle(tip[0],tip[1],2.6);
-            self.fillInk(_body || C.red, 1);
+            this.kaiCable(pts, i, zapT, _body, Math.max(zap, dragon), redRgb, zap);
         }
+        ctx.lineJoin = "miter";
         ctx.lineCap = "butt";
 
         //---- 本体：下(胴体)と上(プロペラ・棒)に切り分ける。上は胴体より遅れて弾み、傾きにも遅れてしなる
@@ -542,11 +631,6 @@ var enemyArt = {
         look.draw(0,0,k);
         ctx.restore();
         ctx.globalAlpha = 1;
-
-        //---- 胸の鼓動の光：ドクン、ドクンと2回ずつ。出力が上がるほど強い
-        var bt = _e.t % Math.round(KAI_BEAT/(1 + (ph - 1)*KAI_PH_TEMPO));
-        var pulse = Math.max(0, 1 - bt/10) + Math.max(0, 1 - Math.abs(bt - 14)/8)*0.6;
-        self.halo(0,14,10 + pulse*8 + laserK*6,redRgb,Math.min(1,0.25 + ph*0.12 + pulse*0.5 + laserK*0.5));
 
         //---- 左右の副砲：エネルギーの線でつながって浮かび、相手を狙う。少し遅れてついてくる。
         //レーザーの予告では本体の前へ出て一緒に光をため、撃っている間は震える

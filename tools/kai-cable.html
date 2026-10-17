@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<!--
+  ドローン君改の胴体の下のケーブル(enemyArt.js の kaiCable・KAI_CABLE*)を大きく見る。
+  行：ふだんの改(第一形態 Lv.3)・天翼(Suno の最終局面の第二形態)・第二形態(曲に合わせない)・電気の拡大。
+  列：電気が走り出す → 全体を走る → 静か → 右へ動く(2本目に電気が走る)。
+  ヘッドレスEdgeで --window-size=1380,1040 くらいで撮る。
+-->
+<html lang="ja"><head><meta charset="UTF-8"><base href="../"><title>改のケーブル</title>
+<style>body{margin:0;background:#222;color:#eee;font:12px monospace} #out{display:block}</style></head>
+<body><div id="Bigbox" style="position:absolute;left:-5000px"><canvas id="Canvas"></canvas></div><pre id="result">running...</pre>
+<script>
+var errors = [];
+window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.filename || "").split("/").pop() + ":" + e.lineno); });
+</script>
+<script src="scripts/drone/common.js"></script>
+<script src="scripts/drone/sound.js"></script>
+<script src="scripts/drone/bgmTrial.js"></script>
+<script src="scripts/drone/bgmFull.js"></script>
+<script src="scripts/drone/equipment.js"></script>
+<script src="scripts/drone/armsExtra.js"></script>
+<script src="scripts/drone/bosses.js"></script>
+<script src="scripts/drone/startScreen.js"></script>
+<script src="scripts/drone/mainScreen.js"></script>
+<script src="scripts/drone/forces.js"></script>
+<script src="scripts/drone/enemyArt.js"></script>
+<script src="scripts/drone/upgradeScreen.js"></script>
+<script src="scripts/drone/gameoverScreen.js"></script>
+<script src="scripts/drone/story.js"></script>
+<script src="scripts/drone/battleBg.js"></script>
+<script src="scripts/drone/bgScene.js"></script>
+<script src="scripts/drone/bossDebug.js"></script>
+<script src="scripts/drone/timeStop.js"></script>
+<script src="scripts/drone/dodge.js"></script>
+<script src="scripts/drone/rival.js"></script>
+<script src="scripts/drone/shotLab.js"></script>
+<script src="scripts/drone/finaleSync.js"></script>
+<script src="scripts/drone/finaleTriumph.js"></script>
+<script src="scripts/drone/gunship.js"></script>
+<script src="scripts/drone/emotion.js"></script>
+<script src="scripts/drone/emotionHint.js"></script>
+<script src="lib/peerjs.min.js"></script>
+<script src="scripts/drone/coop.js"></script>
+<script src="scripts/drone/versus.js"></script>
+<script src="scripts/drone/draw.js"></script>
+<script>
+function kai(){ return enemies.filter(function(e){ return e.type == "kai"; })[0]; }
+try{
+    var keep = { save:localStorage.getItem("dronekun_save"), meta:localStorage.getItem("dronekun_meta"), best:localStorage.getItem("dronekun_best") };
+    bgmTrial.finale = bgmTrial.finales.map(function(f){ return f.v; }).indexOf("triumph");
+    bossDebug.kai2 = true;
+    bossDebug.start(FINAL_WAVE);
+    MouseIn = true; MouseX = 480; MouseY = 420;
+    for(var i=0; i<4000 && !(kai() && kai().mode == "revive"); i++) mainScreen.update();
+    //天翼が組み上がるまで曲の時刻を進める
+    finaleTri.fakeT = 0;
+    for(var f=0; finaleTri.fakeT < 30 && f < 60*40; f++){ mainScreen.invincible = 10; mainScreen.update(); finaleTri.fakeT += 1/60; }
+    var K = kai();
+    var rows = [
+        ["ふだんの改：第一形態 Lv.3", { form:1, phase:3, trSong:false }],
+        ["天翼：Suno の最終局面", { form:2, phase:4 }],
+        ["第二形態：曲に合わせない", { form:2, phase:4, trSong:false }],
+        ["拡大：ふだんの改の電気", { form:1, phase:3, trSong:false }, "zoom"]
+    ];
+    //off：電気の時刻(フレーム。enemyArt.zapClock)。電気が走るかは時刻で決まるので、走っている時刻を探して使う
+    function zapT(_i, _ph){
+        var Z = KAI_CABLE_ZAP;
+        for(var w=10; w<400; w++){ var r = Math.sin(w*12.9898 + _i*78.233)*43758.5453; r -= Math.floor(r); if(r <= Z[2]) return w*Z[0] - _i*53 + _ph; }
+        return 0;
+    }
+    var cols = [
+        ["電気が走り出す", { off:zapT(1, 1), vx:0, trTurn:0, trRoll:0, trGlide:0, trBrake:0 }],
+        ["全体を走る", { off:zapT(1, 6), vx:0, trTurn:0, trRoll:0, trGlide:0, trBrake:0 }],
+        ["静か", { off:zapT(1, 40), vx:0, trTurn:0, trRoll:0, trGlide:0, trBrake:0 }],
+        ["右へ動く(走る)", { off:zapT(2, 5), vx:5, trTurn:0.5, trRoll:0.25, trGlide:1, trBrake:0 }]
+    ];
+    //切り出す範囲(改の中心から)[左右の半分, 上, 下]
+    var CX = 480, CY = 230, CW2 = 300, CH2 = 240, LW = 170, CROP = { 1:[80, 10, 110], 2:[110, 20, 130] };
+    var out = document.createElement("canvas"); out.id = "out";
+    out.width = LW + cols.length*CW2; out.height = 22 + rows.length*CH2;
+    var o = out.getContext("2d");
+    o.fillStyle = "#222"; o.fillRect(0,0,out.width,out.height);
+    o.font = "13px sans-serif"; o.fillStyle = "#eee";
+    for(var c=0; c<cols.length; c++) o.fillText(cols[c][0], LW + c*CW2 + 8, 15);
+    var rs = canvas.width/CW;
+    for(var r=0; r<rows.length; r++){
+        for(var c=0; c<cols.length; c++){
+            var e = Object.assign({}, K, rows[r][1], cols[c][1]);
+            e.t = cols[c][1].off; e.circleT = 0; e.strikes = [];
+            e.x = CX; e.y = CY; e.mode = "idle"; e.trMode = null; e.flash = 0; e.trFlap = 0; e.trFold = 0; e.trKick = 0; e.trDip = 0; e.trLift = 0; e.trFlex = 0;
+            if(e.trSong === false) e.trSong = null;
+            ctx.setTransform(rs,0,0,rs,0,0);
+            ctx.fillStyle = "#140a1e"; ctx.fillRect(0,0,CW,CH);
+            enemyArt.zapClock = cols[c][1].off;
+            mainScreen.drawEnemy(e);
+            enemyArt.zapClock = null;
+            var cr = rows[r][2] == "zoom" ? [42, -10, 80] : CROP[rows[r][1].trSong === false ? 1 : rows[r][1].form], sw = cr[0]*2, sh = cr[1] + cr[2], k = Math.min(CW2/sw, CH2/sh);
+            o.fillStyle = "#140a1e"; o.fillRect(LW + c*CW2, 22 + r*CH2, CW2 - 2, CH2 - 2);
+            o.drawImage(canvas, (CX - cr[0])*rs, (CY - cr[1])*rs, sw*rs, sh*rs, LW + c*CW2 + (CW2 - sw*k)/2, 22 + r*CH2 + (CH2 - sh*k)/2, sw*k, sh*k);
+        }
+        o.fillStyle = "#eee";
+        var words = rows[r][0].split("：");
+        o.fillText(words[0], 8, 22 + r*CH2 + CH2/2 - 8);
+        o.fillText(words[1], 8, 22 + r*CH2 + CH2/2 + 10);
+    }
+    document.body.insertBefore(out, document.body.firstChild);
+    document.getElementById("result").textContent = "errors: " + errors.length + " " + errors.slice(0,5).join(" | ");
+    finaleTri.fakeT = null;
+    page.change(0);
+    if(keep.save == null) localStorage.removeItem("dronekun_save"); else localStorage.setItem("dronekun_save", keep.save);
+    if(keep.meta != null) localStorage.setItem("dronekun_meta", keep.meta);
+    if(keep.best != null) localStorage.setItem("dronekun_best", keep.best);
+}catch(ex){ document.getElementById("result").textContent = "EXCEPTION " + ex.message + " " + ex.stack; }
+</script>
+</body></html>
