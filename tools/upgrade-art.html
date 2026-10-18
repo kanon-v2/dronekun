@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<!--
+  強化画面の見た目の案(scripts/drone/upgradeArt.js)の確認ページ
+  ヘッドレスEdgeで撮る。#wave=数(出撃するWAVE。窓の外の時刻が変わる)・#reach=数(いちばん先のWAVE。窓の子どもの絵の数)・
+  #ui=a～e(案。0 で前の白い画面)・#tab=equip|shop・#reward(報酬を選ぶ画面)
+-->
+<html lang="ja"><head><meta charset="UTF-8"><base href="../"><title>強化画面の見た目の案</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700&family=Klee+One:wght@400;600&family=Shippori+Mincho:wght@700&family=Rajdhani:wght@500;600;700&display=swap"><style>body{margin:0;overflow:hidden}</style></head>
+<body><div id="Bigbox"><canvas id="Canvas"></canvas></div>
+<script src="scripts/drone/common.js"></script>
+<script src="scripts/drone/sound.js"></script>
+<script src="scripts/drone/bgmTrial.js"></script>
+<script src="scripts/drone/bgmFull.js"></script>
+<script src="scripts/drone/equipment.js"></script>
+<script src="scripts/drone/armsExtra.js"></script>
+<script src="scripts/drone/bosses.js"></script>
+<script src="scripts/drone/startScreen.js"></script>
+<script src="scripts/drone/titleArt.js"></script>
+<script src="scripts/drone/mainScreen.js"></script>
+<script src="scripts/drone/forces.js"></script>
+<script src="scripts/drone/enemyArt.js"></script>
+<script src="scripts/drone/upgradeScreen.js"></script>
+<script src="scripts/drone/upgradeArt.js"></script>
+<script src="scripts/drone/gameoverScreen.js"></script>
+<script src="scripts/drone/story.js"></script>
+<script src="scripts/drone/battleBg.js"></script>
+<script src="scripts/drone/bgScene.js"></script>
+<script src="scripts/drone/bossDebug.js"></script>
+<script src="scripts/drone/timeStop.js"></script>
+<script src="scripts/drone/dodge.js"></script>
+<script src="scripts/drone/rival.js"></script>
+<script src="scripts/drone/rivalTime.js"></script>
+<script src="scripts/drone/shotLab.js"></script>
+<script src="scripts/drone/finaleSync.js"></script>
+<script src="scripts/drone/finaleTriumph.js"></script>
+<script src="scripts/drone/gunship.js"></script>
+<script src="scripts/drone/emotion.js"></script>
+<script src="scripts/drone/emotionHint.js"></script>
+<script src="lib/peerjs.min.js"></script>
+<script src="scripts/drone/coop.js"></script>
+<script src="scripts/drone/versus.js"></script>
+<script src="scripts/drone/draw.js"></script>
+<script>
+setTimeout(function(){
+    function arg(k, d){ var m = new RegExp(k + "=([a-z0-9]+)").exec(location.hash); return m ? m[1] : d; }
+    save.write = function(){};  //確認ページではセーブを書き換えない
+    game.wave = +arg("wave", 3);
+    game.reach = { 1:+arg("reach", game.wave) };
+    game.parts = 42; game.score = 12345;
+    game.pendingReward = /reward/.test(location.hash) ? 1 : 0;
+    page.change(2);
+    upgradeScreen.tab = arg("tab", "stats");
+    MouseX = -100; MouseY = -100;
+}, 100);   //タイトル画面がセーブを読み直したあとで状態を決める
+</script>
+</body></html>

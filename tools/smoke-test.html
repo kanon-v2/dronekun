@@ -38,6 +38,7 @@ bgmTrial.finale = 0; bgmTrial.fight = 0;
 <script src="scripts/drone/forces.js"></script>
 <script src="scripts/drone/enemyArt.js"></script>
 <script src="scripts/drone/upgradeScreen.js"></script>
+<script src="scripts/drone/upgradeArt.js"></script>
 <script src="scripts/drone/gameoverScreen.js"></script>
 <script src="scripts/drone/story.js"></script>
 <script src="scripts/drone/battleBg.js"></script>
@@ -1598,6 +1599,20 @@ try{
     MouseX = rewardCards[0].X + 20; MouseY = rewardCards[0].Y + 20; Click = 1; upgradeScreen.update(); Click = 0;
     MouseX = rewardCards[1].X + 20; MouseY = rewardCards[1].Y + 20; Click = 1; upgradeScreen.update(); Click = 0;
     check("報酬を2回選べる", upgradeScreen.state == "main" && game.pendingReward == 0);
+    //強化画面の見た目の案(upgradeArt.js)：どの案でも描け、色の置き換えは描くあいだだけ。格納庫はWAVEで窓の外の時刻が移り、先へ進むほど子どもの絵が増える
+    (function(){
+        var w0 = game.wave, r0 = game.reach, p0 = uart.pick, before = errors.length, skies = [], arts = [], leak = false;
+        uart.list.forEach(function(k){
+            uart.pick = k;
+            [3, 10, 17].forEach(function(w){ game.wave = w; game.reach = { 1:w }; upgradeScreen.state = "main"; draw1(); upgradeScreen.state = "reward"; draw1(); upgradeScreen.state = "main"; });
+            ctx.fillStyle = "#000"; if(ctx.fillStyle != "#000000") leak = true;
+        });
+        [3, 10, 17].forEach(function(w){ game.wave = w; game.reach = { 1:w }; skies.push(hangar.sky().from); arts.push(hangar.drawings()); });
+        uart.pick = "a"; uart.next();
+        var cycled = uart.pick == "b";
+        game.wave = w0; game.reach = r0; uart.pick = p0;
+        check("強化画面の見た目の案", !leak && cycled && uart.active == null && skies.join() == "1,8,16" && arts.join() == "1,2,4" && errors.length == before, skies.join() + " / " + arts.join());
+    })();
     upgradeScreen.tab = "stats"; var refund = upgradeScreen.refundValue();
     MouseX = resetButton.X + 10; MouseY = resetButton.Y + 10; Click = 1; upgradeScreen.update(); Click = 0; Click = 1; upgradeScreen.update(); Click = 0;
     check("能力リセットでパーツ返却", game.level.speed == 1 && refund > 0, "返却 " + refund);

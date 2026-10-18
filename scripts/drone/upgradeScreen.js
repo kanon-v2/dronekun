@@ -428,7 +428,9 @@ var upgradeScreen = {
             return;
         }
         ctx.textBaseline = "middle";
-        ctx.fillStyle = "#000";
+        //見た目の案(upgradeArt.js)を選んでいるときは、見出しの色を案に合わせ、ドローン君の枠は描かない(案の絵がある)
+        var art = typeof uart != "undefined" ? uart.cur() : null;
+        ctx.fillStyle = art && art.head || "#000";
 
         //見出し
         ctx.textAlign = "left";
@@ -437,9 +439,10 @@ var upgradeScreen = {
         ctx.textAlign = "right";
         ctx.font = "bold 22px sans-serif";
         ctx.fillText("パーツ " + game.parts + "　　SCORE " + game.score,CW - GS,GS*1.5);
+        ctx.fillStyle = "#000";
 
         //左：うろうろするドローン君と現在の性能
-        Icon.stroke();
+        if(!art) Icon.stroke();
         //drone_aroundのX,Yは絵の左上なので、中心に直して描く
         drone_around.look.draw(drone_around.X + 20, drone_around.Y + 20);
         ctx.textAlign = "left";
