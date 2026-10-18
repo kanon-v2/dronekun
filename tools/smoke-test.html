@@ -1552,6 +1552,29 @@ try{
     check("ライバルの第二形態：別の時間の自分(過去のクロノ・未来のクロノ)を連れてくる。撃てば帰り、終わるといなくなる",
           ctEraOk && ctEras.past && ctEras.future && ctFutTick > 0 && ctKilled && !enemies.some(function(c){ return c.era && !c.dead && c.mode != "fade"; }) && errors.length == rvErr,
           "攻撃" + ctEraOk + " " + Object.keys(ctEras).join(",") + " 未来の時計盤" + ctFutTick + " 倒す" + ctKilled);
+    // 時の前借り(第二形態)：体力が半分を切ると、次の攻撃の代わりに前借りし、そのあとの攻撃が強まる
+    var bgG = 0;
+    while(rv13.mode != "idle" && bgG++ < 2000) mainScreen.update();
+    enemyShots = [];
+    rv13.borrowed = false; rv13.borrowDue = false; rival.borrowK = 1;
+    var bgRest0 = rival.restTime(rv13), bgSeen = false;
+    rv13.hp = rv13.maxHp*0.4; rv13.hpMark = rv13.hp; rv13.timer = 1;
+    for(var f=0; f<60*20; f++){
+        mainScreen.hp = 99; mainScreen.guard = 99;
+        mainScreen.update(); if(f % 10 == 0) draw1();
+        rv13.hp = rv13.maxHp*0.4; rv13.hpMark = rv13.hp;
+        if(rv13.mode == "borrow") bgSeen = true;
+        if(bgSeen && rv13.mode != "borrow") break;
+    }
+    var bgFrom = enemyShots.length;
+    rival.needles(rv13, 480, 300, 0, 3, 0.3, 2);
+    var bgFan = enemyShots.length - bgFrom, bgShot = enemyShots[bgFrom];
+    rival.stepShot(bgShot);
+    var bgSp = Math.hypot(bgShot.vx, bgShot.vy);
+    check("ライバルの第二形態：体力が半分を切ると時の前借りをし、そのあとの攻撃が強まる(針が速い・扇の弾が多い・合間が短い)",
+          bgSeen && rv13.borrowed && rival.borrowK == RIVAL2_BORROW_SPEED && bgFan == 3 + RIVAL2_BORROW_FAN && Math.abs(bgSp - 2*RIVAL2_BORROW_SPEED) < 0.01 && rival.restTime(rv13) < bgRest0 && errors.length == rvErr,
+          "前借り" + bgSeen + " 済み" + rv13.borrowed + " 倍率" + rival.borrowK + " 扇" + bgFan + " 速さ" + bgSp.toFixed(2) + " 合間" + bgRest0 + "→" + rival.restTime(rv13));
+    rv13.borrowed = false; rival.borrowK = 1; enemyShots = [];
     check("ライバルの第二形態は大きく描く(針の翼・光る目)", rivalTime.scale(rv13) == RIVAL2_SCALE && rivalTime.scale({ look:rv13.look, form:1, mode:"idle" }) == RIVAL_SCALE && rv13.wfx && rv13.wfx.k == RIVAL2_SCALE,
           "大きさ" + rivalTime.scale(rv13));
 

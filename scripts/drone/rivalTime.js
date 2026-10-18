@@ -46,7 +46,7 @@ const CT_RIFT_SPEED     = 3.4;          //裂け目から飛ぶ針の速さ(弾�
 const CT_RIFT_FAN       = [1,1,3,3];    //1回に撃つ針の数(Lv.1～4)
 //別の時間の自分(第二形態)
 const CT_ERA_BEATS      = 32;           //連れてきた自分がいる長さ(拍)
-const CT_ERA_HP         = 0.045;        //連れてきた自分の体力(第二形態の体力に対する割合)
+const CT_ERA_HP         = 0.135;        //連れてきた自分の体力(第二形態の体力に対する割合)
 const CT_ERA_OPEN       = 4;            //裂け目が開いてから出てくるまで(拍)
 const CT_ERA_PAST       = { name:"過去のクロノ", tint:"35,60,115", k:1.1, line:"見つけたぞ、ドローン君！ 勝負だ！", col:"190,140,80" };
 const CT_ERA_FUTURE     = { name:"未来のクロノ", tint:"30,26,40", k:1.45, line:"……この戦いの結末は、もう知っている", col:"120,230,255" };
@@ -740,6 +740,7 @@ var rivalTime = {
         if(this.worldK > 1.01) tags.push({ text:"加速世界　×" + this.worldK.toFixed(1), col:CT_FAST });
         if(this.preview > 0) tags.push({ text:"時飛ばし　1拍先が見える", col:RIVAL2_TIME });
         if(this.skipFx > 0) tags.push({ text:"時が飛んだ！", col:RIVAL2_TIME });
+        if(rival.borrowK > 1) tags.push({ text:"時の前借り　攻撃が強まった", col:RIVAL2_BORROW_COL });
         if(!tags.length) return;
         ctx.save();
         ctx.font = "bold 14px sans-serif";

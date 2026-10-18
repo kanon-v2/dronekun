@@ -210,6 +210,14 @@ const RIVAL_OD_FACE_R = 250;        //画面に出す大きな文字盤の半径
 const RIVAL_OD_BACK   = 1.6;        //巻き戻るとき、針が戻ってくる速さ(撃ったときの速さに掛ける)
 const RIVAL_OD_TIRED  = 150;        //大技のあと、疲れて動けない長さ(フレーム。隙)
 const RIVAL2_OD_HP    = 0.2;        //第二形態はこの割合を切ったときに使う
+//時の前借り(第二形態の体力が半分を切った次の攻撃で1度。未来の時を前借りして、そのあとの攻撃がすべて強まる)
+const RIVAL2_BORROW_HP    = 0.5;    //この割合を切ったら、次の攻撃の代わりに前借りする
+const RIVAL2_BORROW_BEATS = 4;      //前借りの長さ(拍。この間は止まって力をためるので隙。終わりは拍の上)
+const RIVAL2_BORROW_SPEED = 1.2;    //前借りのあと：クロノ(分身も)が撃つ針の速さに掛ける
+const RIVAL2_BORROW_FAN   = 1;      //前借りのあと：3発以上の扇に足す弾の数
+const RIVAL2_BORROW_REST  = 0.7;    //前借りのあと：攻撃の合間の長さに掛ける
+const RIVAL2_BORROW_COL   = "215,150,40";   //前借りの光の色(未来の時。金色)
+const RIVAL2_BORROW_LINE  = "未来の時を…前借りする！";     //前借りするときのせりふ
 const RIVAL2_INTERCEPT_FROM = 2;    //第二形態でドローン君の弾を撃ち落とす(迎撃)段階(lv。2 = WAVE14から)
 const RIVAL2_INTERCEPT_PER_SEC = [0,0,3,4];   //迎撃：1秒に撃ち落とせる数(Lv.1～4)
 const RIVAL2_INTERCEPT_RANGE = 130; //迎撃：撃ち落とす範囲(体の中心から。px)
@@ -379,6 +387,7 @@ var rival = {
     musicOn:false,  //ライバルの曲にしている
     muffled:false,  //時が止まっている間、曲をこもらせている(sound.timeWarp)
     timeK:1,        //時の速さ(時ノ奔流の加速の間。クロノの針の弾の速さに掛ける)
+    borrowK:1,      //時の前借りのあと、新しく撃たれた針の速さに掛ける(rival.stepShot)
     pull:null,      //時戻しでドローン君を巻き戻している間 { path:今いる所 → 戻る先, t, T }
 
     //このWAVEの段階(0～3。出てこないWAVEは -1)
@@ -391,6 +400,7 @@ var rival = {
         this.musicOn = false;
         this.muffle(false);
         this.timeK = 1;
+        this.borrowK = 1;
         this.pull = null;
         rivalTime.reset();
     },
@@ -717,6 +727,8 @@ var rival = {
         }
         //第二形態：体力が少なくなったら、次の攻撃で時ノ奔流(1度だけ)
         if(_e.form == 2 && !(_e.odDone & 2) && !_e.odDue && _e.hp < _e.maxHp*RIVAL2_OD_HP) _e.odDue = true;
+        //第二形態：体力が半分を切ったら、次の攻撃の代わりに時の前借り(1度だけ)
+        if(_e.form == 2 && !_e.borrowed && !_e.borrowDue && _e.hp < _e.maxHp*RIVAL2_BORROW_HP) _e.borrowDue = true;
         switch(_e.mode){
             case "warp":
                 _e.vx = 0; _e.vy = 0;
@@ -801,6 +813,14 @@ var rival = {
                     }
                 }
                 break;
+            case "borrow":
+                //時の前借り：止まって未来の時を引き寄せる(この間は隙)。終わると拍の上で力が満ちる
+                _e.vx *= 0.85; _e.vy *= 0.85;
+                if(--_e.count <= 0 && (_e.onBeat || _e.count < -this.beatF()*1.5)){
+                    this.borrowEnd(_e);
+                    this.rest(_e);
+                }
+                break;
             case "stagger":
                 //弾かれてよろける(この間は隙)。終わるとワープで離れる
                 _e.vx *= 0.88; _e.vy *= 0.88;
@@ -838,6 +858,8 @@ var rival = {
     //針の弾を扇に撃つ(_o：撃った敵。止める・戻すため、本物の番号を印にする)
     needles:function(_o,_x,_y,_a,_n,_spread,_sp){
         var from = enemyShots.length;
+        //時の前借りのあと：扇の弾を足す(弾の間は同じまま広げる)
+        if(this.borrowK > 1 && _n >= 3){ _spread *= (_n + RIVAL2_BORROW_FAN - 1)/(_n - 1); _n += RIVAL2_BORROW_FAN; }
         fireFan(_x, _y, _a, _n, _spread, _sp, "chrono");
         for(var i=from; i<enemyShots.length; i++) enemyShots[i].cr = _o.owner || _o.id;
         return from;
@@ -1134,6 +1156,45 @@ var rival = {
         }
         return --_e.count <= 0;
     },
+    //------------------------------------------------------------ 時の前借り
+    //始める：その場で止まり、未来の時を引き寄せる
+    borrow:function(_e){
+        _e.borrowDue = false;
+        _e.chain = 0;
+        _e.mode = "borrow";
+        _e.count = _e.borrowT = Math.round(this.beatF()*RIVAL2_BORROW_BEATS);
+        this.say(_e, RIVAL2_BORROW_LINE);
+        this.flags(_e);
+        fx.ring(_e.x, _e.y, 160, RIVAL2_BORROW_COL, 20, 3);
+        sound.play("warning");
+        rivalSfx.riser(RIVAL2_BORROW_BEATS*60/this.bpm());
+    },
+    //力が満ちた：このあとの攻撃がすべて強まる(針が速い・扇の弾が多い・攻撃の合間が短い)
+    borrowEnd:function(_e){
+        _e.borrowed = true;
+        this.borrowK = RIVAL2_BORROW_SPEED;
+        fx.flare(_e.x, _e.y, 150, RIVAL2_BORROW_COL, 18);
+        fx.ring(_e.x, _e.y, 260, RIVAL2_BORROW_COL, 24, 5);
+        fx.shake(10);
+        sound.play("bossImpact");
+        rivalSfx.chime();
+    },
+    //時の前借り：金色の大きな文字盤の針が先へ先へと速く回り、まわりから光の粒(未来の時)が吸い込まれる
+    drawBorrow:function(_e){
+        var T = _e.borrowT || 1, u = Math.min(1, Math.max(0, 1 - _e.count/T)), t = _e.t || 0;
+        var spin = u*u*Math.PI*2*6;     //だんだん速く回る(時が先へ進む)
+        this.drawFace(_e.x, _e.y, 70 + 40*u, 0.35 + 0.5*u, RIVAL2_BORROW_COL, spin - Math.PI/2, spin/12 - Math.PI/2, true, 0);
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.fillStyle = "rgb(" + RIVAL2_BORROW_COL + ")";
+        for(var i=0; i<36; i++){
+            var a = i*2.399 + i*0.13, f = ((t*0.025 + i*0.37) % 1), r = 320*(1 - f);
+            ctx.globalAlpha = (0.25 + 0.6*u)*Math.sin(Math.PI*f);
+            ctx.beginPath(); ctx.arc(_e.x + Math.cos(a)*r, _e.y + Math.sin(a)*r, 2 + 2*f, 0, Math.PI*2); ctx.fill();
+        }
+        ctx.restore();
+        ctx.globalAlpha = 1;
+    },
     //------------------------------------------------------------ 時ノ奔流(山場)
     //始める：画面のまんなかへワープする(着いたらすぐ加速)
     over:function(_e){
@@ -1394,10 +1455,12 @@ var rival = {
     },
     //攻撃のあと、次の攻撃まで(第二形態は RIVAL2_REST)
     restTime:function(_e){
-        return (_e.form == 2 ? RIVAL2_REST : RIVAL_REST)[_e.lv][_e.enraged ? 1 : 0];
+        var r = (_e.form == 2 ? RIVAL2_REST : RIVAL_REST)[_e.lv][_e.enraged ? 1 : 0];
+        return _e.borrowed ? Math.round(r*RIVAL2_BORROW_REST) : r;
     },
     nextAttack:function(_e){
         //十二時の決闘：第二形態で本気になってから、決まった数の攻撃ごとに
+        if(_e.borrowDue){ this.borrow(_e); return; }
         if(_e.odDue){ this.over(_e); return; }
         if(_e.form == 2 && _e.enraged && _e.since12 >= RIVAL2_TWELVE_EVERY){ this.twelve(_e); return; }
         var list = (_e.form == 2 ? RIVAL2_PATTERNS : RIVAL_PATTERNS)[_e.lv], p = list[_e.cycle++ % list.length];
@@ -1594,7 +1657,7 @@ var rival = {
     },
     //時が動き出す：置いた針が、それぞれドローン君へ飛ぶ
     release:function(_e){
-        var sp = RIVAL_RELEASE_SPEED*Math.min(1.3,danmaku());
+        var sp = RIVAL_RELEASE_SPEED*Math.min(1.3,danmaku())*this.borrowK;     //止めていた針は前借りの印を付けたあとで動き出すので、ここで速くする
         for(var i=0; i<enemyShots.length; i++){
             var b = enemyShots[i];
             if(b.held != _e.id) continue;
@@ -1694,6 +1757,8 @@ var rival = {
         if(b.kind != "chrono") return false;
         //時ノ奔流の加速：飛んでいる針が速くなる(mainScreen.updateShots が1倍分を動かすので、残りを足す)
         if(this.timeK != 1 && !b.held && !coop.isGuest()){ b.x += b.vx*(this.timeK - 1); b.y += b.vy*(this.timeK - 1); }
+        //時の前借りのあと：新しく撃たれた針を速くする(初めて動かすときに1度だけ。戻りきって消える針は着く時刻が変わるので除く)
+        if(b.bk == null){ b.bk = this.borrowK; if(b.bk != 1 && b.die == null && !coop.isGuest()){ b.vx *= b.bk; b.vy *= b.bk; } }
         if(b.popT > 0) b.popT--;
         if(b.rewT > 0) b.rewT = Math.max(b.die ? 12 : 0, b.rewT - 1);    //戻ってくる針は、消えるまで残像を引く
         if(b.die != null && !coop.isGuest() && --b.die <= 0){ fx.flare(b.x, b.y, 14, RIVAL_TIME, 8); return true; }
@@ -1838,6 +1903,7 @@ var rival = {
         _e.look.tint = _e.era ? (_e.era == "past" ? CT_ERA_PAST : CT_ERA_FUTURE).tint : _e.echo ? RIVAL_TINT : f2 ? RIVAL2_TINT : RIVAL_TINT;
         ctx.globalAlpha = _alpha;
         enemyArt.halo(0, 0, (30 + Math.sin(_e.t*0.12)*2)*k/RIVAL_SCALE, f2 ? RIVAL2_GLOW : WARP_COLOR, (_e.mode == "hold" || _e.mode == "rstop") ? 0.5 : f2 ? 0.26 : 0.18);
+        if(_e.borrowed && !_e.clone) enemyArt.halo(0, 0, 40*k/RIVAL_SCALE, RIVAL2_BORROW_COL, 0.14 + 0.06*Math.sin(_e.t*0.2));     //前借りした未来の時の光
         if(f2) rivalTime.drawAura(_e, k, _alpha);
         if(!_e.clone || _e.mode != "fade") this.drawDial(_e, f2, _alpha, k);
         if(f2) rivalTime.drawWings(_e, k, _alpha);
@@ -2551,6 +2617,7 @@ var rival = {
         }
         //時を操る攻撃：裂け目・枷の輪・1拍先の弾(rivalTime.js)
         rivalTime.drawAttack(_e);
+        if(_e.mode == "borrow") this.drawBorrow(_e);
         //時戻し：逆回りの矢印の輪と、上へ流れる横の走査線(テープを巻き戻すように)
         if(_e.rewFx > 0){
             var u = 1 - _e.rewFx/30;
