@@ -1986,7 +1986,7 @@ var mainScreen = {
             ctx.font = "13px sans-serif";
             ctx.fillStyle = "#777";
             if(touch){
-                ctx.fillText("画面のどこでもドラッグで移動（指の動いた分だけ）　／　右下のボタン：衝撃波（やる気" + YARUKI_COST + "・弾を消して近くの敵を攻撃）",14,CH - 36);
+                ctx.fillText("画面のどこでもドラッグで移動（指の動いた分だけ）　／　右下の赤：衝撃波（やる気" + YARUKI_COST + "）　／　青：回避ダッシュ",14,CH - 36);
             }else{
                 ctx.fillText("敵には自動で攻撃します　／　クリック：衝撃波（やる気" + YARUKI_COST + "・弾を消して近くの敵を攻撃）　／　動くと、やる気がたまる",14,CH - 36);
             }
@@ -1998,7 +1998,10 @@ var mainScreen = {
             ctx.fillStyle = "#777";
             ctx.fillText("弾や突進が当たる直前に衝撃波を出すと「ジャスト」(ぎりぎりほど強い)",14,CH - 16);
         }
-        if(touch && this.state != "over") this.drawTouchBlast();
+        if(touch && this.state != "over"){
+            this.drawTouchBlast();
+            dodge.drawTouchButton();    //回避ダッシュ(dodge.js)
+        }
         ctx.fillStyle = "#000";
     },
 

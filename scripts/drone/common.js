@@ -1,24 +1,4 @@
-//戦闘中とタイトル画面のタッチはドラッグ操作になる
-function isTouchDrag(){
-    //戦闘中・対戦の戦闘中・タイトル画面(設定の窓やデバッグのメニューを開いていないとき)はドラッグで動かす
-    //時止めワープの移動先を選んでいる間は、触った場所をそのまま選ぶ(timeStop.js)
-    return inputMode == "touch" && ((page.number == 1 && !timeStop.picking()) || (page.number == 7 && versus.dragging())
-        || (page.number == 0 && !startScreen.settings && !bossDebug.menu));
-}
-//タイトル画面のタップ：ドローン君の目標を覚えておき、ボタンを押し終わったら戻す(目標がボタンへ飛ばないように)
-function tapAt(_p){
-    if(page.number == 0 && inputMode == "touch" && !tapKeep) tapKeep = { x:MouseX, y:MouseY };
-    MouseX = _p.x;
-    MouseY = _p.y;
-    Click = 1;
-}
-//押し終わったら目標を戻す(draw.js の更新のあと)
-function endTap(){
-    if(!tapKeep) return;
-    MouseX = tapKeep.x;
-    MouseY = tapKeep.y;
-    tapKeep = null;
-}var canvas = document.getElementById("Canvas");
+var canvas = document.getElementById("Canvas");
 var parent = document.getElementById("Bigbox");
 var ctx = canvas.getContext("2d");
 const CW = 960; //Canvas-Width
@@ -93,7 +73,7 @@ var time = 0;
 //  マウス・タッチ操作
 //  マウス：ポインタの位置にドローン君が向かう。クリックで衝撃波・ボタン
 //  タッチ：戦闘中とタイトル画面は、画面のどこをドラッグしても、指の動いた分だけ目標が動く
-//          (指でドローン君が隠れないように)。衝撃波は右下のボタン。それ以外の画面はタップ
+//          (指でドローン君が隠れないように)。衝撃波と回避ダッシュは右下のボタン。それ以外の画面はタップ
 //          タイトル画面では、ボタンの上を触ったときだけタップとして押す(目標はボタンへ飛ばさない)
 //------------------------------------------------------------------------------
 var MouseX=CW/2;      //ドローン君が向かう目標の座標
@@ -158,6 +138,7 @@ canvas.addEventListener("pointerdown",function(e){
         //BGM/SEボタンと衝撃波ボタンはその場で処理。タイトル画面のボタンはタップとして押す。それ以外はドラッグ開始
         if(sound.tapButton(p.x,p.y)) return;
         if(page.number != 0 && mainScreen.touchBlastHit(p.x,p.y)){ Click = 1; return; }   //戦闘中・対戦の戦闘中
+        if(page.number == 1 && dodge.touchHit(p.x,p.y)){ dodge.press(); return; }    //回避ダッシュ(dodge.js)
         if(page.number == 1 && shotLab.labPickAt(p.x,p.y)) return;     //デバッグの攻撃の試作：左の一覧で攻撃を選ぶ(shotLab.js)
         if(page.number == 0 && startScreen.touchUI(p.x,p.y)){ tapAt(p); return; }
         drag.id = e.pointerId;

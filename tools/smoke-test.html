@@ -1885,6 +1885,22 @@ try{
     check("ジャスト回避のあと被弾しにくい：見切りの間は当たり判定が小さく、解けるときにまわりの弾が消え、切り返しのあとは長く当たらない",
           sfCore && sfClear && sfGuard, [sfCore,sfClear,sfGuard,dodge.guard].join(","));
     for(fw=0; fw<DODGE_SLOW_TIME + 40; fw++){ enemyShots = []; mainScreen.update(); }
+    //タッチ操作の回避：右下の「回避」ボタンで、動いている向きへ決まった距離を飛び、指で動かす目標も同じだけ動く(引き戻されない)
+    enemies = []; enemyShots = []; dodge.reset(); inputMode = "touch";
+    mainScreen.state = "play"; mainScreen.invincible = 0; mainScreen.guard = 0;
+    drone.X = 400; drone.Y = 300; MouseX = 400; MouseY = 300; dodge.lastX = 1; dodge.lastY = 0;
+    var dtRect = canvas.getBoundingClientRect();
+    var dtPe = function(_type,_x,_y){ canvas.dispatchEvent(new PointerEvent(_type,{ pointerType:"touch", pointerId:9, bubbles:true, cancelable:true,
+        clientX:dtRect.left + _x*dtRect.width/CW, clientY:dtRect.top + _y*dtRect.height/CH })); };
+    dtPe("pointerdown", DODGE_BTN.x, DODGE_BTN.y);
+    var dtReq = dodge.req && Click == 0 && drag.id == null;
+    dtPe("pointerup", DODGE_BTN.x, DODGE_BTN.y);
+    draw1();
+    for(fw=0; fw<DODGE_TIME + 6; fw++){ enemyShots = []; mainScreen.update(); }
+    var dtMove = dodge.count == 1 && Math.abs(MouseX - (400 + DODGE_TOUCH_DIST)) < 0.01 && Math.abs(drone.X - MouseX) < 3 && Math.abs(drone.Y - 300) < 2;
+    check("回避ダッシュ(タッチ)：「回避」ボタンで動いている向きへ飛び、目標も一緒に動く", dtReq && dtMove,
+          [dtReq,dtMove].join("") + " 位置" + Math.round(drone.X) + "," + Math.round(drone.Y) + " 目標" + Math.round(MouseX));
+    inputMode = "mouse";
     enemies = [];
     mainScreen.toSpawn = 0;
     tap(backBtn());

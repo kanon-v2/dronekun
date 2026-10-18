@@ -6,7 +6,9 @@
 //  ・飛んでいる間、体は進む向きへくるっと1回転する(DODGE_SPIN)。残像も回る途中の角度で残る
 //  ・飛ぶ距離はポインタまでの距離(DODGE_DIST_MIN～MAX)。ポインタがすぐそばなら、動いていた向きへ飛ぶ
 //  ・mainScreen.update から update()、drone.calcXY から steer()、mainScreen.canBeHit から evade() を呼ぶ
-//  ・協力プレイ・対戦では使わない(敵と弾を動かす画面とずれるため)。タッチ操作にはまだない
+//  ・協力プレイ・対戦では使わない(敵と弾を動かす画面とずれるため)
+//  ・タッチ操作では、右下の「回避」ボタン(衝撃波ボタンの左)で、動いている向きへ決まった距離を飛ぶ。
+//    指で動かす目標も同じだけ動かす(着いたあと元の場所へ引き戻されないように)
 //------------------------------------------------------------------------------
 const DODGE_TIME      = 11;     //飛んでいる時間(フレーム)
 const DODGE_DIST_MIN  = 90;     //飛ぶ距離のいちばん短いもの(px)
@@ -44,7 +46,11 @@ const DODGE_SLASH_CHAIN  = 0.6;     //続けて切り返すたびに、見切り
 const DODGE_SLASH_MIN_SLOW = 24;    //見切りがこれより短くなるなら、もう続けられない(フレーム)
 const DODGE_SLASH_COLOR  = "200,250,255";   //刃の光の色
 const DODGE_SLASH_GUARD  = 20;      //切った敵にダメージが入ってからも当たらない時間(フレーム。着いてからは DODGE_SLASH_DELAY ＋これ)
-const DODGE_SLASH_CLEAR_R = 70;     //切り返しで着いたとき、まわりの弾を吹き飛ばす範囲(px。敵の群れの奥に着いても囲まれないように)
+const DODGE_SLASH_CLEAR_R = 70;
+//タッチ操作
+const DODGE_TOUCH_DIST   = 140;     //タッチで飛ぶ距離(px。指で動かす目標はドローン君のすぐそばなので、距離は決めておく)
+const DODGE_TOUCH_SLASH_DIST = 240; //タッチの切り返しの距離(px)
+const DODGE_BTN = { x:CW - 166, y:CH - 82, r:34 };  //タッチ操作の「回避」ボタン(衝撃波ボタンの左下)     //切り返しで着いたとき、まわりの弾を吹き飛ばす範囲(px。敵の群れの奥に着いても囲まれないように)
 
 var dodge = {
     req:false,      //右クリックされた(次の更新で飛ぶ)
@@ -174,6 +180,7 @@ var dodge = {
     aim:function(_slash){
         var vx = MouseX - drone.X, vy = MouseY - drone.Y, d = Math.hypot(vx, vy);
         if(d < DODGE_NEAR){ vx = this.lastX; vy = this.lastY; d = 1; }
+        if(inputMode == "touch") return { dx:vx/d, dy:vy/d, dist:_slash ? DODGE_TOUCH_SLASH_DIST : DODGE_TOUCH_DIST };
         var lo = _slash ? DODGE_SLASH_DIST_MIN : DODGE_DIST_MIN, hi = _slash ? DODGE_SLASH_DIST_MAX : DODGE_DIST_MAX;
         return { dx:vx/d, dy:vy/d, dist:Math.max(lo, Math.min(hi, d < DODGE_NEAR ? lo : d)) };
     },
@@ -181,6 +188,7 @@ var dodge = {
         if(this.slashOk && this.slowT > 0){ this.startSlash(); return; }
         var a = this.aim(false);
         this.dx = a.dx; this.dy = a.dy; this.dist = a.dist;
+        this.moveTarget();
         this.from = { x:drone.X, y:drone.Y };
         this.t = 0;
         this.dur = DODGE_TIME;
@@ -215,10 +223,49 @@ var dodge = {
             fx.flare(drone.X, drone.Y, 30, DODGE_SLASH_COLOR, 8);
         }
     },
+    //タッチ操作：指で動かす目標を、飛ぶ分だけ先へ動かす(マウスはポインタの方へ飛ぶので動かさない)
+    moveTarget:function(){
+        if(inputMode != "touch") return;
+        MouseX = Math.max(0, Math.min(CW, MouseX + this.dx*this.dist));
+        MouseY = Math.max(0, Math.min(CH, MouseY + this.dy*this.dist));
+    },
+    //タッチ操作の「回避」ボタン(common.js の pointerdown から)
+    touchHit:function(_x,_y){
+        return this.enabled() && Math.hypot(_x - DODGE_BTN.x, _y - DODGE_BTN.y) < DODGE_BTN.r + 8;
+    },
+    //「回避」ボタンを描く(mainScreen.drawHud から、タッチ操作のときだけ)。また飛べるまでを輪で、切り返せる間は「切り返し」と出す
+    drawTouchButton:function(){
+        if(!this.enabled()) return;
+        var b = DODGE_BTN, slash = this.slashOk && this.slowT > 0, ok = this.cd <= 0 || slash;
+        ctx.fillStyle = slash ? "rgba(240,250,255,0.9)" : ok ? "rgba(40,150,210,0.85)" : "rgba(160,160,160,0.6)";
+        ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle = slash ? "rgb(" + DODGE_COLOR + ")" : "#fff";
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(b.x,b.y,b.r - 5,0,Math.PI*2); ctx.stroke();
+        if(!ok){
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.arc(b.x,b.y,b.r + 3,-Math.PI/2,-Math.PI/2 + Math.PI*2*(1 - this.cd/DODGE_CD)); ctx.stroke();
+        }
+        if(this.readyT > 0){
+            ctx.strokeStyle = "rgba(" + DODGE_COLOR + "," + (this.readyT/12) + ")";
+            ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.arc(b.x,b.y,b.r + 4 + (12 - this.readyT),0,Math.PI*2); ctx.stroke();
+        }
+        ctx.lineWidth = 1;
+        ctx.fillStyle = slash ? "rgb(20,90,130)" : "#fff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = "bold " + (slash ? 12 : 15) + "px sans-serif";
+        ctx.fillText(slash ? "切り返し" : "回避",b.x,b.y);
+        ctx.textBaseline = "alphabetic";
+        ctx.fillStyle = "#000";
+    },
     //切り返し：見切りの間の右クリック。ポインタの方へ長く鋭く飛び、通り道の敵を切る
     startSlash:function(){
         var M = mainScreen, a = this.aim(true);
         this.dx = a.dx; this.dy = a.dy; this.dist = a.dist;
+        this.moveTarget();
         this.from = { x:drone.X, y:drone.Y };
         this.t = 0;
         this.dur = DODGE_SLASH_TIME;
