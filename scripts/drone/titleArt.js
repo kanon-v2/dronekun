@@ -75,12 +75,24 @@ const TART_PAL = {
 const CLIFF_EDGE_Y = 418;       //草原のふち(崖の際)の高さ(px)
 const CLIFF_GUST_BARS = 2;      //風の波が草原を渡る間隔(小節。曲の速さ TART_BPM に合わせる)
 const CLIFF_GUST_W = 150;       //風の波の幅(px)
-//草の層(奥から。n：本数　y0〜y1：根元の高さ(ふちからの距離。front は画面の下から)　h：長さ　w：根元の太さ　flex：風でしなる量　c：色　tip：先の光)
+//遠くの空を横切るドローン君たち(ポインタには付いていかない)。大きさ・淡さ・数・速さは、元のタイトル画面の背景を横切る影(startScreen.js の TITLE_SHADOWS)に合わせる
+//横切りながら上下にふらふら揺れ、たまに止まって向こう(谷の先)を眺める。画面の端から出ると、しばらくして反対側から別の高さで帰ってくる
+//y0〜y1：飛ぶ高さの範囲(px。草原より上)　sc：大きさ(遠目なので小さく)　speed：飛ぶ速さ(px/フレーム)　fog：かすみ(絵に重ねる空・靄の色の濃さ。いちばん小さい(遠い)もの～いちばん大きい(近い)もの。透けさせずに、遠くほど雲や靄に隠れて淡く見せる)
+//fogHi・fogLo：高い所の空の色・低い所(谷)の靄の色(r,g,b。高さで混ぜる)
+//bob：上下の揺れ(px。周期の違う2つの波の大きさ)　stop：次に止まるまでに進む道のり(px)　wait：止まって眺める長さ(フレーム)　away：画面の外にいる長さ(フレーム)
+//cloud：これより高い所を飛ぶときは雲の間(下の雲が手前を流れる)、低いときは谷の上(山なみより手前)に描く
+//elev：眺めるときに見下ろす向き(0 水平～1 真下)　sway：風の波で傾く量
+const CLIFF_DRONE = { y0:50, y1:370, sc:[0.35,0.6], speed:[0.25,0.6], fog:[0.7,0.2], fogHi:[150,164,200], fogLo:[228,198,180], bob:[9,4], stop:[260,800], wait:[120,360], away:[120,600],
+                      cloud:200, elev:0.25, sway:1.5 };
+//草の層(奥から)。緑を基調に、層ごとに3つの色の草を混ぜる
+//n：本数　y0〜y1：根元の高さ(崖の際からの距離。px)　h：長さ　w：根元の太さ　flex：風でしなる量　droop：長い草の先が垂れる量
+//c：草の色(3つ)　hi：日の当たる側のふちの光　head：穂の付く割合と色　broad：幅の広い葉の割合
 const CLIFF_GRASS = [
-    { n:320, y0:0,   y1:14,  h:[9,16],  w:2.2, flex:0.6, c:"#a8b45c", tip:"rgba(255,226,150,0.55)" },
-    { n:240, y0:12,  y1:90,  h:[18,32], w:3.2, flex:0.8, c:"#7d9246", tip:"rgba(255,220,140,0.45)" },
-    { n:150, y0:70,  y1:150, h:[36,60], w:4.6, flex:1,   c:"#5a7535", tip:"rgba(250,210,130,0.4)" },
-    { n:60,  y0:120, y1:160, h:[70,120],w:7,   flex:1.2, c:"#3d5428", tip:"rgba(240,200,120,0.35)" }
+    { n:560, y0:-2,  y1:14,  h:[7,15],   w:2,   flex:0.6,  droop:0,    c:["#9fb45a","#8ea84f","#aec068"], hi:"rgba(226,240,160,0.55)", head:[0,""],                  broad:0 },
+    { n:460, y0:10,  y1:70,  h:[14,30],  w:2.8, flex:0.75, droop:0.2,  c:["#7f9e45","#6f8f3c","#8dac4f"], hi:"rgba(214,236,150,0.5)",  head:[0.05,"#b4c672"],       broad:0.08 },
+    { n:330, y0:55,  y1:125, h:[30,54],  w:4,   flex:0.9,  droop:0.35, c:["#5d8034","#4f722d","#6a8d3a"], hi:"rgba(196,226,130,0.45)", head:[0.08,"#9cb65e"],       broad:0.12 },
+    { n:170, y0:105, y1:160, h:[52,92],  w:5.6, flex:1.05, droop:0.5,  c:["#3e6125","#33541f","#47692a"], hi:"rgba(176,214,112,0.4)",  head:[0.1,"#86a24c"],        broad:0.15 },
+    { n:46,  y0:150, y1:170, h:[96,150], w:8,   flex:1.2,  droop:0.7,  c:["#28451a","#223c16","#2f4f1e"], hi:"rgba(150,196,96,0.35)",  head:[0.12,"#6e8a3c"],       broad:0.2 }
 ];
 
 var titleArt = {
@@ -263,13 +275,29 @@ var titleArt = {
         for(var L=0; L<CLIFF_GRASS.length; L++){
             var G = CLIFF_GRASS[L], list = [];
             for(var i=0; i<G.n; i++){
-                var id = L*1000 + i;
+                var id = L*1000 + i, broad = this.rnd(id,35) < G.broad;
                 list.push({ x:-30 + this.rnd(id,30)*(CW + 60), d:G.y0 + this.rnd(id,31)*(G.y1 - G.y0),
-                            h:G.h[0] + this.rnd(id,32)*(G.h[1] - G.h[0]), k:this.rnd(id,33)*6.28 });
+                            h:(G.h[0] + this.rnd(id,32)*(G.h[1] - G.h[0]))*(broad ? 0.55 : 1), k:this.rnd(id,33)*6.28,
+                            lean:(this.rnd(id,34) - 0.35)*0.5,          //草ごとの生えた向きのばらつき(少し右寄り)
+                            w:(0.7 + this.rnd(id,36)*0.6)*(broad ? 2.2 : 1),
+                            c:Math.floor(this.rnd(id,37)*3), head:!broad && this.rnd(id,38) < G.head[0] });
             }
             list.sort(function(a,b){ return a.d - b.d; });
             this.grass.push(list);
         }
+    },
+    //草1本の形(根元から先へ細くなり、しなって、長い草は先が垂れる)。ふち・穂のために芯の点も返す
+    blade:function(_bx,_by,_a,_h,_w,_droop,_out){
+        var s1 = Math.sin(_a*0.2), c1 = Math.cos(_a*0.2), s2 = Math.sin(_a*0.6), c2 = Math.cos(_a*0.6);
+        var x1 = _bx + s1*_h*0.36, y1 = _by - c1*_h*0.36;
+        var x2 = _bx + s2*_h*0.7,  y2 = _by - c2*_h*0.7;
+        var dr = _droop*_h*Math.min(1, Math.abs(_a)*2.2);
+        var x3 = _bx + Math.sin(_a)*_h + (_a < 0 ? -1 : 1)*dr*0.3, y3 = _by - Math.cos(_a)*_h + dr*0.35;
+        ctx.moveTo(_bx - _w/2, _by);
+        ctx.bezierCurveTo(x1 - _w*0.42, y1, x2 - _w*0.24, y2, x3, y3);
+        ctx.bezierCurveTo(x2 + _w*0.24, y2, x1 + _w*0.42, y1, _bx + _w/2, _by);
+        ctx.closePath();
+        _out[0] = x1; _out[1] = y1; _out[2] = x2; _out[3] = y2; _out[4] = x3; _out[5] = y3;
     },
     drawCliff:function(_t,P){
         if(!this.grass) this.initCliff();
@@ -277,6 +305,7 @@ var titleArt = {
         for(var i=0; i<P.sky.length; i++) g.addColorStop(P.sky[i][0], P.sky[i][1]);
         ctx.fillStyle = g;
         ctx.fillRect(0,0,CW,CH);
+        this.fliers(_t);
         this.drawRays(_t, P.sun);
         this.drawSun(_t, P.sun);
         this.drawStreaks(_t);
@@ -297,6 +326,7 @@ var titleArt = {
             ctx.fillRect(0, top - 20, CW, 50);
         }
         this.drawValley(_t);
+        this.drawDrones(_t, false);     //低く飛ぶものは谷の上
         this.drawMeadowCliff(_t);
     },
     //日から広がる光の筋(ゆっくり回る)
@@ -325,6 +355,7 @@ var titleArt = {
             ctx.beginPath(); ctx.ellipse(x + w/2, y, w/2, 4 + (i % 3), 0, 0, Math.PI*2); ctx.fill();
             ctx.fillStyle = "rgba(255,240,220,0.22)";
             ctx.beginPath(); ctx.ellipse(x + w/2 + 10, y + 2, w*0.35, 2, 0, 0, Math.PI*2); ctx.fill();
+            if(i == 1) this.drawDrones(_t, true);   //高く飛ぶものは雲の間：下の雲が手前を流れる
         }
     },
     //はるか下の谷：かすんだ谷の床・夕日を映す川・川ぞいの小さな町・谷にたまる雲・下を飛ぶ鳥・左右の岩の崖
@@ -439,30 +470,62 @@ var titleArt = {
         sh.addColorStop(1, "rgba(255,232,170,0)");
         ctx.fillStyle = sh;
         ctx.fillRect(gx - CLIFF_GUST_W*1.4, CLIFF_EDGE_Y - 20, CLIFF_GUST_W*2.8, CH - CLIFF_EDGE_Y + 20);
-        //草(奥の層から)。層ごとに1つの形にまとめて塗る
+        //草(奥の層から)。層ごとに、色ごとに1つの形にまとめて塗る。日の当たる右側のふちに光、ところどころに穂
+        var pt = [0,0,0,0,0,0];
         for(var L=0; L<CLIFF_GRASS.length; L++){
-            var G = CLIFF_GRASS[L], list = this.grass[L], tips = [];
-            ctx.fillStyle = G.c;
-            ctx.beginPath();
-            for(var i=0; i<list.length; i++){
-                var b = list[i], bx = b.x, by = this.edgeY(bx) + b.d;
-                var a = this.wind(bx, _t, b.k, gx)*G.flex, h = b.h, w = G.w;
-                var tx = bx + Math.sin(a)*h, ty = by - Math.cos(a)*h;
-                var cx = bx + Math.sin(a*0.45)*h*0.5, cy = by - h*0.55;
-                ctx.moveTo(bx - w/2, by);
-                ctx.quadraticCurveTo(cx - w*0.3, cy, tx, ty);
-                ctx.quadraticCurveTo(cx + w*0.3, cy, bx + w/2, by);
-                ctx.closePath();
-                //先の光(根元からの 6 割の所から先)
-                var u = 0.6, mx = (1 - u)*(1 - u)*bx + 2*(1 - u)*u*cx + u*u*tx, my = (1 - u)*(1 - u)*by + 2*(1 - u)*u*cy + u*u*ty;
-                tips.push(mx, my, tx, ty);
+            var G = CLIFF_GRASS[L], list = this.grass[L], his = [], heads = [];
+            //根元の暗がり(草の重なりの奥)
+            if(L > 0){
+                var y0 = CLIFF_EDGE_Y + G.y0, dg = ctx.createLinearGradient(0, y0 - 10, 0, CLIFF_EDGE_Y + G.y1 + 10);
+                dg.addColorStop(0, "rgba(20,40,14,0)");
+                dg.addColorStop(1, "rgba(20,40,14,0.22)");
+                ctx.fillStyle = dg;
+                ctx.fillRect(0, y0 - 10, CW, G.y1 - G.y0 + 20);
             }
-            ctx.fill();
-            ctx.strokeStyle = G.tip;
-            ctx.lineWidth = 1;
+            for(var c=0; c<3; c++){
+                ctx.fillStyle = G.c[c];
+                ctx.beginPath();
+                for(var i=0; i<list.length; i++){
+                    var b = list[i];
+                    if(b.c != c) continue;
+                    var bx = b.x, by = this.edgeY(bx) + b.d;
+                    var a = this.wind(bx, _t, b.k, gx)*G.flex + b.lean, w = G.w*b.w;
+                    this.blade(bx, by, a, b.h, w, G.droop, pt);
+                    //日の当たる側のふち(根元から 3 割の所から先へ)
+                    his.push(pt[0] + w*0.25, pt[1], pt[2] + w*0.14, pt[3], pt[4], pt[5]);
+                    if(b.head) heads.push(pt[4], pt[5], Math.atan2(pt[5] - pt[3], pt[4] - pt[2]), b.h);
+                }
+                ctx.fill();
+            }
+            ctx.strokeStyle = G.hi;
+            ctx.lineWidth = L < 2 ? 0.7 : 1;
             ctx.beginPath();
-            for(var i=0; i<tips.length; i+=4){ ctx.moveTo(tips[i], tips[i + 1]); ctx.lineTo(tips[i + 2], tips[i + 3]); }
+            for(var i=0; i<his.length; i+=6){ ctx.moveTo(his[i], his[i + 1]); ctx.quadraticCurveTo(his[i + 2], his[i + 3], his[i + 4], his[i + 5]); }
             ctx.stroke();
+            //穂(先に付いた細長い粒の集まり。緑)
+            if(heads.length){
+                ctx.fillStyle = G.head[1];
+                ctx.beginPath();
+                for(var i=0; i<heads.length; i+=4){
+                    var hl = heads[i + 3]*0.16, an = heads[i + 2];
+                    var ex = heads[i] + Math.cos(an)*hl*0.45, ey = heads[i + 1] + Math.sin(an)*hl*0.45;
+                    ctx.moveTo(ex + Math.cos(an)*hl*0.6, ey + Math.sin(an)*hl*0.6);     //前の穂と線でつながらないように
+                    ctx.ellipse(ex, ey, hl*0.6, Math.max(1, hl*0.16), an, 0, Math.PI*2);
+                }
+                ctx.fill();
+                ctx.strokeStyle = G.hi;
+                ctx.lineWidth = 0.6;
+                ctx.beginPath();
+                for(var i=0; i<heads.length; i+=4){
+                    var hl = heads[i + 3]*0.16, an = heads[i + 2], hx = heads[i] + Math.cos(an)*hl*0.45, hy = heads[i + 1] + Math.sin(an)*hl*0.45;
+                    //穂の毛(短い線を並べる)
+                    for(var j=-2; j<=2; j++){
+                        var ox = hx + Math.cos(an)*j*hl*0.22, oy = hy + Math.sin(an)*j*hl*0.22;
+                        ctx.moveTo(ox, oy); ctx.lineTo(ox + Math.cos(an - 0.9)*hl*0.3, oy + Math.sin(an - 0.9)*hl*0.3);
+                    }
+                }
+                ctx.stroke();
+            }
         }
         //風に乗って舞う草の種(風の波が来ると高く舞う)
         for(var i=0; i<this.motes.length; i++){
@@ -473,6 +536,90 @@ var titleArt = {
             ctx.fillRect(x, y, 2, 1.4);
         }
     },
+
+    //空のドローン君たちを1コマ進める(同じ時刻なら進めない)。横切る(fly) → たまに止まって眺める(gaze) → 端から出ると外で待つ(away) → 反対側から別の高さで帰ってくる
+    fliers:function(_t){
+        var D = CLIFF_DRONE, r = this.rnd.bind(this);
+        if(!this.fly){
+            this.fly = [];
+            for(var i=0; i<TITLE_SHADOWS; i++){
+                var dir = r(i,70) < 0.5 ? -1 : 1;
+                this.fly.push({ x:r(i,71)*CW, y:D.y0 + r(i,72)*(D.y1 - D.y0), dir:dir, vx:0, mode:"fly", wait:0, n:i*100,
+                                go:D.stop[0] + r(i,73)*(D.stop[1] - D.stop[0]),
+                                sc:D.sc[0] + r(i,74)*(D.sc[1] - D.sc[0]), sp:D.speed[0] + r(i,75)*(D.speed[1] - D.speed[0]),
+                                ph:r(i,76)*6.28, bt:0, look:new DroneLook() });
+            }
+            this.fly.sort(function(a,b){ return a.sc - b.sc; });    //遠い(小さい)ものから描く
+        }
+        if(_t == this.flyT) return;
+        this.flyT = _t;
+        var gx = this.gustX(_t);
+        for(var i=0; i<this.fly.length; i++){
+            var f = this.fly[i], want = 0;
+            if(f.mode == "fly"){
+                want = f.dir*f.sp;
+                f.go -= Math.abs(f.vx);
+                //画面の中ほどで、決めた道のりを進んだら止まる
+                if(f.go <= 0 && f.x > 80 && f.x < CW - 80){ f.mode = "gaze"; f.wait = D.wait[0] + r(++f.n, 60)*(D.wait[1] - D.wait[0]); }
+                if(f.x < -40 || f.x > CW + 40){ f.mode = "away"; f.wait = D.away[0] + r(++f.n, 61)*(D.away[1] - D.away[0]); }
+            }else if(--f.wait <= 0){
+                if(f.mode == "away"){
+                    //反対側から、別の高さで帰ってくる
+                    f.dir = -f.dir;
+                    f.x = f.dir > 0 ? -38 : CW + 38;
+                    f.y = D.y0 + r(++f.n, 62)*(D.y1 - D.y0);
+                    f.vx = f.dir*f.sp;
+                }
+                f.mode = "fly";
+                f.go = D.stop[0] + r(++f.n, 63)*(D.stop[1] - D.stop[0]);
+            }
+            if(f.mode == "away") f.vx = 0;
+            f.vx += (want - f.vx)*0.04;       //止まる・動き出すのはなめらかに
+            f.x += f.vx;
+            //上下のふらふらは、飛んでいる速さの分だけ進める(止まると揺れも静まる)
+            var k = Math.abs(f.vx)/f.sp;
+            f.bt += 0.4 + k;
+            var g = (f.x - gx)/CLIFF_GUST_W, moving = Math.abs(f.vx) > 0.05;
+            f.look.update(moving ? (f.vx < 0 ? 3 : 4) : 5, f.vx*8 + D.sway*Math.exp(-g*g));
+            if(!moving) f.look.elev += (D.elev - f.look.elev)*0.05;
+        }
+    },
+    //空のドローン君たちを描く(_high：雲の間を飛ぶもの／低く飛ぶもの)
+    drawDrones:function(_t,_high){
+        var D = CLIFF_DRONE;
+        if(!this.fly) return;
+        for(var i=0; i<this.fly.length; i++){
+            var f = this.fly[i];
+            if(f.mode == "away" || (f.y < D.cloud) != _high) continue;
+            var y = f.y + D.bob[0]*Math.sin(f.bt*0.018 + f.ph) + D.bob[1]*Math.sin(f.bt*0.047 + f.ph*2);
+            this.drawFogged(f, y);
+        }
+    },
+    //空や靄の色を重ねたドローン君(透けさせないよう、別のキャンバスに描いて絵のある所だけに色を重ねてから写す)
+    drawFogged:function(_f,_y){
+        var D = CLIFF_DRONE, half = DRONE_SIZE*_f.sc*0.8, px = Math.ceil(half*2*renderScale);
+        var cv = this.fogCv || (this.fogCv = document.createElement("canvas"));
+        if(cv.width < px){ cv.width = cv.height = px; }
+        var g = cv.getContext("2d"), keep = ctx;
+        g.setTransform(1,0,0,1,0,0);
+        g.clearRect(0, 0, px, px);
+        g.globalCompositeOperation = "source-over";
+        g.setTransform(renderScale, 0, 0, renderScale, 0, 0);
+        ctx = g;        //DroneLook はいつもの ctx に描くので、少しのあいだ差し替える
+        try{ _f.look.draw(half, half, _f.sc); }finally{ ctx = keep; }
+        //遠いほど濃く、高さで空の色～谷の靄の色を混ぜて重ねる
+        var k = (_f.sc - D.sc[0])/(D.sc[1] - D.sc[0]), fog = D.fog[0] + k*(D.fog[1] - D.fog[0]);
+        var h = Math.max(0, Math.min(1, (_f.y - D.y0)/(D.y1 - D.y0))), c = [];
+        for(var j=0; j<3; j++) c.push(Math.round(D.fogHi[j] + h*(D.fogLo[j] - D.fogHi[j])));
+        g.setTransform(1,0,0,1,0,0);
+        g.globalCompositeOperation = "source-atop";
+        g.fillStyle = "rgba(" + c.join(",") + "," + fog + ")";
+        g.fillRect(0, 0, px, px);
+        g.globalCompositeOperation = "source-over";
+        ctx.drawImage(cv, 0, 0, px, px, _f.x - half, _y - half, half*2, half*2);
+    },
+    //草原にドローン君がいる案か(タイトルのドローン君は描かない)
+    ownDrone:function(){ return this.on() && !!this.pal().ranges; },
 
     //案A：舞い上がる綿毛／案B：ほたる
     drawMotes:function(_t){

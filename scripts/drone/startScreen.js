@@ -443,8 +443,8 @@ var startScreen = {
         ctx.fillText("WAVEクリアで装備を獲得。相性の良い装備を組み合わせるとシナジーが発動", GS, CH - 24);
         ctx.fillStyle = "#000";
 
-        //ドローン表示
-        drone.draw();
+        //ドローン表示(案D は草原にいるドローン君を背景で描くので、ポインタに付いていくドローン君は出さない)
+        if(!(typeof titleArt != "undefined" && titleArt.ownDrone())) drone.draw();
         if(bossDebug.menu) bossDebug.drawMenu();
         if(this.settings) this.drawSettings();
         if(this.diffSel) this.drawDiff();

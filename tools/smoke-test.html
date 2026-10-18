@@ -2298,12 +2298,12 @@ function finish2(){
         var keepMusic3 = viewOpt.music, keepForce = titleArt.force;
         titleArt.force = null;
         viewOpt.music = "classic"; startScreen.drawBackground();
-        var artClassic = titleArt.pick === null && titleCol("hint", "-") == "-";
+        var artClassic = titleArt.pick === null && titleCol("hint", "-") == "-" && !titleArt.ownDrone();
         viewOpt.music = "suno"; startScreen.drawBackground();
-        var artSuno = titleArt.pick == "d" && titleCol("hint", "-") != "-";
+        var artSuno = titleArt.pick == "d" && titleCol("hint", "-") != "-" && titleArt.ownDrone();
         viewOpt.music = keepMusic3; titleArt.force = keepForce;
         titleArt.pick = keepPick;
-        check("タイトルの見た目の案A～D(夕暮れの丘・薄明の丘・墨の遠景・崖の上の草原)を描け、文字の色が替わる。曲が標準なら案D、クラシックなら元の画面",
+        check("タイトルの見た目の案A～D(夕暮れの丘・薄明の丘・墨の遠景・崖の上の草原)を描け、文字の色が替わる。曲が標準なら案D(ドローン君たちは遠くの空を横切る)、クラシックなら元の画面",
               errors.length == artErr && artCols.join("|").indexOf("-") < 0 && artClassic && artSuno,
               artCols.join(" | ") + " classic:" + artClassic + " suno:" + artSuno + " " + errors.slice(artErr).join(" "));
     }catch(e){ fails++; L("NG   例外 " + e.stack); }
