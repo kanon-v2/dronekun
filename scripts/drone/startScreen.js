@@ -67,6 +67,9 @@ var musicButtons = [
 //設定の窓のボタン(方眼・曲)。並びがマウスの乗っている番号になる
 var optButtons = gridButtons.concat(musicButtons);
 
+//タイトルの見た目の案(titleArt.js。#title=A～D)を選んでいるときの文字の色。選んでいなければ _def
+function titleCol(_key,_def){ return typeof titleArt != "undefined" ? titleArt.col(_key, _def) : _def; }
+
 //遠くを横切るドローン君の影(背景の飾り)
 var titleShadows = [];
 for(var i=0; i<TITLE_SHADOWS; i++){
@@ -433,7 +436,7 @@ var startScreen = {
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
         ctx.font = "12px " + TITLE_UI_FONT;
-        ctx.fillStyle = "#6a6f6c";
+        ctx.fillStyle = titleCol("hint", "#6a6f6c");
         ctx.fillText(inputMode == "touch"
             ? "ドラッグでドローン君を誘導　／　敵には自動で攻撃　／　右下のボタンで衝撃波"
             : "マウスでドローン君を誘導　／　敵には自動で攻撃　／　クリックで衝撃波（やる気を使う）", GS, CH - 44);
@@ -499,26 +502,26 @@ var startScreen = {
         ctx.textBaseline = "middle";
         //英語の小見出し(左右に細い線)
         ctx.font = "bold 13px " + TITLE_UI_FONT;
-        ctx.fillStyle = "#6a6f6c";
+        ctx.fillStyle = titleCol("en", "#6a6f6c");
         var en = "D R O N E - K U N";
         ctx.fillText(en, cx, cy - 62);
         var w = ctx.measureText(en).width/2 + 14;
-        ctx.fillStyle = "rgba(0,0,0,0.25)";
+        ctx.fillStyle = titleCol("line", "rgba(0,0,0,0.25)");
         ctx.fillRect(cx - w - 40, cy - 62, 40, 1);
         ctx.fillRect(cx + w, cy - 62, 40, 1);
         //ロゴ：少しずらした影＋本体＋赤い四角
         ctx.font = "78px " + TITLE_FONT;
         var lw = ctx.measureText("ドローン君").width;
         var lx = cx - 12;
-        ctx.fillStyle = "rgba(0,0,0,0.08)";
+        ctx.fillStyle = titleCol("shadow", "rgba(0,0,0,0.08)");
         ctx.fillText("ドローン君", lx + 4, cy + 4);
-        ctx.fillStyle = TITLE_INK;
+        ctx.fillStyle = titleCol("logo", TITLE_INK);
         ctx.fillText("ドローン君", lx, cy);
         ctx.fillStyle = TITLE_ACCENT;
         ctx.fillRect(lx + lw/2 + 6, cy + 18, 14, 14);
         //ひとこと
         ctx.font = "14px " + TITLE_UI_FONT;
-        ctx.fillStyle = "#444";
+        ctx.fillStyle = titleCol("tag", "#444");
         ctx.fillText("全" + FINAL_WAVE + "WAVEのストーリー付きシューティング", cx, cy + 62);
         //記録
         if(this.best > 0 || this.cleared){
@@ -526,10 +529,10 @@ var startScreen = {
             var rec = "HIGH SCORE  " + this.best;
             var rw = ctx.measureText(rec).width + 28;
             var bx = cx - rw/2 - (this.cleared ? 46 : 0);
-            ctx.strokeStyle = "rgba(0,0,0,0.3)";
+            ctx.strokeStyle = titleCol("recLine", "rgba(0,0,0,0.3)");
             ctx.lineWidth = 1;
             ctx.strokeRect(bx + 0.5, cy + 92.5, rw, 26);
-            ctx.fillStyle = TITLE_INK;
+            ctx.fillStyle = titleCol("recInk", TITLE_INK);
             ctx.fillText(rec, bx + rw/2, cy + 106);
             if(this.cleared){
                 ctx.fillStyle = TITLE_ACCENT;
@@ -550,7 +553,7 @@ var startScreen = {
         ctx.globalAlpha = hk;
         ctx.textAlign = "left";
         ctx.font = "bold 12px " + TITLE_UI_FONT;
-        ctx.fillStyle = "#6a6f6c";
+        ctx.fillStyle = titleCol("head", "#6a6f6c");
         ctx.fillText("ひとりで", startButton.X, startButton.Y - 14);
         ctx.fillText("ふたりで（インターネット）", coopButton.X, coopButton.Y - 14);
         ctx.globalAlpha = 1;

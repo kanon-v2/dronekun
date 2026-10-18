@@ -43,6 +43,7 @@ powershell -ExecutionPolicy Bypass -File tools\run-smoke.ps1
 | `armsExtra.js` | 追加の装備(火炎放射・円盤・重力弾・バリア・狙撃・冷凍)とそのシナジー。`WEAPONS`・`SYNERGIES`・`arms` に足す(`arms` から `fire2`・`update2`・`draw2` などを呼ぶ)。敵の状態「燃える」「凍る」もここ |
 | `bosses.js` | レア敵・ボス(女王蜂・移動要塞・天蓋母艦・ドローン君改)。`special` |
 | `startScreen.js` | タイトル画面 |
+| `titleArt.js` | タイトル画面の背景とロゴ・文字の色(`titleArt`)。**曲の設定(`viewOpt.music`)が標準(Suno)なら案D「崖の上の草原」、クラシックなら元のタイトル画面**(`titleArt.sync`・`TART_SUNO`。`startScreen.drawBackground` を包み、文字の色は `startScreen` の `titleCol` が読む)。案D：夕方の崖の際の草原から谷と遠い山なみを見下ろす。草は4層(`CLIFF_GRASS`)で、曲の速さ(`TART_BPM`)の `CLIFF_GUST_BARS` 小節ごとに風の波が渡る。見比べ用に案A～C(夕暮れの丘・薄明の丘・墨の遠景)もあり、`index.html#title=a`～`d` で曲の設定にかかわらずその案になる |
 | `mainScreen.js` | 戦闘画面。敵の種類(`ENEMY_TYPES`)・敵の弾・アイテム・HUD |
 | `forces.js` | 同胞(色違いのドローン君)と人間の兵器。`ENEMY_TYPES` に種類を追加している |
 | `enemyArt.js` | 雑魚敵(`mainScreen.js` の6種類と人間の兵器3種類)の見た目(`enemyArt`)。`mainScreen.drawEnemy` から呼ぶ。ボス(女王蜂・移動要塞・天蓋母艦とその砲台・ドローン君改)の絵もここ(`enemyArt.queen`・`fortress`・`canopy`・`pod`・`kai`。`bosses.js` の `special.draw` から呼ぶ) |

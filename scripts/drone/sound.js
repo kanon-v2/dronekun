@@ -873,7 +873,7 @@ var sound = {
         //まだ音が出せない(一度もクリックしていない)ときの案内(ボタンの左に)
         if(!this.ready() && (this.bgmOn || this.seOn)){
             ctx.textAlign = "right";
-            ctx.fillStyle = "#888";
+            ctx.fillStyle = page.number == 0 && typeof titleCol == "function" ? titleCol("hint", "#888") : "#888";     //タイトルの見た目の案(titleArt.js)では、暗い背景でも読める色に
             ctx.fillText(inputMode == "touch" ? "タップで音が鳴ります" : "クリックで音が鳴ります", left - 12, CH - 19);
         }
         ctx.fillStyle = "#000";
