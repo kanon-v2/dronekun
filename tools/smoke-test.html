@@ -1041,7 +1041,7 @@ try{
           "拍" + fsBeat + "(" + fsShots + ") 体力" + fsGate + " ため" + fsSink + "(" + fsDeep + ") 無音" + fsHush + " 弾く" + fsParry + "(" + fsRes + ") 巨大" + fsGiant +
           " 息つぎ" + fsBreath + " 放つ" + fsRelease + " 当たる" + fsHit);
 
-    // 最終局面の試作(finaleTriumph.js)：Suno を選ぶと、曲の頭から改が組み上がり、曲の時刻で戦う(曲の時刻は fakeT で進める)
+    // 最終局面の試作(finaleTriumph.js)：Suno を選ぶと、曲の頭で改が故障し、再構築プロトコルで組み上がり、曲の時刻で戦う(曲の時刻は fakeT で進める)
     setup(FINAL_WAVE, { gun:1 }, ["gun",null,null], 1);
     page.change(1); MouseIn = true;
     for(var i=0; i<3000 && (mainScreen.state != "play" || mainScreen.bossFreeze); i++) mainScreen.update();
@@ -1058,8 +1058,14 @@ try{
     };
     //再構築：曲の頭から組み上がり、最初の大きな一打で第二形態
     var trWing = 0;
-    trRun(0, 12, function(){ trWing = finaleTri.rebuildN(tb); });
-    var trRebuild = tb.trSong && tb.mode == "revive" && trWing > 3 && trWing < TR_WING_N && tb.maxHp == Math.round(3000*KAI2_HP_MUL*TR_HP_MUL) && special.holdFire();
+    //はじめは故障(エラーの記録が流れ、羽根はまだない)、プロトコルが始まると工程の記録と羽根が増える
+    var trFail = false;
+    trRun(0, 12, function(){
+        trWing = finaleTri.rebuildN(tb);
+        if(Math.abs(finaleTri.fakeT - 5) < 0.01) trFail = trWing == 0 && finaleTri.log.length >= 3 && finaleTri.log.every(function(L){ return L.kind == "fail"; }) && finaleTri.rebuildK(5) == 0;
+    });
+    var trProto = finaleTri.log[0].kind == "start" && finaleTri.log.length >= 3 && finaleTri.bannerT > 0;
+    var trRebuild = trFail && trProto && tb.trSong && tb.mode == "revive" && trWing > 3 && trWing < TR_WING_N && tb.maxHp == Math.round(3000*KAI2_HP_MUL*TR_HP_MUL) && special.holdFire();
     draw1();
     var trShots = 0, trKinds = {};
     trRun(12, 26, function(){ trShots = Math.max(trShots, enemyShots.length); enemyShots.forEach(function(b){ trKinds[b.kind] = 1; }); });
@@ -1130,9 +1136,9 @@ try{
     draw1();
     var trClear = mainScreen.state == "clear";
     finaleTri.fakeT = null; bgmTrial.finale = 0; finaleTri.keepMusic = false; finaleTri.names();
-    check("最終局面の試作(Suno)：曲の頭から改が組み上がり、拍で撃ち、奥から迫る突進をジャストで弾き(着いたあと少し遅れても)、夜明けに反撃して、最後の和音でとどめ",
+    check("最終局面の試作(Suno)：曲の頭で改が故障し、再構築プロトコルで組み上がり、拍で撃ち、奥から迫る突進をジャストで弾き(着いたあと少し遅れても)、夜明けに反撃して、最後の和音でとどめ",
           trRebuild && trAwake && trOwn && trGate && trHush && trParry && trBreath && trRelease && trDawn && trLose && trLast && trAgain && trKill && trClear && errors.length == trErr && KAI2.name != TR_NAME.name,
-          "再構築" + trRebuild + "(" + trWing.toFixed(1) + ") 完全体" + trAwake + "(" + trShots + ") 攻撃" + trOwn + "(" + Object.keys(trKinds).join(",") + " 柱" + trPil + "/" + trHits + ") 関門" + trGate +
+          "再構築" + trRebuild + "(故障" + trFail + " 始動" + trProto + " 羽根" + trWing.toFixed(1) + ") 完全体" + trAwake + "(" + trShots + ") 攻撃" + trOwn + "(" + Object.keys(trKinds).join(",") + " 柱" + trPil + "/" + trHits + ") 関門" + trGate +
           " 迫る" + trHush + " 弾く" + trWait + "/" + trParry + " 息つぎ" + trBreath + "/" + trRelease + " 夜明け" + trDawn + "/" + trLose + " 最後" + trLast + " くり返し" + trAgain +
           " とどめ" + trKill + " クリア" + trClear + " " + errors.slice(trErr).join(" "));
 

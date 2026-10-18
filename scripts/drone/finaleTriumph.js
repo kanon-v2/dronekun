@@ -2,7 +2,9 @@
 //  最終局面の試作(Suno)：ドローン君改の第二形態を、録音の曲「Triumph in D Major」(bgmTrial.js の triumph)に合わせて動かす
 //  デバッグのメニューの「最終局面」を「Suno」にしたときだけ働く(Lyria の試作 finaleSync.js とは別。重い効果音 fsSfx は借りる)
 //  曲は 160 BPM で、少しずつ速くなる(終わりで 160.6)ので、拍の時刻は測って決めた式(TR_BEAT_FIT)で出す。流れ：
-//    再構築(0～19.7秒)：倒れた改が、小節ごとに光の翼を1枚ずつ組み上げて浮かび上がる。最初の大きな一打で完全体(第二形態)
+//    故障(0～6.2秒)：倒れた改がノイズと火花を散らして痙攣し、エラーの記録が流れる。最後に鼓動
+//    再構築(6.2～19.7秒)：「再構築プロトコル 始動」。工程の記録と進み具合を出しながら、小節ごとに光の翼を
+//      設計図の線の上へ組み上げて浮かび上がる。最初の大きな一打で完全体(第二形態)
 //    主題(19.7秒～)・高まり(43.6秒～)・サビ(81.1秒～)：拍で撃ち、小節の頭に攻撃
 //      (翼の羽根・隙間のある光輪・光の柱・囲む光の槍と、今までの攻撃)
 //    沈む(93.1秒～)：奥へ下がり、奥から拍に合わせて砲撃。迫る(100.6秒～)：奥から迫り、最高潮の頭(105.0秒)に着く。
@@ -18,7 +20,7 @@
 //  battleBg.drawDark、dodge.drawUnder、mainScreen の hitEnemy・drawHud、sound の play・stopMusic を包む
 //  協力プレイには対応していない
 //------------------------------------------------------------------------------
-const TR_START      = 0;        //曲をここから流し始める(秒。0 は前奏から：前奏の間に改が組み上がる)
+const TR_START      = 0;        //曲をここから流し始める(秒。0 は前奏から：前奏の間に改が故障し、再構築して組み上がる)
 const TR_BEAT_FIT   = [0.154343813, 0.375068674, -1.58002545e-06];  //n 拍目の時刻(秒) = a + b×n + c×n²(曲を測って決めた)
 const TR_LOOP       = [155.9095, 184.3057];     //曲のくり返し(秒。music/triumph.js と同じ。104小節目と123小節目の頭。テストで曲の時刻を戻すのに使う)
 //曲の区切り(bar：始まりの小節。1小節は4拍で、0小節目は曲の頭)
@@ -122,6 +124,18 @@ const TR_PILLAR_GAP = 160;      //光の柱の間かく(px)
 const TR_LANCE_N    = [8, 10];  //光の槍の数(ふだん・最高潮から)
 const TR_LANCE_R    = 210;      //光の槍がドローン君を囲む半径(px)
 const TR_LANCE_SPEED = 6.5;     //光の槍が飛ぶ速さ(px/フレーム)
+//再構築(前奏の間)：故障 → 再構築プロトコル → 完全体
+const TR_PROTO_BAR  = 4;        //再構築プロトコルが始動する小節(それまでは故障)
+const TR_FAIL_LOG   = [[1,"動力系統 …… 応答なし"], [3,"姿勢制御 …… 損傷"], [5,"主翼ユニット …… 消失"],
+                       [7,"装甲 …… 損傷率 87%"], [9,"コア出力 …… 0%"], [11,"致命的なエラー：全機能を停止"]];  //故障の記録([拍, 文])
+const TR_FAIL_BEATS = [12,14];  //故障の終わりの鼓動(拍。止まったはずの心臓が打つ)
+const TR_PROTO_LOG  = [[4,"再構築プロトコル 起動"], [5,"損傷部位を切り離し"], [6,"骨格フレームを再生成"], [7,"光翼ユニットを展開"],
+                       [8,"出力制限を解除"], [9,"戦闘プログラムを書き換え"], [10,"全系統を同期"], [11,"最終確認"], [12,"再構築 完了"]];   //工程の記録([小節, 文])
+const TR_TWITCH     = [0.035, 7, 5];    //故障の痙攣(1コマあたりの起きやすさ・長さ(コマ)・ずれ(px))
+const TR_SPARK_P    = 0.06;     //故障の火花(1コマあたりの起きやすさ)
+const TR_BANNER_F   = 110;      //「再構築プロトコル 始動」の帯を出す長さ(コマ)
+const TR_LOG_X      = 18;       //記録の表示の左上(画面の左下に置く)
+const TR_LOG_Y      = CH - 190;
 const TR_MOTE_SPEED = 1.5;      //再構築の間の、ゆっくりした光の弾の速さ
 //絵
 //翼(右の翼の形。左は裏返す。改の大きさ1のときの px)：骨(つけ根 → ひじ → 先)に沿って、羽根が下から外へ垂れ下がる(天使の翼の形)
@@ -226,12 +240,13 @@ var finaleTri = {
             _e.count = Math.max(_e.count, 2);
             return true;
         }
-        var A = TR_SECTIONS[1].from, k = Math.min(1, p/A), q = k*k*(3 - 2*k);
-        //床のあたりから、画面の上のまんなかへ浮かび上がる
+        var A = TR_SECTIONS[1].from, k = this.rebuildK(p), q = k*k*(3 - 2*k);
+        //故障の間は倒れた所で止まり、プロトコルが始まると画面の上のまんなかへ浮かび上がる
         if(_e.trY0 == null){ _e.trX0 = _e.x; _e.trY0 = _e.y; }
         _e.x = _e.trX0 + (CW/2 - _e.trX0)*q;
         _e.y = _e.trY0 + (150 - _e.trY0)*q + Math.sin(p*2)*3*k;
         _e.vx = 0; _e.vy = 0;
+        //体力のゲージは、故障の間は空のまま、プロトコルの進みに合わせて満ちる
         _e.hp = Math.max(1, Math.round(_e.maxHp*k*k));
         if(p >= A){
             //完全体：bosses.js の kaiRevive の終わりと同じにする(kaiFx が mode の変わり目で kaiAwakeFx を呼ぶ)
@@ -242,54 +257,264 @@ var finaleTri = {
             _e.harmless = false;
             _e.timer = 999; _e.gunT = 999;
             _e.cycle = 0;
+            _e.trNoise = 0; _e.trTwitch = 0;
         }
         return true;
     },
-    //再構築の見た目(special.kaiFx から。mode が revive の間)：暗闇がだんだん晴れ、小節ごとに翼の羽根が1枚ずつ増える
+    //再構築の見た目(special.kaiFx から。mode が revive の間)
+    //故障：ノイズ・痙攣・火花・エラーの記録・鼓動 → プロトコル始動の帯 → 小節ごとに工程の記録と翼の羽根が増え、暗闇が晴れる
     rebuildFx:function(_e){
         var M = mainScreen, p = this.pos();
         if(p < 0){ M.kaiDark = Math.max(M.kaiDark, KAI_DARK_OUT*0.75); return; }
-        var A = TR_SECTIONS[1].from, k = Math.min(1, p/A);
+        var k = this.rebuildK(p), proto = k > 0;
+        this.logF++;
+        if(this.bannerT != null) this.bannerT++;
         M.kaiDark = Math.max(M.kaiDark, KAI_DARK_OUT*0.75*(1 - 0.55*k));
-        var beat = Math.floor(this.beatAt(p)), bar = Math.floor(beat/4);
+        var beat = Math.floor(this.beatAt(p));
         if(beat != _e.trBeat){
-            var first = _e.trBeat == null;
+            var from = _e.trBeat == null ? beat : _e.trBeat + 1;
             _e.trBeat = beat;
-            if(!first && beat % 4 == 0 && bar >= 1){
-                //小節の頭：胸が光り、方眼に波。4小節目からは羽根が1対ずつ組み上がる
-                M.beatT = 24;
-                M.shake = Math.max(M.shake, bar >= 8 ? 4 : 2);
-                battleBg.ripple(_e.x, _e.y, 6 + bar, 6, 40, TR_GLOW);
-                fx.ring(_e.x, _e.y, 40 + bar*6, TR_GLOW, 14, 2);
-                if(bar >= 4 && bar <= 11){
-                    _e.trFlap = 1;
-                    fx.flare(_e.x, _e.y, 50 + bar*4, TR_GLOW, 10);
-                    sound.play("kaiBoot");
-                }
-                //8小節目からは、ゆっくりした光の粒の輪(よけるだけ)
-                if(bar >= 8 && M.state == "play") fireRing(_e.x, _e.y, 12 + (bar - 8)*2, TR_MOTE_SPEED, bar*0.37, "tMote");
-            }
+            //飛ばした拍も順に(重いコマで拍を取りこぼさないように)
+            for(var b=from; b<=beat; b++) this.rebuildBeat(_e, b);
         }
         if(_e.trFlap > 0) _e.trFlap = Math.max(0, _e.trFlap - 0.04);
-        //光が吸い込まれるように集まり、色が赤から紫へ(8小節目から)
-        var c = Math.max(0, Math.min(1, (p - this.barTime(8))/(A - this.barTime(8))));
-        _e.look.tint = mixRgb("190,20,30", KAI2_TINT, Math.round(c*8)/8);
-        if(_e.t % 3 == 0 && k > 0.1){
-            var a = Math.random()*Math.PI*2, R = 150 + Math.random()*80, sp = 4 + 8*k;
-            effects.push({ x:_e.x + Math.cos(a)*R, y:_e.y + Math.sin(a)*R, vx:-Math.cos(a)*sp, vy:-Math.sin(a)*sp,
-                           life:22, maxLife:22, size:2 + 2*k, glow:Math.random() < 0.6 ? TR_GLOW : "255,90,90" });
+        if(!proto){
+            //故障：体の帯がずれ、ときどき痙攣し、火花が散る。目の光が消えかけてちらつく
+            _e.trNoise = 0.55 + 0.3*Math.random();
+            if(_e.trTwitch > 0) _e.trTwitch--;
+            else if(Math.random() < TR_TWITCH[0]){
+                _e.trTwitch = TR_TWITCH[1];
+                _e.trJx = (Math.random() - 0.5)*2*TR_TWITCH[2]; _e.trJr = (Math.random() - 0.5)*0.25;
+                if(Math.random() < 0.5) sound.play("glitch");
+            }
+            if(Math.random() < TR_SPARK_P){
+                var a = Math.random()*Math.PI*2;
+                fx.sparks(_e.x + Math.cos(a)*24, _e.y + Math.sin(a)*20, 5 + Math.floor(Math.random()*6), Math.random() < 0.6 ? "255,170,90" : "150,200,255", 5, 2);
+                if(Math.random() < 0.35) sound.play("zap");
+            }
+            if(_e.t % 9 == 0){
+                effects.push({ smoke:true, x:_e.x + (Math.random()-0.5)*20, y:_e.y, vx:(Math.random()-0.5)*0.6, vy:-0.8,
+                               R0:6, R1:22, life:40, maxLife:40, color:"60,50,55" });
+            }
+            if(!_e.trHeart) _e.look.tint = Math.random() < 0.15 ? "40,12,18" : "150,18,28";
+            else _e.trHeart--;
+        }else{
+            //再構築：ノイズは工程が進むと消え、色が赤から紫へ。光が吸い込まれるように集まる
+            _e.trNoise = Math.max(0, 0.5*(1 - k*2.2));
+            _e.trTwitch = 0;
+            _e.look.tint = mixRgb("190,20,30", KAI2_TINT, Math.round(Math.min(1, k*1.3)*8)/8);
+            if(_e.t % 3 == 0){
+                var a = Math.random()*Math.PI*2, R = 150 + Math.random()*80, sp = 4 + 8*k;
+                effects.push({ x:_e.x + Math.cos(a)*R, y:_e.y + Math.sin(a)*R, vx:-Math.cos(a)*sp, vy:-Math.sin(a)*sp,
+                               life:22, maxLife:22, size:2 + 2*k, glow:Math.random() < 0.6 ? TR_GLOW : "255,90,90" });
+            }
         }
         M.shake = Math.max(M.shake, k > 0.85 ? 3 : 0);
         //組み上がるにつれて、夜の戦場の色へ(改の光が浮かぶように)
         battleBg.night += (TR_NIGHT*k - battleBg.night)*0.05;
         battleBg.light = { x:_e.x, y:_e.y, a:0.3*k, r:200 };
     },
-    //再構築の間に見えている羽根の数(片方の翼。4小節目から、組み上がるまで少しずつ増える。小数の分は伸びている途中)
+    //再構築の間の拍ごとの出来事
+    rebuildBeat:function(_e,_beat){
+        var M = mainScreen, bar = Math.floor(_beat/4);
+        if(bar < TR_PROTO_BAR){
+            //故障の記録と、終わりの鼓動(鼓動の間は目が赤く灯る)
+            for(var i=0; i<TR_FAIL_LOG.length; i++) if(TR_FAIL_LOG[i][0] == _beat){
+                var last = i == TR_FAIL_LOG.length - 1;
+                this.addLog(TR_FAIL_LOG[i][1], "fail");
+                sound.play(last ? "error" : "typing");
+                if(last){ fx.sparks(_e.x, _e.y, 30, "255,150,90", 8, 3); M.shake = Math.max(M.shake, 8); }
+            }
+            if(TR_FAIL_BEATS.indexOf(_beat) >= 0){
+                M.beat(_beat == TR_FAIL_BEATS[TR_FAIL_BEATS.length - 1]);
+                fx.ring(_e.x, _e.y, 70, "255,60,60", 16, 2);
+                _e.look.tint = "190,20,30";
+                _e.trHeart = 14;
+            }
+            return;
+        }
+        if(_beat % 4 != 0 || bar >= TR_SECTIONS[1].bar) return;
+        //小節の頭：工程の記録。胸が光り、方眼に波。羽根が組み上がる
+        for(var i=0; i<TR_PROTO_LOG.length; i++){
+            if(TR_PROTO_LOG[i][0] != bar) continue;
+            this.addLog(TR_PROTO_LOG[i][1], bar == TR_PROTO_BAR ? "start" : i == TR_PROTO_LOG.length - 1 ? "done" : "step");
+            sound.play("typing");
+        }
+        M.beatT = 24;
+        M.shake = Math.max(M.shake, bar >= 8 ? 4 : 2);
+        battleBg.ripple(_e.x, _e.y, 6 + bar, 6, 40, TR_GLOW);
+        fx.ring(_e.x, _e.y, 40 + bar*6, TR_GLOW, 14, 2);
+        _e.trFlap = 1;
+        fx.flare(_e.x, _e.y, 50 + bar*4, TR_GLOW, 10);
+        sound.play("kaiBoot");
+        if(bar == TR_PROTO_BAR){
+            //プロトコル始動：閃光と帯。故障のノイズが晴れていく
+            this.bannerT = 0;
+            fsSfx.impact(false);
+            fx.flare(_e.x, _e.y, 180, TR_GLOW, 20);
+            fx.ring(_e.x, _e.y, 260, TR_GLOW, 24, 6);
+            battleBg.ripple(_e.x, _e.y, 30, 8, 70, TR_GLOW);
+            M.flashT = Math.max(M.flashT || 0, 8);
+            M.shake = Math.max(M.shake, 10);
+        }
+        //8小節目からは、ゆっくりした光の粒の輪(よけるだけ)
+        if(bar >= 8 && M.state == "play") fireRing(_e.x, _e.y, 12 + (bar - 8)*2, TR_MOTE_SPEED, bar*0.37, "tMote");
+    },
+    //記録に1行足す(kind：fail 故障 / start 始動 / step 工程 / done 完了)。古い行は流れて消える
+    addLog:function(_text,_kind){
+        if(_kind == "start") this.log = [];
+        this.log.push({ text:_text, kind:_kind, f:this.logF });
+        if(this.log.length > 7) this.log.shift();
+    },
+    //再構築の間に見えている羽根の数(片方の翼。プロトコルが始まってから、組み上がるまで少しずつ増える。小数の分は伸びている途中)
     rebuildN:function(_e){
+        if(this.forceN != null) return this.forceN;
         if(_e.form == 2) return TR_WING_N;
         var p = this.pos();
         if(p < 0) return 0;
-        return Math.max(0, Math.min(TR_WING_N, (this.beatAt(p)/4 - 4)/7*TR_WING_N));
+        var n = TR_SECTIONS[1].bar - 1.5 - TR_PROTO_BAR;     //最後の1小節半は組み上がったまま、一打を待つ
+        return Math.max(0, Math.min(TR_WING_N, (this.beatAt(p)/4 - TR_PROTO_BAR)/n*TR_WING_N));
+    },
+    //再構築の進み(0：プロトコル始動 ～ 1：完全体。故障の間は0)
+    rebuildK:function(_p){
+        var a = this.barTime(TR_PROTO_BAR), b = TR_SECTIONS[1].from;
+        return Math.max(0, Math.min(1, (_p - a)/(b - a)));
+    },
+    //再構築の間の改の絵(draw から)：痙攣・設計図の線・組み上がった羽根・本体・ノイズ・走査線
+    drawRebuild:function(_e,_body,_orig){
+        var p = this.pos(), k = p < 0 ? 0 : this.rebuildK(p), pulse = _e.trFlap || 0;
+        if(k > 0){
+            var R = 110*(0.5 + 0.5*k)*(1 + 0.15*pulse);
+            var g = ctx.createRadialGradient(0,0,R*0.15,0,0,R);
+            g.addColorStop(0, "rgba(" + TR_GLOW + "," + (0.3*k + 0.3*pulse) + ")");
+            g.addColorStop(1, "rgba(" + TR_GLOW + ",0)");
+            ctx.globalCompositeOperation = "lighter";
+            ctx.fillStyle = g;
+            ctx.beginPath(); ctx.arc(0,0,R,0,Math.PI*2); ctx.fill();
+            ctx.globalCompositeOperation = "source-over";
+        }
+        ctx.save();
+        if(_e.trTwitch > 0){ ctx.translate(_e.trJx || 0, 0); ctx.rotate(_e.trJr || 0); }
+        else if(k == 0) ctx.rotate(0.12);       //倒れて傾いたまま
+        if(k > 0 && !_body) this.drawBlueprint(_e, k);
+        this.drawWings(_e, _body);
+        _orig();
+        if(!_body && _e.trNoise > 0.02){
+            _e.fsNoise = _e.trNoise;
+            finaleSync.drawNoise(_e, _orig);
+            _e.fsNoise = 0;
+        }
+        if(k > 0 && k < 1 && !_body){
+            //走査線：体を上下になぞる
+            var y = Math.sin(p*5)*44;
+            ctx.globalCompositeOperation = "lighter";
+            ctx.fillStyle = "rgba(" + TR_GLOW + ",0.18)";
+            ctx.fillRect(-60, y - 6, 120, 12);
+            ctx.fillStyle = "rgba(235,215,255,0.8)";
+            ctx.fillRect(-64, y - 0.75, 128, 1.5);
+            ctx.globalCompositeOperation = "source-over";
+            //体を囲むかぎ括弧(小節の頭で締まる)
+            var b = 52 + 6*(1 - pulse), c = 12;
+            ctx.strokeStyle = "rgba(" + TR_GLOW + ",0.8)"; ctx.lineWidth = 2;
+            ctx.beginPath();
+            for(var sx=-1; sx<=1; sx+=2) for(var sy=-1; sy<=1; sy+=2){
+                ctx.moveTo(sx*b, sy*b - sy*c); ctx.lineTo(sx*b, sy*b); ctx.lineTo(sx*b - sx*c, sy*b);
+            }
+            ctx.stroke();
+        }
+        ctx.restore();
+        return true;
+    },
+    //設計図の線：これから組み上がる羽根のりんかくを、点線で先に引いておく
+    drawBlueprint:function(_e,_k){
+        var vis = this.rebuildN(_e);
+        this.forceN = TR_WING_N;
+        var G = this.wingGeom(_e);
+        this.forceN = null;
+        ctx.save();
+        ctx.setLineDash([4,4]);
+        ctx.lineDashOffset = -(_e.t || 0)*0.5;
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = "rgba(220,190,255," + (0.25 + 0.35*Math.min(1, _k*4)) + ")";
+        for(var i=0; i<G.f.length; i++){
+            var f = G.f[i];
+            if(f.gi + 1 <= vis) continue;
+            var L = f.len, w = f.w;
+            ctx.save();
+            ctx.translate(f.x, f.y);
+            ctx.rotate(f.a);
+            ctx.beginPath();
+            ctx.moveTo(0,0); ctx.quadraticCurveTo(L*0.35,-w, L,0); ctx.quadraticCurveTo(L*0.4,w*0.85, 0,0);
+            ctx.stroke();
+            ctx.restore();
+        }
+        ctx.restore();
+    },
+    //再構築の間の画面の上(drawFront から)：記録と進み具合、プロトコル始動の帯
+    drawProtocol:function(_e){
+        var p = this.pos();
+        if(p < 0) return;
+        var k = this.rebuildK(p), F = this.logF;
+        //記録(故障の間は赤くちらつき、プロトコルが始まると紫になる)
+        if(this.log.length){
+            var x = TR_LOG_X, y = TR_LOG_Y, w = 300, h = 176, proto = k > 0;
+            ctx.save();
+            if(!proto && Math.random() < 0.08) ctx.translate((Math.random() - 0.5)*8, 0);
+            ctx.fillStyle = proto ? "rgba(18,8,32,0.78)" : "rgba(28,6,8,0.78)";
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeStyle = proto ? "rgba(" + TR_GLOW + ",0.9)" : "rgba(255,70,70,0.9)";
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+            ctx.font = "bold 12px monospace";
+            ctx.textAlign = "left"; ctx.textBaseline = "top";
+            ctx.fillStyle = proto ? "rgb(" + TR_GLOW + ")" : "#f55";
+            ctx.fillText(proto ? "REBUILD PROTOCOL" : "SYSTEM FAILURE", x + 10, y + 8);
+            ctx.font = "13px sans-serif";
+            for(var i=0; i<this.log.length; i++){
+                var L = this.log[i], n = Math.min(L.text.length, Math.floor((F - L.f)/2));
+                var col = L.kind == "fail" ? "#ff8070" : L.kind == "done" ? "#fff" : L.kind == "start" ? "#e8c8ff" : "#c9a8f0";
+                var head = L.kind == "fail" ? "ERR " : "> ";
+                var ok = L.kind == "step" && i < this.log.length - 1 ? "  OK" : "";
+                ctx.fillStyle = col;
+                ctx.fillText(head + L.text.slice(0, n) + (n >= L.text.length ? ok : ((F >> 3) % 2 ? "_" : "")), x + 10, y + 30 + i*17);
+            }
+            if(proto){
+                //進み具合
+                var bx = x + 10, by = y + h - 18, bw = w - 70;
+                ctx.fillStyle = "rgba(255,255,255,0.15)"; ctx.fillRect(bx, by, bw, 8);
+                ctx.fillStyle = "rgb(" + TR_GLOW + ")"; ctx.fillRect(bx, by, bw*k, 8);
+                ctx.fillStyle = "#fff"; ctx.font = "bold 12px monospace"; ctx.textBaseline = "middle";
+                ctx.fillText(Math.floor(k*100) + "%", bx + bw + 8, by + 4);
+            }
+            ctx.restore();
+        }
+        //プロトコル始動の帯(開いて、文字が打ち込まれ、閉じる)
+        var t = this.bannerT;
+        if(t != null && t < TR_BANNER_F){
+            var open = Math.min(1, t/8, (TR_BANNER_F - t)/12), cy = CH*0.45, hh = 46*open;
+            ctx.save();
+            ctx.fillStyle = "rgba(14,4,26,0.82)";
+            ctx.fillRect(0, cy - hh, CW, hh*2);
+            ctx.fillStyle = "rgb(" + TR_GLOW + ")";
+            ctx.fillRect(0, cy - hh, CW, 2); ctx.fillRect(0, cy + hh - 2, CW, 2);
+            //流れる斜めの縞
+            ctx.beginPath(); ctx.rect(0, cy - hh, CW, hh*2); ctx.clip();
+            ctx.fillStyle = "rgba(" + TR_GLOW + ",0.12)";
+            for(var sx=-60 + (t*3) % 40; sx<CW; sx+=40){
+                ctx.beginPath(); ctx.moveTo(sx, cy + hh); ctx.lineTo(sx + 20, cy + hh); ctx.lineTo(sx + 60, cy - hh); ctx.lineTo(sx + 40, cy - hh); ctx.fill();
+            }
+            var txt = "再構築プロトコル　始動", n = Math.min(txt.length, Math.floor((t - 6)/3));
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.font = "bold 13px monospace";
+            ctx.fillStyle = "rgba(230,210,255," + open + ")";
+            ctx.fillText("REBUILD PROTOCOL  //  INITIATE", CW/2, cy - 24);
+            if(n > 0){
+                ctx.font = "bold 30px sans-serif";
+                ctx.fillStyle = "#fff";
+                ctx.fillText(txt.slice(0, n), CW/2, cy + 8);
+            }
+            ctx.restore();
+        }
     },
     //完全体になった瞬間(special.kaiAwakeFx の代わりに、曲を流し直さずに同じ演出)
     awake:function(_e){
@@ -321,6 +546,7 @@ var finaleTri = {
     },
     reset:function(){
         this.pillars = []; this.queue = []; this.shards = [];
+        this.log = []; this.logF = 0; this.bannerT = null; this.forceN = null;
         this.dawnK = 0; this.dawnFlash = 0; this.finished = false; this.keepMusic = false; this.result = null;
         battleBg.far = 0;
     },
@@ -1118,6 +1344,7 @@ var finaleTri = {
     },
     //改の絵：翼・光の冠を足し、大きさ(奥行き・サビ)を掛ける。奥にいる間はここでは描かず、drawFront で暗闇の上に描く
     draw:function(_e,_body,_orig){
+        if(_e.mode == "revive") return this.drawRebuild(_e, _body, _orig);
         var deep = _e.trMode == "sink" || _e.trMode == "hush" || (_e.trMode == "last");
         if(deep && !this.drawing) return true;
         var s = deep ? _e.trDraw : (_e.form == 2 ? (_e.trScale || 1) : 1);
@@ -1381,6 +1608,7 @@ var finaleTri = {
     //いちばん手前：沈む・迫るの暗闇と、奥にいる改・着く所の印。散る羽根。とどめの光。最後の突進の言葉
     drawFront:function(){
         var e = this.boss();
+        if(e && e.mode == "revive"){ this.drawProtocol(e); return; }
         if(e && e.form == 2 && (e.trMode == "sink" || e.trMode == "hush" || e.trMode == "last")){
             var p = this.pos(), approaching = e.trMode == "hush" || (e.trMode == "last" && p >= this.barTime(this.sec("last").bar + 1));
             if(approaching){
