@@ -2351,6 +2351,31 @@ function finish2(){
         check("タイトルの見た目の案A～D(夕暮れの丘・薄明の丘・墨の遠景・崖の上の草原)を描け、文字の色が替わる。曲が標準なら案D(ドローン君たちは遠くの空を横切る)、クラシックなら元の画面",
               errors.length == artErr && artCols.join("|").indexOf("-") < 0 && artClassic && artSuno,
               artCols.join(" | ") + " classic:" + artClassic + " suno:" + artSuno + " " + errors.slice(artErr).join(" "));
+        //案D の重さの対策：動かない所は別のキャンバスに描いておいて貼り、細かさが変われば描き直し、タイトルを出ると手放す
+        var keepPick2 = titleArt.pick, keepRS = renderScale;
+        titleArt.pick = "d"; titleArt.cache = null;
+        titleArt.draw(startScreen.t);
+        var cacheNames = Object.keys(titleArt.cache || {}).sort().join(","), farCv = titleArt.cache && titleArt.cache.far.cv;
+        var cacheFit = !!farCv && farCv.width == Math.round(CW*renderScale) && farCv.height == Math.round((CLIFF_CACHE.far[1] - CLIFF_CACHE.far[0])*renderScale);
+        titleArt.draw(startScreen.t + 1);
+        var cacheKept = titleArt.cache.far.cv === farCv;
+        renderScale = keepRS + 1; titleArt.draw(startScreen.t + 2);
+        var cacheRedraw = titleArt.cache.far.cv !== farCv && titleArt.cache.far.cv.width == Math.round(CW*renderScale);
+        renderScale = keepRS;
+        var binsOk = titleArt.grassBins.every(function(B, L){
+            var n = 0; B.col.forEach(function(bs){ bs.forEach(function(b){ n += b.length; }); });
+            return n == CLIFF_GRASS[L].n && B.hi.reduce(function(s, b){ return s + b.length; }, 0) == CLIFF_GRASS[L].n;
+        });
+        //ほかの画面へ移ると手放す(移った先の画面・曲は動かさない)
+        var keepNum = page.number, keepScr = screens[3], keepOnPage = sound.onPage;
+        screens[3] = {}; sound.onPage = function(){};
+        page.change(3);
+        var cacheFreed = titleArt.cache === null;
+        screens[3] = keepScr; sound.onPage = keepOnPage; page.number = keepNum;
+        titleArt.pick = keepPick2;
+        check("タイトル(案D)の動かない所は描いておいて貼る(細かさが変われば描き直し、タイトルを出ると手放す)。草は横に近いものどうしでまとめて塗る",
+              cacheNames == "crag,far,ground,town" && cacheFit && cacheKept && cacheRedraw && binsOk && cacheFreed,
+              cacheNames + " fit:" + cacheFit + " kept:" + cacheKept + " redraw:" + cacheRedraw + " bins:" + binsOk + " freed:" + cacheFreed);
     }catch(e){ fails++; L("NG   例外 " + e.stack); }
     //テスト前の見た目の設定を戻す
     try{ if(keepSkin) localStorage.setItem(droneSkin.KEY, keepSkin); else localStorage.removeItem(droneSkin.KEY); }catch(e){}
