@@ -1219,7 +1219,9 @@ var mainScreen = {
         var tgt = nearestPlayer(_e.x,_e.y);
         var dx = tgt.X - _e.x, dy = tgt.Y - _e.y;
         if(Math.hypot(dx,dy) < 90) return;  //目の前で撃たれるのは避けようがないので撃たない
+        var shotN = enemyShots.length;
         fireFan(_e.x,_e.y,Math.atan2(dy,dx),game.wave >= 9 ? 3 : 1,0.3,2.4*danmaku(),"small");
+        analysis.tag(_e, shotN);
     },
 
     drop:function(_kind,_x,_y){
@@ -1235,6 +1237,9 @@ var mainScreen = {
             if(e.dead) continue;
             e.t++;
             if(e.flash > 0) e.flash--;
+            //研究所の解析(analysis.js)：この敵が動く間に出た弾・攻撃は、この敵のものとして覚える
+            analysis.cur = e;
+            var shotN = enemyShots.length;
             //狙うのは近い方のプレイヤー(ひとりのときは自分)
             var tgt = nearestPlayer(e.x,e.y);
             aimAt = tgt;
@@ -1334,6 +1339,7 @@ var mainScreen = {
                     }
                     break;
             }
+            analysis.tag(e, shotN);
             //EMPを受けた敵は遅くなる
             var sp = 1;
             if(e.slow > 0){ e.slow--; sp = e.boss ? 0.7 : 0.4; }
@@ -1366,6 +1372,7 @@ var mainScreen = {
                 if(e.type == "dasher"){ e.tell = TELL.dash; e.chain = 0; }     //ぶつかったら画面の外へ去る
             }
         }
+        analysis.cur = null;
         enemies = enemies.filter(function(e){ return !e.dead; });
     },
 
@@ -1405,6 +1412,7 @@ var mainScreen = {
             var r = b.r || 5;
             if(d < r + dodge.core() && this.canBeHit()){     //見切りの間は当たり判定が小さい(dodge.js)
                 enemyShots.splice(i,1);
+                analysis.by = b.src;    //撃った敵の種類(analysis.js)
                 this.damage();
             }else if(!b.grazed && d < r + GRAZE_RANGE && !this.down && (!coop.isGuest() || coop.grazeCd <= 0)){
                 b.grazed = true;

@@ -10,6 +10,7 @@ var gameoverTitleButton = new drawRect(CW/2,GS*14,GS*14,GS*2.4);
 var gameoverScreen = {
     best:0,
     newRecord:false,
+    cx:CW/2,      //文字とボタンの中心(研究所の記録を出すときは左へ寄せる)
 
     enter:function(){
         var best = save.getBest();
@@ -23,8 +24,14 @@ var gameoverScreen = {
         game.keepProgress();
         save.writeMeta();
         if(!this.coopMode) save.clear();
+        //研究所へ送った記録(analysis.js)があれば右に出し、ほかは左へ寄せる
+        this.t = 0;
+        this.lab = !this.coopMode && analysis.report != null;
+        this.cx = this.lab ? 290 : CW/2;
+        retryButton.X = gameoverTitleButton.X = this.cx - retryButton.width/2;
     },
     update:function(){
+        this.t++;
         if(this.coopMode){
             //コンティニュー(もう一度押すと取り消し)。ふたりとも押すと始まる(coop.update)
             if(retryButton.clicked()){
@@ -54,17 +61,17 @@ var gameoverScreen = {
         ctx.textBaseline = "middle";
         ctx.fillStyle = "#000";
         ctx.font = "bold 60px serif";
-        ctx.fillText("GAME OVER",CW/2,GS*3.5);
+        ctx.fillText("GAME OVER",this.cx,GS*3.5);
 
         ctx.font = "bold 22px sans-serif";
-        ctx.fillText("WAVE " + game.wave + " で撃墜されました",CW/2,GS*6.3);
-        ctx.fillText("SCORE " + game.score,CW/2,GS*7.6);
+        ctx.fillText("WAVE " + game.wave + " で撃墜されました",this.cx,GS*6.3);
+        ctx.fillText("SCORE " + game.score,this.cx,GS*7.6);
         ctx.font = "18px sans-serif";
         if(this.newRecord){
             ctx.fillStyle = "#d33";
-            ctx.fillText("ハイスコア更新！",CW/2,GS*8.9);
+            ctx.fillText("ハイスコア更新！",this.cx,GS*8.9);
         }else{
-            ctx.fillText("ハイスコア " + this.best,CW/2,GS*8.9);
+            ctx.fillText("ハイスコア " + this.best,this.cx,GS*8.9);
         }
         ctx.fillStyle = "#000";
 
@@ -79,13 +86,20 @@ var gameoverScreen = {
             var msg = !coop.partner && coop.role == "host" ? "相方はいません。コンティニューするとひとりで続けます"
                     : coop.wantContinue ? (other ? "まもなく始まります…" : "相方がコンティニューを押すのを待っています…")
                     : (other ? "相方がコンティニューを待っています！" : "ふたりともコンティニューを押すと、強化画面からやり直せます");
-            ctx.fillText(msg,CW/2,GS*10.2);
+            ctx.fillText(msg,this.cx,GS*10.2);
             ctx.fillStyle = "#000";
             return;
         }
         ctx.font = "16px sans-serif";
         ctx.fillStyle = "#555";
-        ctx.fillText("この周で集めたパーツ " + (game.runParts || 0) + "（持っているパーツ " + game.parts + "）と装備は残ります",CW/2,GS*10.2);
+        var keep = "この周で集めたパーツ " + (game.runParts || 0) + "（持っているパーツ " + game.parts + "）と装備は残ります";
+        if(this.lab){
+            ctx.font = "14px sans-serif";
+            ctx.fillText(keep,this.cx,GS*10.2);
+            analysis.drawReport(this.t);
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+        }else ctx.fillText(keep,this.cx,GS*10.2);
         ctx.fillStyle = "#000";
         ctx.font = "bold 24px serif";
         retryButton.button("もう一度出撃（" + difficulty().name + "・WAVE" + game.reachOf(game.diff) + "から）");

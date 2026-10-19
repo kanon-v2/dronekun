@@ -53,6 +53,9 @@ bgmTrial.finale = 0; bgmTrial.fight = 0;
 <script src="scripts/drone/gunship.js"></script>
 <script src="scripts/drone/emotion.js"></script>
 <script src="scripts/drone/emotionHint.js"></script>
+<script src="scripts/drone/analysis.js"></script>
+<script src="scripts/drone/reboot.js"></script>
+<script src="scripts/drone/rebootPod.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="scripts/drone/coop.js"></script>
 <script src="scripts/drone/versus.js"></script>
@@ -75,7 +78,8 @@ function bot(){
 function setup(w, owned, slots, lv){ save.clearAll(); game.reset(); game.wave = w; game.owned = owned; game.slots = slots; game.slotCount = 3; for(var k in game.level) game.level[k] = lv; game.seen = { prologue:true, s3:true, s5:true, s8:true, s10:true, s12:true, reveal:w > REVEAL_WAVE, s17:true, s19:true }; }
 
 try{
-    var keepSave = localStorage.getItem("dronekun_save"), keepMeta = localStorage.getItem("dronekun_meta"), keepBest = localStorage.getItem("dronekun_best"), keepClear = localStorage.getItem("dronekun_cleared");
+    reboot.off = true;      //倒れたあとのムービー(reboot.js)は、確かめる項目のときだけ流す
+    var keepSave = localStorage.getItem("dronekun_save"), keepMeta = localStorage.getItem("dronekun_meta"), keepBest = localStorage.getItem("dronekun_best"), keepClear = localStorage.getItem("dronekun_cleared"); var keepLab = localStorage.getItem("dronekun_lab");
 
     // 1. ストーリーと画面の流れ
     save.clearAll(); game.reset(); page.change(0); draw1();
@@ -152,6 +156,7 @@ try{
     Math.random = rand0;
     rv = enemyShots.length;
     check("序盤から、虫はときどき狙って撃ち、倒れた虫は撃ち返す", bugShot && rv >= 3, "虫の弾" + bugShot + " 撃ち返し" + rv);
+
 
     // 試作の弾(shotLab.js)：分裂・ため・跳ね・ブーメランの動き
     enemies = []; enemyShots = []; mainScreen.toSpawn = 0;
@@ -2233,10 +2238,51 @@ try{
     check("冷凍：凍った敵は止まり、次の一撃が2倍で砕ける", zFrozen && zStill && zh - ze.hp == 2 && !(ze.frozen > 0), "凍" + zFrozen + " 止" + zStill + " 差" + (zh - ze.hp));
     enemies = []; enemyShots = []; page.change(0);
 
+    // 研究所の解析(analysis.js)：弾に撃った敵の種類が付き、その弾で倒れると記録が送られて解析が進み、次からその敵へのダメージが増える。印・当たりそうな弾・送信の画面を描ける
+    // (乱数を使うので、ほかの項目の乱数の並びをずらさないよう最後に置く)
+    var aerr = errors.length;
+    setup(1, {}, [null,null,null], 1);
+    page.change(1); MouseIn = true;
+    while(mainScreen.state != "play") mainScreen.update();
+    MouseX = drone.X; MouseY = drone.Y;
+    enemies = []; enemyShots = []; mainScreen.toSpawn = 0; analysis.data = {}; analysis.newRun();
+    var ae = makeEnemy("shooter"); ae.x = drone.X > CW/2 ? drone.X - 300 : drone.X + 300; ae.y = drone.Y; ae.tx = ae.x; ae.ty = ae.y; ae.timer = 1; ae.hp = ae.maxHp = 999; enemies.push(ae);
+    mainScreen.update();
+    var tagged = enemyShots.length > 0 && enemyShots.every(function(b){ return b.src == "shooter"; });
+    mainScreen.hp = 1; mainScreen.invincible = 0; mainScreen.guard = 0;
+    if(enemyShots[0]){ enemyShots[0].x = drone.X; enemyShots[0].y = drone.Y; enemyShots[0].vx = enemyShots[0].vy = 0; }
+    mainScreen.update();
+    var rep = analysis.report || [], sent = mainScreen.state == "over" && rep.length == 1 && rep[0].key == "shooter" && rep[0].kill && analysis.levelOf("shooter") == 1;
+    var stored = JSON.parse(localStorage.getItem(LAB_KEY) || "{}").shooter == LAB_KILL;
+    mainScreen.state = "play"; mainScreen.hp = 3;
+    var de = makeEnemy("shooter"); de.hp = de.maxHp = 100; enemies.push(de); mainScreen.hitEnemy(de, 10);
+    var dmgUp = Math.abs((100 - de.hp) - 10*LAB_DMG[1]) < 0.01;
+    analysis.force = 3; ae.tx = ae.x; ae.ty = ae.y; ae.timer = 1; mainScreen.invincible = 999; mainScreen.update(); draw1();
+    // 倒れたあとのムービー(reboot.js)：記録が研究所へ帰って再起動し、終わるとゲームオーバー画面(送信の結果)。クリックでとばせる
+    reboot.off = false; page.change(3);
+    var movie = reboot.active, mf = 0;
+    while(reboot.active && mf < 2000){ gameoverScreen.update(); if(++mf % 60 == 0) draw1(); }
+    var movieEnd = !reboot.active && mf >= rebootPod.end - 2 && gameoverScreen.t == 0;
+    page.change(3); for(var i=0; i<25; i++) gameoverScreen.update();
+    var mx0 = MouseX, my0 = MouseY;
+    MouseX = CW/2; MouseY = 20; Click = 1; gameoverScreen.update(); Click = 0;
+    MouseX = mx0; MouseY = my0;
+    var skipped = !reboot.active && page.number == 3;
+    reboot.off = true;
+    for(var i=0; i<300; i++){ gameoverScreen.t = i; if(i % 100 == 0) draw1(); }
+    var shifted = retryButton.X + retryButton.width/2 < CW/2;
+    analysis.force = -1; page.change(1); while(mainScreen.state != "play") mainScreen.update();
+    enemies = []; enemyShots = []; mainScreen.toSpawn = 0; mainScreen.invincible = 0;
+    check("研究所の解析：撃った敵が弾に付き、倒れると送られて解析が進み、その敵へのダメージが増える。印・予測・送信の画面を描ける。倒れたあとは記録が研究所へ帰るムービー(とばせる)",
+          tagged && sent && stored && dmgUp && shifted && movie && movieEnd && skipped && errors.length == aerr,
+          "弾の種類" + tagged + " 送信" + sent + " 保存" + stored + " ダメージ" + (100 - de.hp).toFixed(2) + " 画面" + shifted + " ムービー" + movie + "/" + movieEnd + "(" + mf + "コマ)/とばす" + skipped + (errors.length > aerr ? " " + errors.slice(aerr).join(" / ") : ""));
+    save.clearAll(); enemies = []; enemyShots = []; page.change(0);
+
     //テスト前のセーブ等を戻す
     save.clear();
     if(keepSave) localStorage.setItem("dronekun_save", keepSave);
     if(keepMeta) localStorage.setItem("dronekun_meta", keepMeta); else localStorage.removeItem("dronekun_meta");
+    if(keepLab) localStorage.setItem(LAB_KEY, keepLab); else localStorage.removeItem(LAB_KEY);
     if(keepBest) localStorage.setItem("dronekun_best", keepBest);
     if(keepClear) localStorage.setItem("dronekun_cleared", keepClear); else localStorage.removeItem("dronekun_cleared");
     //ドローン君の振り向き：左から右へは正面を通って回り、止まると目標の向きになる(ばねなので少し行きすぎてから落ち着く)
