@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<!--
+    タイトル(案D 崖の上の草原)の空を飛ぶドローン君たちの種類(titleArt.js の CLIFF_KINDS)を見る
+    ・ふだんは、タイトルの背景を #t=フレーム数 だけ進めて止めた1枚(ゲームと同じ大きさ)
+    ・#zoom で、種類ごとに大きく並べる(#zoom&t=数 でそれまで飛ばした形。荷物の揺れ・居眠りの沈み方・風船の浮き方が変わる)
+-->
+<html lang="ja"><head><meta charset="UTF-8"><base href="../"><title>タイトルのドローン君たち</title><style>body{margin:0;background:#000}canvas{width:960px;height:540px;display:block}</style></head>
+<body><div id="Bigbox"><canvas id="Canvas" width="960" height="540"></canvas></div>
+<script src="scripts/drone/common.js"></script>
+<script src="scripts/drone/sound.js"></script>
+<script src="scripts/drone/bgmTrial.js"></script>
+<script src="scripts/drone/bgmFull.js"></script>
+<script src="scripts/drone/equipment.js"></script>
+<script src="scripts/drone/armsExtra.js"></script>
+<script src="scripts/drone/bosses.js"></script>
+<script src="scripts/drone/startScreen.js"></script>
+<script src="scripts/drone/titleArt.js"></script>
+<script src="scripts/drone/mainScreen.js"></script>
+<script src="scripts/drone/forces.js"></script>
+<script src="scripts/drone/enemyArt.js"></script>
+<script src="scripts/drone/upgradeScreen.js"></script>
+<script src="scripts/drone/gameoverScreen.js"></script>
+<script src="scripts/drone/story.js"></script>
+<script src="scripts/drone/battleBg.js"></script>
+<script src="scripts/drone/bgScene.js"></script>
+<script src="scripts/drone/bossDebug.js"></script>
+<script src="scripts/drone/timeStop.js"></script>
+<script src="scripts/drone/dodge.js"></script>
+<script src="scripts/drone/rival.js"></script>
+<script src="scripts/drone/rivalTime.js"></script>
+<script src="scripts/drone/shotLab.js"></script>
+<script src="scripts/drone/finaleSync.js"></script>
+<script src="scripts/drone/finaleTriumph.js"></script>
+<script src="scripts/drone/gunship.js"></script>
+<script src="scripts/drone/emotion.js"></script>
+<script src="scripts/drone/emotionHint.js"></script>
+<script>
+(function(){
+    var zoom = location.hash.indexOf("zoom") >= 0, m = /t=(\d+)/.exec(location.hash), at = m ? +m[1] : 240;
+    titleArt.force = "d"; titleArt.sync();
+    if(!zoom){
+        for(var i=0; i<at; i++) titleArt.fliers(i + 1);
+        titleArt.draw(at);
+        return;
+    }
+    //種類ごとに1体ずつ、決まった所で飛ばし続ける(動いた分は戻す)。あいさつは2体を向かい合わせ、回っている途中で止める
+    var kinds = [["plain"],["carry","box"],["carry","bag"],["carry","plant"],["pair"],["hurry"],["sleepy"],["family"],["parasol"],["mail"],["balloon"],["birds"],["lost"],["greet"]], fl = [];
+    titleArt.fliers(0);
+    kinds.forEach(function(k,i){
+        var f = titleArt.newFlier(i);
+        f.y = CLIFF_DRONE.y0; f.dir = i % 2 ? -1 : 1; f.vx = 0; f.go = 1e9; f.sc = 1.15; f.sp0 = 0.5;
+        titleArt.setKind(f, k[0] == "greet" ? "plain" : k[0]);
+        if(k[1]) f.item = k[1];
+        f.ax = 150 + (i % 5)*165; f.ay = 80 + Math.floor(i/5)*175; f.x = f.ax; f.label = k.join("：");
+        if(k[0] == "lost"){ f.mode = "gaze"; f.wait = 1e6; }
+        if(f.kid){ f.kid.x = f.x - f.dir*40; f.kid.y = f.y; }
+        fl.push(f);
+        if(k[0] == "greet"){
+            var m = titleArt.newFlier(i + 1);
+            titleArt.setKind(m, "plain");
+            m.y = f.y; m.sc = f.sc; m.sp0 = 0.5; m.dir = -1; f.dir = 1;
+            f.ax -= 30; f.x = f.ax; m.ax = f.ax + 60; m.x = m.ax; m.ay = f.ay;
+            [f, m].forEach(function(o){ o.mode = "greet"; o.wait = at + CLIFF_GREET.len*0.5; o.look.setFace("happy", 1e6); });
+            f.mate = m; m.mate = f;
+            fl.push(m);
+        }
+    });
+    titleArt.fly = fl;
+    for(var s=0; s<at; s++){
+        titleArt.flyT = -1;
+        fl.forEach(function(f){ if(f.kind == "mail" && s % 90 == 0) f.mailGo = 0; f.greetCd = 1e6; });
+        titleArt.fliers(s + 1);
+        fl.forEach(function(f){ var dx = f.x - f.ax; f.x = f.ax; if(f.kid) f.kid.x -= dx; f.letters.forEach(function(l){ l.x -= dx; }); });
+    }
+    ctx.fillStyle = "#c3cde0"; ctx.fillRect(0, 0, CW, CH);
+    fl.forEach(function(f){
+        var dy = f.ay - f.y;
+        if(f.kid){
+            var c = f.kid, ks = f.sc*CLIFF_FAMILY.sc;
+            titleArt.drawFogged(f, c.x, c.y + dy, ks, CLIFF_KINDS.plain.ext, function(ox,oy){ c.look.draw(ox, oy, ks); });
+        }
+        ctx.save(); ctx.translate(0, dy); titleArt.drawLetters(f); ctx.restore();
+        titleArt.drawFogged(f, f.x, f.ay + f.sink, f.sc, CLIFF_KINDS[f.kind].ext, function(ox,oy){ titleArt.paintFlier(f, ox, oy); });
+        if(f.label){ ctx.fillStyle = "#223"; ctx.font = "13px sans-serif"; ctx.textAlign = "center"; ctx.fillText(f.label, f.ax + (f.mate ? 30 : 0), f.ay + 70); }
+    });
+})();
+</script>
+</body></html>

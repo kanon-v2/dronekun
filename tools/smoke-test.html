@@ -2376,6 +2376,44 @@ function finish2(){
         check("タイトル(案D)の動かない所は描いておいて貼る(細かさが変われば描き直し、タイトルを出ると手放す)。草は横に近いものどうしでまとめて塗る",
               cacheNames == "crag,far,ground,town" && cacheFit && cacheKept && cacheRedraw && binsOk && cacheFreed,
               cacheNames + " fit:" + cacheFit + " kept:" + cacheKept + " redraw:" + cacheRedraw + " bins:" + binsOk + " freed:" + cacheFreed);
+        //空のドローン君の種類：数は元の影と同じ・たいていはふつう・どの種類も選ばれうる。種類ごとのふるまい(急ぐものは止まらない・居眠りははっと持ち直す・荷物は後ろへ流れる・風船は浮いては下りる・手紙を落とす・迷子は引き返す・ふつう同士はすれ違うとあいさつしてくるっと回る)。どれも描ける
+        var keepFly = titleArt.fly, keepFlyT = titleArt.flyT, flyErr = errors.length;
+        titleArt.fly = null; titleArt.flyT = -1;
+        titleArt.fliers(1);
+        var flyCount = titleArt.fly.length, picked = {}, plainN = 0;
+        for(var pu=0; pu<1000; pu++){ var pk = titleArt.pickKind(pu/1000); picked[pk] = true; if(pk == "plain") plainN++; }
+        var allPick = Object.keys(CLIFF_KINDS).every(function(k){ return picked[k]; });
+        var fl = Object.keys(CLIFF_KINDS).map(function(k, ki){
+            var f = titleArt.newFlier(50 + ki);
+            titleArt.setKind(f, k);
+            f.x = 300 + ki*20; f.y = 150; f.sc = 0.5; f.dir = 1; f.go = titleArt.nextGo(f);
+            return f;
+        });
+        var a1 = titleArt.newFlier(90), a2 = titleArt.newFlier(91);
+        [a1, a2].forEach(function(o, oi){ titleArt.setKind(o, "plain"); o.y = 260; o.sc = 0.45; o.dir = oi ? -1 : 1; o.x = oi ? 520 : 470; o.vx = o.dir*o.sp; o.go = 1e9; });
+        fl.push(a1, a2);
+        titleArt.fly = fl;
+        var by = {}; fl.forEach(function(f){ if(!by[f.kind]) by[f.kind] = f; });
+        var gazed = false, jolted = false, swung = 0, rose = 0, fell = false, mailN = 0, lostTurn = false, greeted = false, rolled = false;
+        var lostDir = by.lost.dir;
+        for(var ft=2; ft<3000; ft++){
+            titleArt.fliers(ft);
+            if(by.hurry.mode == "gaze") gazed = true;
+            if(by.sleepy.wake > 0) jolted = true;
+            if(by.carry.mode == "fly" && Math.abs(by.carry.vx) > by.carry.sp*0.9) swung = Math.min(swung, by.carry.sw*by.carry.dir);
+            rose = Math.min(rose, by.balloon.sink); if(by.balloon.sinkV > 0) fell = true;
+            mailN = Math.max(mailN, by.mail.letters.length);
+            if(by.lost.kind == "lost" && by.lost.dir != lostDir) lostTurn = true;
+            if(a1.mode == "greet" && a2.mode == "greet") greeted = true;
+            if(a1.mode == "greet" && Math.abs(a1.look.tilt) > 2) rolled = true;
+            if(ft % 300 == 0){ titleArt.drawDrones(ft, true); titleArt.drawDrones(ft, false); }
+            fl.forEach(function(f){ if(f !== a1 && f !== a2 && f.mode == "away"){ f.mode = "fly"; f.x = 300; } });   //画面の外へ出ていかないよう戻す
+        }
+        titleArt.fly = keepFly; titleArt.flyT = keepFlyT;
+        var flyOk = flyCount == TITLE_SHADOWS && allPick && plainN > 300 && !gazed && jolted && swung < -0.02 && rose < -10 && fell && mailN > 0 && lostTurn && greeted && rolled && errors.length == flyErr;
+        check("タイトル(案D)の空のドローン君は、たいていふつうで、ときどき暮らしぶりが見える(荷物運び・急ぎ・居眠り・親子・日傘・手紙配り・風船・鳥と一緒・迷子・すれ違いのあいさつ)",
+              flyOk, "数:" + flyCount + " ふつう:" + plainN + "/1000 全種:" + allPick + " gazed:" + gazed + " jolted:" + jolted + " swing:" + swung.toFixed(3) + " rose:" + rose.toFixed(1) + " fell:" + fell +
+              " mail:" + mailN + " lost:" + lostTurn + " greet:" + greeted + " roll:" + rolled + " err:" + errors.slice(flyErr).join("/"));
     }catch(e){ fails++; L("NG   例外 " + e.stack); }
     //テスト前の見た目の設定を戻す
     try{ if(keepSkin) localStorage.setItem(droneSkin.KEY, keepSkin); else localStorage.removeItem(droneSkin.KEY); }catch(e){}
