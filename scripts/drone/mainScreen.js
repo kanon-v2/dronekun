@@ -28,6 +28,12 @@ const PICKUP_LIFE     = 600;    //アイテムが消えるまでの時間
 const HIT_CORE        = 6;      //敵の弾に対するドローンの当たり判定(中心の小さな点)
 const GRAZE_RANGE     = 33;     //弾がこの距離までかすめると「かすり」
 const GRAZE_FLASH_TIME = 10;    //かすった瞬間、かすりの範囲の輪が光る時間
+//見た目の格付け：危ない敵の弾をいちばん目立たせ、自分の装備と演出を沈める(弾が多くても読み取れるように)
+//背景も沈める案は、ぼやけて見えたのでやめた
+const TIER_ARMS_ALPHA = 0.55;   //自分の装備(弾・ミサイル・虫など)の濃さ
+const TIER_FX_ALPHA   = 0.5;    //爆発・火花・衝撃波などの演出の濃さ(敵の弾より奥に描く)
+const TIER_SHOT_EDGE  = "#24141a";  //敵の弾のふちどりの色
+const TIER_SHOT_EDGE_W = 2;     //そのふちどりの太さ(px。弾の内側に描く。小さい弾は半径の35%まで)
 //かすりコンボ：続けてかすると回数が積み上がり、装備・衝撃波の威力が上がる。被弾するか、しばらくかすらないと途切れる
 const COMBO_TIME      = 360;    //最後のかすりから、この時間(フレーム)かすらないと途切れる
 const COMBO_CD        = 12;    //コンボが1つ増えてから、次に増えるまでの待ち時間(フレーム)。弾が濃い場所で一気に増えすぎないように
@@ -1545,8 +1551,12 @@ var mainScreen = {
         }
         for(var i=0; i<enemies.length; i++) this.drawEnemy(enemies[i]);
 
-        //ドローンの装備(弾・ミサイル・虫など)
+        //ドローンの装備(弾・ミサイル・虫など)と演出は、薄くして敵の弾より奥に描く(見た目の格付け)
+        ctx.globalAlpha = TIER_ARMS_ALPHA;
         arms.draw(this.state != "over");
+        ctx.globalAlpha = TIER_FX_ALPHA;
+        this.drawFx();
+        ctx.globalAlpha = 1;
 
         shotLab.drawUnder();    //試作の攻撃：範囲攻撃の範囲・液体の糸(弾の下に描く)
         //敵の弾(種類ごとに色と大きさが違う。白い芯で見やすく)
@@ -1591,8 +1601,12 @@ var mainScreen = {
                 ctx.restore();
                 continue;
             }
-            ctx.fillStyle = b.kind == "small" ? "#e8700a" : (b.kind == "big" ? "#8a3fd1" : (b.kind == "water" ? "#1f8fc4" : "#d22"));
+            //濃いふちどりで、どの背景・演出の上でも浮かせる。ふちは内側に描き、見た目の大きさは変えない
+            var edge = Math.min(TIER_SHOT_EDGE_W, r*0.35);
+            ctx.fillStyle = TIER_SHOT_EDGE;
             ctx.beginPath(); ctx.arc(b.x,b.y,r + 1,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle = b.kind == "small" ? "#e8700a" : (b.kind == "big" ? "#8a3fd1" : (b.kind == "water" ? "#1f8fc4" : "#d22"));
+            ctx.beginPath(); ctx.arc(b.x,b.y,r + 1 - edge,0,Math.PI*2); ctx.fill();
             ctx.fillStyle = "#fff";
             ctx.beginPath(); ctx.arc(b.x,b.y,r*0.45,0,Math.PI*2); ctx.fill();
         }
@@ -1623,7 +1637,7 @@ var mainScreen = {
             ctx.beginPath(); ctx.arc(drone.X,drone.Y,dodge.core()*0.75,0,Math.PI*2); ctx.fill();
         }
 
-        this.drawEffects();
+        this.drawPopups();      //演出はもう敵の弾の奥に描いた
         this.drawKaiIntro();
         ctx.font = "bold 14px sans-serif";
         if(this.yarukiMsg > 0){
@@ -1716,7 +1730,12 @@ var mainScreen = {
 
     //破片・衝撃波・文字(対戦画面からも使う)
     drawEffects:function(){
-        //破片・衝撃波
+        this.drawFx();
+        this.drawPopups();
+    },
+    //破片・衝撃波・煙・光(globalAlpha を掛けて薄く描けるよう、透明度は今の値に掛ける)
+    drawFx:function(){
+        var base = ctx.globalAlpha;
         for(var i=0; i<effects.length; i++){
             var f = effects[i];
             var k = 1 - f.life/f.maxLife;   //0→1へ進む
@@ -1758,14 +1777,15 @@ var mainScreen = {
                 ctx.fillStyle = "rgba(" + f.glow + "," + a + ")";
                 ctx.beginPath(); ctx.arc(f.x,f.y,f.size*0.7,0,Math.PI*2); ctx.fill();
             }else{
-                ctx.globalAlpha = Math.min(1, f.life/f.maxLife*2);
+                ctx.globalAlpha = base*Math.min(1, f.life/f.maxLife*2);
                 ctx.fillStyle = f.color;
                 ctx.fillRect(f.x - f.size/2, f.y - f.size/2, f.size, f.size);
-                ctx.globalAlpha = 1;
+                ctx.globalAlpha = base;
             }
         }
-
-        //文字(bigはシナジー名など。白いふちどりで目立たせ、ぽんと大きく出る)
+    },
+    //文字(bigはシナジー名など。白いふちどりで目立たせ、ぽんと大きく出る)
+    drawPopups:function(){
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         for(var i=0; i<popups.length; i++){

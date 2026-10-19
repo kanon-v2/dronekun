@@ -105,6 +105,23 @@ try{
         check("戦闘 WAVE" + c[0] + "（" + c[1] + "）を25秒", errors.length == before, "敵" + enemies.length + " 弾" + enemyShots.length);
     });
 
+    // 見た目の格付け：自分の装備と演出は薄く、敵の弾より奥に描く(描き終わると濃さは元に戻る)
+    (function(){
+        setup(8, { gun:3, missile:2, tesla:2 }, ["gun","missile","tesla"], 4);
+        page.change(1);
+        for(var f=0; f<300; f++){ bot(); mainScreen.hp = 9; mainScreen.update(); }
+        fireShot(CW/2, CH/2, 0, 1, "small");
+        killBlast(CW/2, CH/2, 20);
+        var order = [], keepFx = mainScreen.drawFx, keepArms = arms.draw, keepShot = shotLab.draw;
+        mainScreen.drawFx = function(){ order.push("fx" + ctx.globalAlpha); keepFx.apply(this, arguments); };
+        arms.draw = function(){ order.push("arms" + ctx.globalAlpha); keepArms.apply(this, arguments); };
+        shotLab.draw = function(){ if(order[order.length - 1] != "shot") order.push("shot"); return keepShot.apply(this, arguments); };
+        draw1();
+        var alphaAfter = ctx.globalAlpha;
+        mainScreen.drawFx = keepFx; arms.draw = keepArms; shotLab.draw = keepShot;
+        check("見た目の格付け：装備・演出は薄く、敵の弾より奥に描く", order.join(",") == "arms" + TIER_ARMS_ALPHA + ",fx" + TIER_FX_ALPHA + ",shot" && alphaAfter == 1, order.join(","));
+    })();
+
     // やる気：動くとたまり、止まっていると増えも減りもしない
     setup(2, { gun:1 }, ["gun",null,null], 1);
     page.change(1); mainScreen.update();
