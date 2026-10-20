@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<!--
+  傀儡師(ボスの試作。scripts/drone/puppeteer.js)の見た目の確認
+  ゲームと同じ動きで戦いを進め、4つの場面(第1幕・投げつけの構え・第2幕と味方・一斉反撃)を1枚に並べる。
+  ヘッドレスEdgeで撮る：msedge --headless=new --disable-gpu --allow-file-access-from-files --virtual-time-budget=3000
+                        --window-size=1920,1080 --screenshot=<出力.png> file:///.../tools/puppeteer-art.html
+  #only=番号(0～3) で1場面だけを等倍で出す(--window-size=960,540)
+-->
+<html lang="ja"><head><meta charset="UTF-8"><base href="../"><title>傀儡師の見た目</title>
+<style>body{margin:0;background:#888}#Bigbox{position:absolute;left:-9999px}#out{display:block}</style></head>
+<body><div id="Bigbox"><canvas id="Canvas"></canvas></div><canvas id="out"></canvas><pre id="log"></pre>
+<script>
+var errors = [];
+window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.filename || "").split("/").pop() + ":" + e.lineno); });
+//乱数を決まった種から出す(毎回同じ結果にする。乱数の運でたまに落ちる項目をなくすため)。#seed=数 で種を変えられる
+(function(){
+    var m = /seed=(\d+)/.exec(location.hash), a = m ? +m[1] : 20261017;
+    Math.random = function(){
+        a = (a + 0x6D2B79F5) | 0;
+        var t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0)/4294967296;
+    };
+})();
+</script>
+<script src="scripts/drone/common.js"></script>
+<script src="scripts/drone/sound.js"></script>
+<script src="scripts/drone/bgmTrial.js"></script>
+<script>
+//ふつうに遊ぶときは Suno の曲だが、テストは今の曲で行う(録音の曲を読み込まない・曲に合わせて動く最終局面にしない)
+var bgmDefault = { finale:bgmTrial.finales[bgmTrial.finale].v, fight:bgmTrial.fightName() };
+bgmTrial.finale = 0; bgmTrial.fight = 0;
+</script>
+<script src="scripts/drone/bgmFull.js"></script>
+<script src="scripts/drone/equipment.js"></script>
+<script src="scripts/drone/armsExtra.js"></script>
+<script src="scripts/drone/bosses.js"></script>
+<script src="scripts/drone/startScreen.js"></script>
+<script src="scripts/drone/titleArt.js"></script>
+<script src="scripts/drone/mainScreen.js"></script>
+<script src="scripts/drone/forces.js"></script>
+<script src="scripts/drone/enemyArt.js"></script>
+<script src="scripts/drone/upgradeScreen.js"></script>
+<script src="scripts/drone/gameoverScreen.js"></script>
+<script src="scripts/drone/story.js"></script>
+<script src="scripts/drone/battleBg.js"></script>
+<script src="scripts/drone/bgScene.js"></script>
+<script src="scripts/drone/bossDebug.js"></script>
+<script src="scripts/drone/timeStop.js"></script>
+<script src="scripts/drone/dodge.js"></script>
+<script src="scripts/drone/rival.js"></script>
+<script src="scripts/drone/rivalTime.js"></script>
+<script src="scripts/drone/shotLab.js"></script>
+<script src="scripts/drone/finaleSync.js"></script>
+<script src="scripts/drone/finaleTriumph.js"></script>
+<script src="scripts/drone/gunship.js"></script>
+<script src="scripts/drone/puppeteer.js"></script>
+<script src="scripts/drone/emotion.js"></script>
+<script src="scripts/drone/emotionHint.js"></script>
+<script src="lib/peerjs.min.js"></script>
+<script src="scripts/drone/coop.js"></script>
+<script src="scripts/drone/versus.js"></script>
+<script src="scripts/drone/draw.js"></script>
+<script>
+sound.mute = true;
+var only = /only=(\d)/.exec(location.hash);
+var outC = document.getElementById("out"), octx = outC.getContext("2d");
+outC.width = only ? CW : CW*2; outC.height = only ? CH : CH*2;
+var shotN = 0;
+function snap(_label){
+    document.getElementById("log").textContent += "snap " + _label + " f" + frames + "\n";
+    var n = shotN++;
+    if(only && +only[1] != n) return;
+    ctx.fillStyle = "white"; ctx.fillRect(0,0,CW,CH); screens[page.number].draw();
+    var x = only ? 0 : (n % 2)*CW, y = only ? 0 : Math.floor(n/2)*CH;
+    octx.drawImage(canvas, 0, 0, canvas.width, canvas.height, x, y, CW, CH);
+    if(!only){ octx.fillStyle = "rgba(0,0,0,0.6)"; octx.fillRect(x, y + CH - 26, 260, 26); octx.fillStyle = "#fff"; octx.font = "bold 15px sans-serif"; octx.fillText(_label, x + 8, y + CH - 8); }
+}
+var frames = 0;
+function steer(){
+    frames++; MouseIn = true;
+    MouseX = 480 + 220*Math.cos(frames/70); MouseY = 400 + 60*Math.sin(frames/50);
+}
+function step(_n,_until){
+    for(var i=0; i<_n; i++){ steer(); mainScreen.update(); if(_until && _until()) return true; }
+    return false;
+}
+function boss(){ return enemies.filter(function(e){ return e.type == "puppeteer"; })[0]; }
+function pups(){ return enemies.filter(function(e){ return e.type == "puppet" && !e.dead; }); }
+//ドローン君は撃たない(人形の糸がすぐ切れて、場面が進みすぎないように)
+var hold = true, hold0 = special.holdFire;
+special.holdFire = function(){ return hold || hold0.apply(this, arguments); };
+try{
+bossDebug.god = true;
+bossDebug.puppeteer = true;
+bossDebug.start(10);
+//第1幕：人形が吊られて、傀儡師が見下す
+step(3000, function(){ var b = boss(); return b && b.mode == "act" && b.sub == "volley" && b.count < 60; });
+snap("第1幕：人形を盾にする");
+//投げつけの構え(合図の光)
+step(3000, function(){ return pups().some(function(p){ return p.mode == "wind" && p.count == 8; }); });
+snap("投げつけの構え");
+//2体解放して第2幕へ
+pups().forEach(function(p){ mainScreen.hitEnemy(p, 999); });
+step(3000, function(){ var b = boss(); return b && b.mode == "stun"; });
+step(60);
+var b = boss(); b.hp = b.maxHp*0.5;
+step(3000, function(){ var b = boss(); return b && b.mode == "act" && b.sub == "thread" && puppeteer.threads.length && puppeteer.threads[0].t == 40; });
+var ps = pups(); mainScreen.hitEnemy(ps[0], ps[0].hp*0.6); mainScreen.hitEnemy(ps[1], ps[1].hp*0.3);
+step(1);
+snap("第2幕：味方と糸の斬撃");
+//第3幕 → 一斉反撃
+pups().forEach(function(p){ mainScreen.hitEnemy(p, 999); });
+step(3000, function(){ var b = boss(); return b && b.mode == "stun"; });
+step(3000, function(){ var b = boss(); if(b && b.mode == "solo" && b.pat > 0) b.hp = Math.min(b.hp, b.maxHp*0.19); return b && b.mode == "last"; });
+step(50);
+mainScreen.blast();
+step(PUP_RALLY_CUT + 40);
+snap("一斉反撃");
+}catch(ex){ document.getElementById("log").textContent += "EX " + ex.message + " " + ex.stack; }
+document.getElementById("log").textContent += "shots " + shotN + " errors " + errors.join(" / ");
+</script>
+</body></html>

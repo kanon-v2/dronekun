@@ -51,6 +51,7 @@ bgmTrial.finale = 0; bgmTrial.fight = 0;
 <script src="scripts/drone/finaleSync.js"></script>
 <script src="scripts/drone/finaleTriumph.js"></script>
 <script src="scripts/drone/gunship.js"></script>
+<script src="scripts/drone/puppeteer.js"></script>
 <script src="scripts/drone/emotion.js"></script>
 <script src="scripts/drone/emotionHint.js"></script>
 <script src="lib/peerjs.min.js"></script>
@@ -1794,6 +1795,46 @@ try{
     check("強襲ヘリ(試作)：倒すと奥の街へ落ちて燃え、メニューへ戻り、ふつうのボスに戻る",
           gWreck && gBurn && errors.length == gerr && page.number == 0 && bossDebug.menu && !bossDebug.gunship && bossTypeFor(10) == "fortress" && Math.abs(battleBg.far) < 0.01 && battleBg.zoom < 0.01,
           "落ちる" + gWreck + " 燃える" + gBurn + " 背景" + battleBg.far.toFixed(2) + " " + bossDebug.msg);
+    //ボスの試作「傀儡師」(puppeteer.js)：同胞を糸で操る。糸を撃ち切ると解放されて味方になり、最後は一斉反撃で倒す(無敵のまま)
+    var perr = errors.length;
+    tap(bossDebug.rivalRows()[RIVAL_WAVES.length + 2]);
+    var pGo = page.number == 1 && game.wave == 10 && bossDebug.puppeteer && bossTypeFor(10) == "puppeteer", pb = null;
+    var pShield = false, pStages = {}, pThrow = false, pCut = false, pThread = false, pAllyShot = false, pLast = false, pRally = false, pKill = false, pFloor = true;
+    for(var i=0; i<9000 && page.number == 1; i++){
+        bot();
+        mainScreen.update();
+        var pbNow = enemies.filter(function(e){ return e.type == "puppeteer"; })[0];
+        if(pbNow) pb = pbNow;
+        if(!pbNow){ if(pb && pb.dead) pKill = true; if(i % 20 == 0) draw1(); continue; }
+        if(mainScreen.bossFreeze || mainScreen.state != "play"){ if(i % 20 == 0) draw1(); continue; }
+        pStages[pb.mode] = true;
+        var pups = enemies.filter(function(e){ return e.type == "puppet" && !e.dead; });
+        if(pb.mode == "act" && pups.length && pb.phased){
+            //盾にしている間は傀儡師に効かない
+            var h0 = pb.hp; mainScreen.hitEnemy(pb, 5); if(pb.hp == h0) pShield = true;
+        }
+        if(puppeteer.threads.length) pThread = true;
+        if(puppeteer.shots.length) pAllyShot = true;
+        //投げつけてきた人形はジャスト・カウンターで糸ごと断ち切る
+        pups.forEach(function(p){
+            if(p.mode == "throw"){ pThrow = true; if(!pCut && mainScreen.canCounter(p)){ var n0 = puppeteer.allies.length; mainScreen.counter(p); pCut = p.dead && puppeteer.allies.length == n0 + 1; } }
+        });
+        //人形がひととおり攻撃したら、糸を撃ち切って進める
+        if(pb.mode == "act" && pb.pat >= 4 && i % 30 == 0 && pups.length) mainScreen.hitEnemy(pups[0], 999);
+        if(pb.mode == "stun" && i % 10 == 0) mainScreen.hitEnemy(pb, 20);
+        if(pb.mode == "solo"){
+            if(pb.pat >= 3 && i % 10 == 0) mainScreen.hitEnemy(pb, pb.maxHp);
+            if(pb.hp < pb.maxHp*PUP_FLOOR - 0.01) pFloor = false;
+        }
+        if(pb.mode == "last" && pb.count < PUP_LAST_EVERY - 40){ pLast = puppeteer.ready; mainScreen.blast(); pRally = !!puppeteer.rally && pb.mode == "rallied"; }
+        if(i % 20 == 0) draw1();
+    }
+    check("傀儡師(試作)：人形を盾にし、糸を切ると味方になり、3幕のあと一斉反撃で倒す",
+          pGo && pShield && pStages.summon && pStages.act && pStages.stun && pStages.solo && pThrow && pCut && pThread && pAllyShot && puppeteer.freed == 7 && pFloor && pLast && pRally && pKill && errors.length == perr,
+          "始まる" + pGo + " 盾" + pShield + " 動き" + Object.keys(pStages).join(",") + " 投げ" + pThrow + " 断ち切り" + pCut + " 糸" + pThread +
+          " 味方の弾" + pAllyShot + " 解放" + puppeteer.freed + " 下限" + pFloor + " 合図" + pLast + " 一斉" + pRally + " 撃破" + pKill + " エラー" + (errors.length - perr));
+    check("傀儡師(試作)：倒すとメニューへ戻り、ふつうのボスに戻る",
+          page.number == 0 && bossDebug.menu && !bossDebug.puppeteer && bossTypeFor(10) == "fortress", bossDebug.msg);
     //武器試用：選んだ装備で、尽きずに出てくる雑魚敵と戦う(無敵。与えたダメージを数える)
     bossDebug.god = false;    //武器試用は無敵の設定によらず無敵
     tap(bossDebug.tools()[0]);
