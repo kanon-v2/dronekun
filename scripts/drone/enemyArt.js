@@ -48,6 +48,7 @@ const CANOPY_ART_RAGE = 1.6;    //怒ったときに、ランプの波・コア�
 //ドローン君改(ボス)：本体はスキンどおりのドローン君の絵を上下に切り分けてずらし、まわりの改造部品を別々に動かす
 const KAI_SCALE     = 2;        //本体の絵の倍率(前と同じ)
 const KAI_SPLIT     = -0.075;   //絵を切り分ける高さ(絵の大きさに対する割合。中心から上へ。プロペラ・棒と胴体の境目)
+const KAI_HIT_GLOW  = 0.45;     //被弾したとき、本体の絵を明るさとして重ねる濃さ(本体は透かさない)
 const KAI_SWAY      = 0.05;     //部品の揺れの速さ(ラジアン/フレーム)
 const KAI_PH_TEMPO  = 0.25;     //出力が1段上がるごとに動きが速くなる割合
 const KAI_LASER_AIM = 60;       //レーザーの予告の長さ(フレーム。bosses.js と同じ)
@@ -616,21 +617,30 @@ var enemyArt = {
 
         //---- 本体：下(胴体)と上(プロペラ・棒)に切り分ける。上は胴体より遅れて弾み、傾きにも遅れてしなる
         var split = S*KAI_SPLIT;
-        if(_body) ctx.globalAlpha = 0.6;
-        ctx.save();
-        ctx.beginPath(); ctx.rect(-S,split,S*2,S); ctx.clip();
-        ctx.translate(jit(5), Math.sin(b)*0.6 + jit(6));
-        look.draw(0,0,k);
-        ctx.restore();
-        ctx.save();
-        ctx.beginPath(); ctx.rect(-S,-S,S*2,S + split + 4); ctx.clip();
-        ctx.translate(jit(7), Math.sin(b - 0.9)*1.8 - laserK*1.5 + jit(8));
-        ctx.translate(0,split);
-        ctx.rotate(-(look.tiltV || 0)*3 + Math.sin(b*1.3 - 0.5)*0.035);
-        ctx.translate(0,-split);
-        look.draw(0,0,k);
-        ctx.restore();
-        ctx.globalAlpha = 1;
+        var drawBody = function(_seam){     //_seam：上の絵を下の絵へ重ねる幅(すき間が見えないように。光らせる重ね塗りでは0にして、二重に明るくならないように)
+            ctx.save();
+            ctx.beginPath(); ctx.rect(-S,split,S*2,S); ctx.clip();
+            ctx.translate(jit(5), Math.sin(b)*0.6 + jit(6));
+            look.draw(0,0,k);
+            ctx.restore();
+            ctx.save();
+            ctx.beginPath(); ctx.rect(-S,-S,S*2,S + split + _seam); ctx.clip();
+            ctx.translate(jit(7), Math.sin(b - 0.9)*1.8 - laserK*1.5 + jit(8));
+            ctx.translate(0,split);
+            ctx.rotate(-(look.tiltV || 0)*3 + Math.sin(b*1.3 - 0.5)*0.035);
+            ctx.translate(0,-split);
+            look.draw(0,0,k);
+            ctx.restore();
+        };
+        drawBody(4);
+        //被弾：本体は透かさず、同じ絵を明るさとして重ねて光らせる(半透明にすると、撃たれ続ける間ずっと後ろが透けて見えたため)
+        if(_body){
+            ctx.save();
+            ctx.globalCompositeOperation = "lighter";
+            ctx.globalAlpha = KAI_HIT_GLOW;
+            drawBody(0);
+            ctx.restore();
+        }
 
         //---- 左右の副砲：エネルギーの線でつながって浮かび、相手を狙う。少し遅れてついてくる。
         //レーザーの予告では本体の前へ出て一緒に光をため、撃っている間は震える
