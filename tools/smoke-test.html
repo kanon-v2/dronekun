@@ -1605,7 +1605,31 @@ try{
     check("ライバルの第二形態：体力が半分を切ると時の前借りをし、そのあとの攻撃が強まる(針が速い・扇の弾が多い・合間が短い)",
           bgSeen && rv13.borrowed && rival.borrowK == RIVAL2_BORROW_SPEED && bgFan == 3 + RIVAL2_BORROW_FAN && Math.abs(bgSp - 2*RIVAL2_BORROW_SPEED) < 0.01 && rival.restTime(rv13) < bgRest0 && errors.length == rvErr,
           "前借り" + bgSeen + " 済み" + rv13.borrowed + " 倍率" + rival.borrowK + " 扇" + bgFan + " 速さ" + bgSp.toFixed(2) + " 合間" + bgRest0 + "→" + rival.restTime(rv13));
+    // 前借りのあと：次の攻撃は未来の自分(金色の分身が先に動いて撃ち、本物が遅れて同じ道をたどる)。拍の裏(半拍)でも撃ち、針は金色。分身を倒すと、そこで終わる
+    enemyShots = [];
+    var fuSaw = false, fuReal = false, fuFollow = false, fuHalf = 0, fuKilled = false, fuEnd = false, fuGold = false;
+    for(var f=0; f<60*25; f++){
+        mainScreen.hp = 99; mainScreen.guard = 99;
+        var n0 = enemyShots.length;
+        mainScreen.update(); if(f % 10 == 0) draw1();
+        rv13.hp = rv13.maxHp*0.4; rv13.hpMark = rv13.hp; rv13.since12 = 0;
+        var fc = enemies.filter(function(c){ return c.future && !c.dead; })[0];
+        if(fc && fc.mode == "future"){ fuSaw = fc; }
+        if(rv13.mode == "future"){
+            fuReal = true;
+            if(rv13.hi > 0){ var h = rv13.hist[rv13.hi - 1]; if(h && Math.hypot(rv13.x - h.x, rv13.y - h.y) < 0.01) fuFollow = true; }
+            if(rv13.onHalf && !rv13.onBeat && enemyShots.length > n0) fuHalf++;
+            if(fc && rv13.hi > 60){ mainScreen.hitEnemy(fc, 99999, "gun"); }
+        }
+        if(fuSaw && fuSaw.dead && fuSaw.count > 0) fuKilled = true;     //自分の装備が先に倒していてもよい
+        if(enemyShots.some(function(b){ return b.kind == "chrono" && b.bk > 1; })) fuGold = true;
+        if(fuReal && rv13.mode != "future"){ fuEnd = true; break; }
+    }
+    check("ライバルの時の前借りのあと：未来の自分(金色の分身が先に撃ち、本物が同じ道をたどる)・半拍でも撃つ・倒すと終わる",
+          !!fuSaw && fuReal && fuFollow && fuHalf > 0 && fuKilled && fuEnd && fuGold && errors.length == rvErr,
+          "分身" + !!fuSaw + " 本物" + fuReal + " たどる" + fuFollow + " 半拍" + fuHalf + " 倒す" + fuKilled + " 終わる" + fuEnd + " 金色" + fuGold);
     rv13.borrowed = false; rival.borrowK = 1; enemyShots = [];
+    enemies.forEach(function(c){ if(c.clone) c.dead = true; });
     check("ライバルの第二形態は大きく描く(針の翼・光る目)", rivalTime.scale(rv13) == RIVAL2_SCALE && rivalTime.scale({ look:rv13.look, form:1, mode:"idle" }) == RIVAL_SCALE && rv13.wfx && rv13.wfx.k == RIVAL2_SCALE,
           "大きさ" + rivalTime.scale(rv13));
 

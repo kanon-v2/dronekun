@@ -5,6 +5,7 @@
     msedge --headless=new --disable-gpu --allow-file-access-from-files --virtual-time-budget=3000 --window-size=1920,1080 --screenshot=<出力.png> "file:///…/tools/rival-art.html"
   #close：クロノの体を大きく(背中の文字盤・ハチマキ・残響の見え方・第二形態の針の翼)
   #time：時を操る攻撃(rivalTime.js。時の枷・加速世界・時飛ばし・時の裂け目・別の時間の自分)
+  #borrow：時の前借りのあと(金色の針・半拍の刻み撃ち・未来の自分)
   #only=番号：その場面だけを等倍で(0から数える)
   #seed=数：乱数の種(場面の並び・動きが変わる)
   セーブ(localStorage)は読み書きしない(始める前の状態に戻す)
@@ -82,8 +83,11 @@ function start(_w,_f2){
     return e;
 }
 //1コマずつ進める(ゲームと同じく毎コマ描く。ハチマキの揺れ・演出の残り時間は描くたびに進むため)
+var stepN = 0;
 function step(_e,_n){
     for(var i=0; i<_n; i++){
+        //進みすぎたら止める(場面を作れずに回り続けないように)
+        if(++stepN > 30000) throw new Error("場面を作れない mode=" + _e.mode + " hi=" + _e.hi + " hist=" + (_e.hist && _e.hist.length) + " done=" + (_e.hist && _e.hist.done));
         bot(); mainScreen.hp = 99; mainScreen.guard = 9; mainScreen.update(); _e.hp = _e.maxHp*(_e.enraged ? 0.4 : 1); _e.hpMark = _e.hp;
         screens[page.number].draw();
     }
@@ -98,7 +102,7 @@ function force(_e,_p){
 function until(_e,_f,_max){ for(var i=0; i<(_max || 900) && !_f(); i++) step(_e, 1); }
 
 var sheet = document.getElementById("sheet"), SH = sheet.getContext("2d");
-var closeUp = /close/.test(location.hash), timeMode = /time/.test(location.hash);
+var closeUp = /close/.test(location.hash), timeMode = /time/.test(location.hash), borrowMode = /borrow/.test(location.hash);
 var scenes = [], sc = closeUp ? 1 : 0.5;
 function shot(_label){
     ctx.fillStyle = "white"; ctx.fillRect(0,0,CW,CH);
@@ -140,6 +144,22 @@ try{
         force(e, "era"); until(e, function(){ return enemies.some(function(c){ return c.era && c.mode == "era"; }); }, 2000); step(e, 30);
         enemies.filter(function(c){ return c.era && c.mode == "era"; }).forEach(function(c){ grab(c, c.name); });
         scenes = zoom;
+    }else if(borrowMode){
+        //時の前借り：力をためる → 強まった刻み撃ち・未来の自分
+        var e = start(14, true);
+        step(e, 30);
+        e.enraged = true; e.since12 = -99; e.borrowDue = true;
+        while(e.mode != "idle") step(e, 1);
+        e.timer = 1;
+        until(e, function(){ return e.mode == "borrow" && e.count < e.borrowT*0.4; }, 2000);
+        shot("時の前借り(力をためる)");
+        until(e, function(){ return e.mode == "future" && e.hi > 40; }, 2000);
+        shot("未来の自分(金色の分身が先に動き、本物が跡をたどる)");
+        step(e, 80);
+        shot("未来の自分(続き)");
+        e.sinceFut = -99; e.since12 = -99;
+        force(e, "echo"); until(e, function(){ return e.mode == "echo"; }, 2000); step(e, 150);
+        shot("前借りのあとの過去の自分(金色の針・半拍でも撃つ)");
     }else if(timeMode){
         var e = start(13);
         force(e, "shackle"); until(e, function(){ return rivalTime.rings.length && rivalTime.rings[0].n <= 2; }, 2000);

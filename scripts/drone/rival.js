@@ -213,9 +213,17 @@ const RIVAL2_OD_HP    = 0.2;        //第二形態はこの割合を切ったと
 //時の前借り(第二形態の体力が半分を切った次の攻撃で1度。未来の時を前借りして、そのあとの攻撃がすべて強まる)
 const RIVAL2_BORROW_HP    = 0.5;    //この割合を切ったら、次の攻撃の代わりに前借りする
 const RIVAL2_BORROW_BEATS = 4;      //前借りの長さ(拍。この間は止まって力をためるので隙。終わりは拍の上)
-const RIVAL2_BORROW_SPEED = 1.2;    //前借りのあと：クロノ(分身も)が撃つ針の速さに掛ける
-const RIVAL2_BORROW_FAN   = 1;      //前借りのあと：3発以上の扇に足す弾の数
-const RIVAL2_BORROW_REST  = 0.7;    //前借りのあと：攻撃の合間の長さに掛ける
+const RIVAL2_BORROW_SPEED = 1.4;    //前借りのあと：クロノ(分身も)が撃つ針の速さに掛ける
+const RIVAL2_BORROW_FAN   = 2;      //前借りのあと：3発以上の扇に足す弾の数
+const RIVAL2_BORROW_REST  = 0.55;   //前借りのあと：攻撃の合間の長さに掛ける
+const RIVAL2_BORROW_SHOT  = "240,180,50";   //前借りのあとの針の色(金色)。尾を引く
+const RIVAL2_BORROW_TAIL  = 5;      //前借りのあとの針の尾の長さ(動く速さの何コマ分か)
+//未来の自分(前借りのあとだけの攻撃)：金色の「少し先の自分」が先に動いて撃ち、本物が遅れて同じ道・同じ向きでくり返す
+const RIVAL2_FUTURE_EVERY = 3;      //この数の攻撃ごとに使う(前借りの次の攻撃でも使う)
+const RIVAL2_FUTURE_T     = 300;    //未来の自分が動き回って撃つ長さ(フレーム)
+const RIVAL2_FUTURE_DELAY = 2;      //本物が遅れる長さ(拍)
+const RIVAL2_FUTURE_FAN   = [0,3,4,5];  //小節の頭に扇で撃つ弾の数(Lv.1～4。ほかの拍は1発、半拍にも1発)
+const RIVAL2_FUTURE_TINT  = "150,105,30";   //未来の自分の体の色
 const RIVAL2_BORROW_COL   = "215,150,40";   //前借りの光の色(未来の時。金色)
 const RIVAL2_BORROW_LINE  = "未来の時を…前借りする！";     //前借りするときのせりふ
 const RIVAL2_INTERCEPT_FROM = 2;    //第二形態でドローン君の弾を撃ち落とす(迎撃)段階(lv。2 = WAVE14から)
@@ -697,6 +705,8 @@ var rival = {
         _e.onHalf = _e.hb != null && hb != _e.hb;
         _e.bi = bi; _e.hb = hb; _e.bt = b;
     },
+    //前借りのあとは、拍の裏(半拍)でも撃つ(拍の頭は onBeat で撃つので除く)
+    halfOn:function(_e){ return !!_e.borrowed && _e.onHalf && !_e.onBeat; },
     //小節の頭か
     downbeat:function(_e){ return ((_e.bi % 4) + 4) % 4 == 0; },
     //Suno の曲をどこから流すか(第二形態は RIVAL2_SONG_AT から)
@@ -741,14 +751,14 @@ var rival = {
             case "shoot":
                 //刻み撃ち：拍ごとに1発(本気なら2発)、小節の頭は扇
                 this.strafe(_e);
-                if(_e.onBeat && play) this.beatShot(_e, toMe, RIVAL_SHOOT_N[lv]);
+                if((_e.onBeat || this.halfOn(_e)) && play) this.beatShot(_e, toMe, RIVAL_SHOOT_N[lv]);
                 if(--_e.count <= 0) this.rest(_e);
                 break;
             case "echo":
                 //過去の自分(第二形態)：動き回って撃つ。通った道と撃った弾を、遅れた分身がくり返す(rival.echoReplay)
                 this.strafe(_e);
                 _e.hist.push({ x:_e.x + _e.vx, y:_e.y + _e.vy, f:null });
-                if(_e.onBeat && play) this.beatShot(_e, toMe, RIVAL2_ECHO_FAN[lv]);
+                if((_e.onBeat || this.halfOn(_e)) && play) this.beatShot(_e, toMe, RIVAL2_ECHO_FAN[lv]);
                 if(--_e.count <= 0){ _e.hist.done = true; this.rest(_e); }
                 break;
             case "clock":
@@ -813,6 +823,13 @@ var rival = {
                     }
                 }
                 break;
+            case "future":
+                //未来の自分(前借りのあと)：金色の分身が先に通った道を、遅れてたどって同じ向きへ撃つ
+                //はじめの RIVAL2_FUTURE_DELAY 拍はその場で待つ
+                _e.mvx = 0; _e.mvy = 0;
+                if(_e.hi < 0){ _e.hi++; _e.vx = 0; _e.vy = 0; }
+                else if(this.echoReplay(_e, play)) this.rest(_e);
+                break;
             case "borrow":
                 //時の前借り：止まって未来の時を引き寄せる(この間は隙)。終わると拍の上で力が満ちる
                 _e.vx *= 0.85; _e.vy *= 0.85;
@@ -852,7 +869,9 @@ var rival = {
             if(_e.mode == "echo") _e.hist.done = true;
             this.escape(_e);
         }
-        _e.look.update(dirFromVel(_e.vx,_e.vy), _e.vx, _e.vy);
+        //未来の自分をたどる間は、位置で動かす(mvx・mvy)ので、その向きを見る
+        var fx2 = _e.mode == "future" ? (_e.mvx || 0) : 0, fy2 = _e.mode == "future" ? (_e.mvy || 0) : 0;
+        _e.look.update(dirFromVel(_e.vx + fx2, _e.vy + fy2), _e.vx + fx2, _e.vy + fy2);
         this.flags(_e);
     },
     //針の弾を扇に撃つ(_o：撃った敵。止める・戻すため、本物の番号を印にする)
@@ -868,7 +887,7 @@ var rival = {
     //拍の上で撃つ(刻み撃ち・過去の自分)：ふだんの拍は1発(本気なら2発)、小節の頭は _fan 発の扇。
     //過去の自分の間は、撃った向きを通った道に書いておく(分身がくり返す)
     beatShot:function(_e,_a,_fan){
-        var down = this.downbeat(_e), n = down ? _fan : (_e.enraged ? 2 : 1), sp = down ? 0.2 : 0.14;
+        var down = _e.onBeat && this.downbeat(_e), n = down ? _fan : (_e.enraged && _e.onBeat ? 2 : 1), sp = down ? 0.2 : 0.14;
         this.needles(_e, _e.x, _e.y, _a, n, sp, this.shotSpeed());
         if(_e.mode == "echo" && _e.hist.length) _e.hist[_e.hist.length - 1].f = [_a, n, sp];
         sound.play("shot");
@@ -984,7 +1003,7 @@ var rival = {
         _e.vy += (ty - _e.vy)*0.3;
         var n = RIVAL2_CLONES[_e.lv] + 1, slot = _e.slot || 0;
         var turn = _o.enraged ? (slot % 2) == (((_o.bi % 2) + 2) % 2) : slot == ((_o.bi % n) + n) % n;
-        if(_play && _o.onBeat && turn && age > 20 && _e.count > 20){
+        if(_play && (_o.onBeat || this.halfOn(_o)) && turn && age > 20 && _e.count > 20){
             this.needles(_e, _e.x, _e.y, Math.atan2(_e.wcy - _e.y, _e.wcx - _e.x), RIVAL2_WALTZ_N, 0.16, this.shotSpeed());
             sound.play("shot");
         }
@@ -1150,7 +1169,7 @@ var rival = {
         _e.vx += (tx - _e.vx)*0.4;
         _e.vy += (ty - _e.vy)*0.4;
         var n = RIVAL2_CLONES[_e.lv] + 1, age = RIVAL2_MIRROR_T - _e.count;
-        if(_play && _o.onBeat && (_e.slot || 0) == ((_o.bi % n) + n) % n && age > 20 && _e.count > 15){
+        if(_play && (_o.onBeat || this.halfOn(_o)) && (_e.slot || 0) == ((_o.bi % n) + n) % n && age > 20 && _e.count > 15){
             this.needles(_e, _e.x, _e.y, Math.atan2(aimAt.Y - _e.y, aimAt.X - _e.x), RIVAL2_MIRROR_N, 0.2, this.shotSpeed());
             sound.play("shot");
         }
@@ -1172,6 +1191,7 @@ var rival = {
     //力が満ちた：このあとの攻撃がすべて強まる(針が速い・扇の弾が多い・攻撃の合間が短い)
     borrowEnd:function(_e){
         _e.borrowed = true;
+        _e.sinceFut = RIVAL2_FUTURE_EVERY - 1;     //前借りの次の攻撃で未来の自分(rest で1つ増える)
         this.borrowK = RIVAL2_BORROW_SPEED;
         fx.flare(_e.x, _e.y, 150, RIVAL2_BORROW_COL, 18);
         fx.ring(_e.x, _e.y, 260, RIVAL2_BORROW_COL, 24, 5);
@@ -1194,6 +1214,63 @@ var rival = {
         }
         ctx.restore();
         ctx.globalAlpha = 1;
+    },
+    //------------------------------------------------------------ 未来の自分(前借りのあと)
+    //始める：本物の体から金色の「少し先の自分」が抜け出して先に動き回り、拍(と半拍)で撃つ。
+    //本物はその場で RIVAL2_FUTURE_DELAY 拍待ってから、同じ道を同じ向きへ撃ちながらたどる(echoReplay)。未来の自分を倒すと、その先はなくなる
+    futureStart:function(_e){
+        _e.sinceFut = 0;
+        _e.chain = 0;
+        _e.mode = "future";
+        _e.hist = [];
+        _e.hi = -Math.round(this.beatF()*RIVAL2_FUTURE_DELAY);
+        _e.hiT = -_e.hi;
+        var c = this.spawnClone(_e, _e.x, _e.y, "future", { future:true, hist:_e.hist, orbit:_e.orbit });
+        c.mode = "future"; c.count = RIVAL2_FUTURE_T;
+        this.flags(_e);
+        fx.ring(_e.x, _e.y, 70, RIVAL2_BORROW_COL, 14, 3);
+        rivalSfx.chime();
+    },
+    //未来の自分の1コマ：動き回り、通った道と撃った向きを書く(_o は本物。拍は本物のもの)。終わったら true
+    futureStep:function(_c,_o,_play){
+        this.strafe(_c);
+        _c.hist.push({ x:_c.x + _c.vx, y:_c.y + _c.vy, f:null });
+        if(_play && (_o.onBeat || this.halfOn(_o))){
+            var a = Math.atan2(aimAt.Y - _c.y, aimAt.X - _c.x), down = _o.onBeat && this.downbeat(_o);
+            var n = down ? RIVAL2_FUTURE_FAN[_c.lv] : 1, sp = down ? 0.2 : 0.14;
+            this.needles(_c, _c.x, _c.y, a, n, sp, this.shotSpeed());
+            _c.hist[_c.hist.length - 1].f = [a, n, sp];
+            sound.play("shot");
+            if(down) rivalSfx.tick(true);
+        }
+        return --_c.count <= 0;
+    },
+    //本物がこれからたどる道(未来の自分の通った跡)を金色の点線で
+    drawFuture:function(_e){
+        var H = _e.hist;
+        if(!H || H.length < 2) return;
+        var i0 = Math.max(0, _e.hi);
+        if(i0 >= H.length - 1) return;
+        ctx.save();
+        ctx.strokeStyle = "rgba(" + RIVAL2_BORROW_COL + ",0.55)";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4,6]);
+        ctx.lineDashOffset = -(_e.t || 0)*0.6;
+        ctx.beginPath();
+        ctx.moveTo(H[i0].x, H[i0].y);
+        for(var i=i0 + 3; i<H.length; i+=3) ctx.lineTo(H[i].x, H[i].y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        //撃つ所に小さな金色の点(これから撃たれる)
+        ctx.fillStyle = "rgba(" + RIVAL2_BORROW_COL + ",0.7)";
+        for(var i=i0; i<H.length; i++) if(H[i].f){ ctx.beginPath(); ctx.arc(H[i].x, H[i].y, 3, 0, Math.PI*2); ctx.fill(); }
+        //出番待ち：本物が動き出すまでを針がひと回りして知らせる
+        if(_e.hi < 0){
+            ctx.strokeStyle = "rgba(" + RIVAL2_BORROW_COL + ",0.9)";
+            ctx.beginPath(); ctx.arc(_e.x, _e.y, 30, -Math.PI/2, -Math.PI/2 + Math.PI*2*(1 + _e.hi/_e.hiT)); ctx.stroke();
+        }
+        ctx.restore();
+        ctx.lineWidth = 1;
     },
     //------------------------------------------------------------ 時ノ奔流(山場)
     //始める：画面のまんなかへワープする(着いたらすぐ加速)
@@ -1452,6 +1529,7 @@ var rival = {
         _e.hpMark = _e.hp;
         _e.dashT = 0;
         _e.since12++;
+        _e.sinceFut = (_e.sinceFut || 0) + 1;
     },
     //攻撃のあと、次の攻撃まで(第二形態は RIVAL2_REST)
     restTime:function(_e){
@@ -1463,6 +1541,7 @@ var rival = {
         if(_e.borrowDue){ this.borrow(_e); return; }
         if(_e.odDue){ this.over(_e); return; }
         if(_e.form == 2 && _e.enraged && _e.since12 >= RIVAL2_TWELVE_EVERY){ this.twelve(_e); return; }
+        if(_e.borrowed && _e.sinceFut >= RIVAL2_FUTURE_EVERY){ this.futureStart(_e); return; }
         var list = (_e.form == 2 ? RIVAL2_PATTERNS : RIVAL_PATTERNS)[_e.lv], p = list[_e.cycle++ % list.length];
         if(rivalTime.start(_e, p)) return;      //時を操る攻撃(rivalTime.js)
         if(p == "mirror" || p == "waltz"){
@@ -1539,6 +1618,7 @@ var rival = {
         return c;
     },
     fade:function(_c){
+        if(_c.future && _c.hist) _c.hist.done = true;     //未来の自分が消えたら、本物はそこまでたどって終わる
         _c.mode = "fade";
         _c.count = RIVAL2_FADE_T;
         this.flags(_c);
@@ -1578,6 +1658,10 @@ var rival = {
                 break;
             case "echo":
                 if(this.echoReplay(_c, play)) this.fade(_c);
+                break;
+            case "future":
+                //未来の自分(前借りのあと)
+                if(this.futureStep(_c, o || _c, play)) this.fade(_c);
                 break;
             case "era":
                 //別の時間から連れてきた自分(rivalTime.js)
@@ -1619,6 +1703,14 @@ var rival = {
     //分身が倒された(special.onKill から)
     cloneKilled:function(_c){
         if(_c.era){ rivalTime.eraKilled(_c); return; }
+        if(_c.future){
+            if(_c.hist) _c.hist.done = true;
+            fx.flare(_c.x, _c.y, 50, RIVAL2_BORROW_COL, 14);
+            this.shatter(_c, RIVAL2_BORROW_COL);
+            popup(_c.x, _c.y - _c.r - 6, "未来を断った！", "rgb(190,130,20)");
+            sound.play("blink");
+            return;
+        }
         fx.flare(_c.x, _c.y, 50, _c.echo ? WARP_COLOR : RIVAL2_GLOW, 14);
         this.shatter(_c, _c.echo ? WARP_COLOR : RIVAL2_GLOW);
         if(!_c.echo) popup(_c.x, _c.y - _c.r - 6, "分身だ！", "rgb(110,70,190)");
@@ -1804,8 +1896,21 @@ var rival = {
             ctx.lineWidth = 2*(1 - u) + 0.5;
             ctx.beginPath(); ctx.arc(b.x, b.y, 10 + 14*u, 0, Math.PI*2); ctx.stroke();
         }
+        //前借りのあとの針：金色の尾を引く(速くなったことが見てわかるように)
+        var gold = b.bk > 1 && !b.era && !b.held;
+        if(gold && moving){
+            var L = RIVAL2_BORROW_TAIL, tx = b.x - b.vx*L, ty = b.y - b.vy*L;
+            var g = ctx.createLinearGradient(b.x, b.y, tx, ty);
+            g.addColorStop(0, "rgba(" + RIVAL2_BORROW_SHOT + ",0.75)");
+            g.addColorStop(1, "rgba(" + RIVAL2_BORROW_SHOT + ",0)");
+            ctx.strokeStyle = g;
+            ctx.lineWidth = 4;
+            ctx.lineCap = "round";
+            ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(tx, ty); ctx.stroke();
+            ctx.lineCap = "butt";
+        }
         //別の時間から来た針(時の裂け目。rivalTime.js)は、過去はセピア・未来は水色
-        this.needle(b.x, b.y, a, b.era == "past" ? "rgb(" + CT_PAST + ")" : b.era == "future" ? "rgb(" + CT_FUTURE + ")" : RIVAL_SCARF, 1);
+        this.needle(b.x, b.y, a, b.era == "past" ? "rgb(" + CT_PAST + ")" : b.era == "future" ? "rgb(" + CT_FUTURE + ")" : gold ? "rgb(" + RIVAL2_BORROW_SHOT + ")" : RIVAL_SCARF, 1);
         ctx.restore();
         ctx.lineWidth = 1;
         return true;
@@ -1900,10 +2005,10 @@ var rival = {
     //第二形態(と同じ姿の分身)は大きく、暗い炎・歯車のかけら・時計の針の翼・光る目をまとう(rivalTime.js)
     drawBody:function(_e,_body,_alpha){
         var k = rivalTime.scale(_e), f2 = (_e.clone && !_e.echo && !_e.era) || this.second(_e);
-        _e.look.tint = _e.era ? (_e.era == "past" ? CT_ERA_PAST : CT_ERA_FUTURE).tint : _e.echo ? RIVAL_TINT : f2 ? RIVAL2_TINT : RIVAL_TINT;
+        _e.look.tint = _e.era ? (_e.era == "past" ? CT_ERA_PAST : CT_ERA_FUTURE).tint : _e.echo ? RIVAL_TINT : _e.future ? RIVAL2_FUTURE_TINT : f2 ? RIVAL2_TINT : RIVAL_TINT;
         ctx.globalAlpha = _alpha;
         enemyArt.halo(0, 0, (30 + Math.sin(_e.t*0.12)*2)*k/RIVAL_SCALE, f2 ? RIVAL2_GLOW : WARP_COLOR, (_e.mode == "hold" || _e.mode == "rstop") ? 0.5 : f2 ? 0.26 : 0.18);
-        if(_e.borrowed && !_e.clone) enemyArt.halo(0, 0, 40*k/RIVAL_SCALE, RIVAL2_BORROW_COL, 0.14 + 0.06*Math.sin(_e.t*0.2));     //前借りした未来の時の光
+        if((_e.borrowed && !_e.clone) || _e.future) enemyArt.halo(0, 0, 40*k/RIVAL_SCALE, RIVAL2_BORROW_COL, 0.14 + 0.06*Math.sin(_e.t*0.2));     //前借りした未来の時の光
         if(f2) rivalTime.drawAura(_e, k, _alpha);
         if(!_e.clone || _e.mode != "fade") this.drawDial(_e, f2, _alpha, k);
         if(f2) rivalTime.drawWings(_e, k, _alpha);
@@ -1999,7 +2104,7 @@ var rival = {
         }
         if(_c.mode == "stay") a = _c.hour ? 0.85 : 0.7;
         if(_c.mode == "wait") a = 0.35;
-        if(!_c.echo && (_c.t + _c.id*13) % RIVAL2_FLICKER < 4) a *= 0.45;
+        if(!_c.echo && !_c.future && (_c.t + _c.id*13) % RIVAL2_FLICKER < 4) a *= 0.45;
         //突進の構え：本物と同じ予告
         if(_c.mode == "aim") this.drawLane(0, 0, _c.aimX, _c.aimY, _c.count <= RIVAL_CUE ? 1 - _c.count/RIVAL_CUE : 0, _c.t, _c.hour ? RIVAL2_TIME : RIVAL_TIME);
         //残響突進の出番待ち：これから通る道を薄く
@@ -2618,6 +2723,7 @@ var rival = {
         //時を操る攻撃：裂け目・枷の輪・1拍先の弾(rivalTime.js)
         rivalTime.drawAttack(_e);
         if(_e.mode == "borrow") this.drawBorrow(_e);
+        if(_e.mode == "future") this.drawFuture(_e);
         //時戻し：逆回りの矢印の輪と、上へ流れる横の走査線(テープを巻き戻すように)
         if(_e.rewFx > 0){
             var u = 1 - _e.rewFx/30;
