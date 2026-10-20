@@ -7,7 +7,7 @@
 //  ・飛ぶ距離はポインタまでの距離(DODGE_DIST_MIN～MAX)。ポインタがすぐそばなら、動いていた向きへ飛ぶ
 //  ・mainScreen.update から update()、drone.calcXY から steer()、mainScreen.canBeHit から evade() を呼ぶ
 //  ・協力プレイ・対戦では使わない(敵と弾を動かす画面とずれるため)
-//  ・タッチ操作では、右下の「回避」ボタン(衝撃波ボタンの左)で、動いている向きへ決まった距離を飛ぶ。
+//  ・タッチ操作では、右下の「回避」ボタン(衝撃波ボタンの左。設定で左下にすると左右が入れ替わる：viewOpt.touchX)で、動いている向きへ決まった距離を飛ぶ。
 //    指で動かす目標も同じだけ動かす(着いたあと元の場所へ引き戻されないように)
 //------------------------------------------------------------------------------
 const DODGE_TIME      = 11;     //飛んでいる時間(フレーム)
@@ -231,12 +231,12 @@ var dodge = {
     },
     //タッチ操作の「回避」ボタン(common.js の pointerdown から)
     touchHit:function(_x,_y){
-        return this.enabled() && Math.hypot(_x - DODGE_BTN.x, _y - DODGE_BTN.y) < DODGE_BTN.r + 8;
+        return this.enabled() && Math.hypot(_x - viewOpt.touchX(DODGE_BTN.x), _y - DODGE_BTN.y) < DODGE_BTN.r + 8;
     },
     //「回避」ボタンを描く(mainScreen.drawHud から、タッチ操作のときだけ)。また飛べるまでを輪で、切り返せる間は「切り返し」と出す
     drawTouchButton:function(){
         if(!this.enabled()) return;
-        var b = DODGE_BTN, slash = this.slashOk && this.slowT > 0, ok = this.cd <= 0 || slash;
+        var b = { x:viewOpt.touchX(DODGE_BTN.x), y:DODGE_BTN.y, r:DODGE_BTN.r }, slash = this.slashOk && this.slowT > 0, ok = this.cd <= 0 || slash;
         ctx.fillStyle = slash ? "rgba(240,250,255,0.9)" : ok ? "rgba(40,150,210,0.85)" : "rgba(160,160,160,0.6)";
         ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
         ctx.strokeStyle = slash ? "rgb(" + DODGE_COLOR + ")" : "#fff";

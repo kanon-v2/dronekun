@@ -64,8 +64,22 @@ var musicButtons = [
     { rect:new drawRect(CW/2 - 126, MUSIC_ROW_Y, 132, 34), key:"music", val:"suno",    label:"標準" },
     { rect:new drawRect(CW/2 + 14,  MUSIC_ROW_Y, 132, 34), key:"music", val:"classic", label:"クラシック" }
 ];
-//設定の窓のボタン(方眼・曲)。並びがマウスの乗っている番号になる
-var optButtons = gridButtons.concat(musicButtons);
+//タッチ操作の戦闘のボタン(衝撃波・回避)を出す側(viewOpt.btnSide)：タッチ操作のときだけ、曲の行の右半分に出す(touch の印)
+var sideButtons = [
+    { rect:new drawRect(CW/2 + 110, MUSIC_ROW_Y, 84, 34), key:"btnSide", val:"right", label:"右下", touch:true },
+    { rect:new drawRect(CW/2 + 200, MUSIC_ROW_Y, 84, 34), key:"btnSide", val:"left",  label:"左下", touch:true }
+];
+//設定の窓のボタン(方眼・曲・ボタンの側)。並びがマウスの乗っている番号になる
+var optButtons = gridButtons.concat(musicButtons, sideButtons);
+//曲のボタンの横の位置：タッチ操作のときは、右半分をボタンの側に空けるため左へ寄せて細くする
+function layoutMusicButtons(){
+    var touch = inputMode == "touch";
+    for(var i=0; i<musicButtons.length; i++){
+        var r = musicButtons[i].rect;
+        r.width = touch ? 96 : 132;
+        r.X = (touch ? CW/2 - 172 + i*106 : CW/2 - 126 + i*140) - r.width/2;
+    }
+}
 
 //タイトルの見た目の案(titleArt.js。#title=A～D)を選んでいるときの文字の色。選んでいなければ _def
 function titleCol(_key,_def){ return typeof titleArt != "undefined" ? titleArt.col(_key, _def) : _def; }
@@ -658,10 +672,11 @@ var startScreen = {
 
     //設定の窓：ドローン君の見た目・戦闘画面の方眼・曲を選ぶ。選ぶとすぐ切り替わり、覚える。Esc か「閉じる」で閉じる
     updateSettings:function(){
-        var h = -1;
-        //マウスが乗っているもの(0,1：見た目のカード 2〜6：方眼のボタン 7,8：曲のボタン 9：閉じる)
+        var h = -1, touch = inputMode == "touch";
+        layoutMusicButtons();
+        //マウスが乗っているもの(0,1：見た目のカード 2〜6：方眼のボタン 7,8：曲のボタン 9,10：ボタンの側(タッチ操作のときだけ) 11：閉じる)
         for(var i=0; i<skinCards.length; i++) if(skinCards[i].contains(MouseX,MouseY)) h = i;
-        for(var i=0; i<optButtons.length; i++) if(optButtons[i].rect.contains(MouseX,MouseY)) h = skinCards.length + i;
+        for(var i=0; i<optButtons.length; i++) if((touch || !optButtons[i].touch) && optButtons[i].rect.contains(MouseX,MouseY)) h = skinCards.length + i;
         if(settingsClose.contains(MouseX,MouseY)) h = skinCards.length + optButtons.length;
         if(h != this.setHover && h >= 0) sound.play("hover");
         this.setHover = h;
@@ -674,6 +689,7 @@ var startScreen = {
         }
         for(var i=0; i<optButtons.length; i++){
             var g = optButtons[i];
+            if(g.touch && !touch) continue;
             if(g.rect.clicked()){
                 sound.play("click");
                 viewOpt[g.key] = g.val;
@@ -765,8 +781,10 @@ var startScreen = {
         ctx.fillStyle = TITLE_INK;
         ctx.fillText("表示", px + 26, GRID_ROW_Y + 17);
         ctx.fillText("大きさ", px + 236, GRID_ROW_Y + 17);
+        layoutMusicButtons();
         for(var i=0; i<optButtons.length; i++){
             var g = optButtons[i], r = g.rect;
+            if(g.touch && inputMode != "touch") continue;
             var sel = viewOpt[g.key] === g.val, on = this.setHover == skinCards.length + i;
             //方眼なしのときは大きさが効かないので、大きさのボタンを薄く出す(押すことはできる)
             ctx.globalAlpha = g.key == "gridSize" && !viewOpt.grid ? 0.4 : 1;
@@ -805,9 +823,14 @@ var startScreen = {
         ctx.font = "bold 12px " + TITLE_UI_FONT;
         ctx.fillStyle = "#6a6f6c";
         ctx.fillText("曲", px + 26, MUSIC_ROW_Y - 26);
-        ctx.font = "11px " + TITLE_UI_FONT;
-        ctx.fillStyle = "#8a8f8b";
-        ctx.fillText(viewOpt.music == "classic" ? "前からの曲" : "新しい曲", CW/2 + 94, MUSIC_ROW_Y + 17);
+        if(inputMode == "touch"){
+            //タッチ操作：曲の行の右半分に、戦闘の衝撃波・回避のボタンを出す側
+            ctx.fillText("戦闘のボタン（衝撃波・回避）", CW/2 + 22, MUSIC_ROW_Y - 26);
+        }else{
+            ctx.font = "11px " + TITLE_UI_FONT;
+            ctx.fillStyle = "#8a8f8b";
+            ctx.fillText(viewOpt.music == "classic" ? "前からの曲" : "新しい曲", CW/2 + 94, MUSIC_ROW_Y + 17);
+        }
 
         //閉じる
         var b = settingsClose, on = this.setHover == skinCards.length + optButtons.length;

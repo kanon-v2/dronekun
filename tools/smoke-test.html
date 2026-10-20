@@ -1996,6 +1996,19 @@ try{
     var dtMove = dodge.count == 1 && Math.abs(MouseX - (400 + DODGE_TOUCH_DIST)) < 0.01 && Math.abs(drone.X - MouseX) < 3 && Math.abs(drone.Y - 300) < 2;
     check("回避ダッシュ(タッチ)：「回避」ボタンで動いている向きへ飛び、目標も一緒に動く", dtReq && dtMove,
           [dtReq,dtMove].join("") + " 位置" + Math.round(drone.X) + "," + Math.round(drone.Y) + " 目標" + Math.round(MouseX));
+    //タッチ操作のボタンを左下にする設定(viewOpt.btnSide)：衝撃波・回避のボタンが左右反対の位置になり、右下では押せない
+    var dsKeep = viewOpt.btnSide;
+    viewOpt.btnSide = "left";
+    dodge.reset();
+    var dsLeft = mainScreen.touchBlastHit(CW - mainScreen.touchBlast.x, mainScreen.touchBlast.y) && dodge.touchHit(CW - DODGE_BTN.x, DODGE_BTN.y)
+        && !mainScreen.touchBlastHit(mainScreen.touchBlast.x, mainScreen.touchBlast.y) && !dodge.touchHit(DODGE_BTN.x, DODGE_BTN.y);
+    dtPe("pointerdown", CW - DODGE_BTN.x, DODGE_BTN.y);
+    var dsReq = dodge.req && drag.id == null;
+    dtPe("pointerup", CW - DODGE_BTN.x, DODGE_BTN.y);
+    draw1();
+    dodge.reset();
+    viewOpt.btnSide = dsKeep;
+    check("タッチ操作のボタンを左下に：衝撃波・回避のボタンが左下で押せる", dsLeft && dsReq, [dsLeft,dsReq].join(","));
     inputMode = "mouse";
     enemies = [];
     mainScreen.toSpawn = 0;

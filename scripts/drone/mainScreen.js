@@ -1012,14 +1012,14 @@ var mainScreen = {
         }
     },
 
-    //タッチ操作用の衝撃波ボタン(右下)
+    //タッチ操作用の衝撃波ボタン(右下。設定で左下にもできる：viewOpt.touchX)
     touchBlast:{ x:CW - 66, y:CH - 104, r:42 },
     touchBlastHit:function(_x,_y){
         var b = this.touchBlast;
-        return Math.hypot(_x - b.x, _y - b.y) < b.r + 8;
+        return Math.hypot(_x - viewOpt.touchX(b.x), _y - b.y) < b.r + 8;
     },
     drawTouchBlast:function(){
-        var b = this.touchBlast;
+        var t = this.touchBlast, b = { x:viewOpt.touchX(t.x), y:t.y, r:t.r };
         var ok = this.yaruki >= YARUKI_COST;
         ctx.fillStyle = ok ? "rgba(220,40,40,0.85)" : "rgba(160,160,160,0.6)";
         ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
@@ -2006,7 +2006,7 @@ var mainScreen = {
             ctx.font = "13px sans-serif";
             ctx.fillStyle = "#777";
             if(touch){
-                ctx.fillText("画面のどこでもドラッグで移動（指の動いた分だけ）　／　右下の赤：衝撃波（やる気" + YARUKI_COST + "）　／　青：回避ダッシュ",14,CH - 36);
+                ctx.fillText("画面のどこでもドラッグで移動（指の動いた分だけ）　／　" + (viewOpt.btnSide == "left" ? "左下" : "右下") + "の赤：衝撃波（やる気" + YARUKI_COST + "）　／　青：回避ダッシュ",14,CH - 36);
             }else{
                 ctx.fillText("敵には自動で攻撃します　／　クリック：衝撃波（やる気" + YARUKI_COST + "・弾を消して近くの敵を攻撃）　／　動くと、やる気がたまる",14,CH - 36);
             }

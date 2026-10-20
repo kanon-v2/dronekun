@@ -1350,6 +1350,7 @@ var pointer = {
 //  ・hitbox：ドローン君の中心の当たり判定の点
 //  ・pointer：ポインタ(戦闘中だけ隠す。メニューなどの画面では操作に要るので出す)
 //  ・grid・gridSize：戦闘画面の背景の方眼を出すか・目の大きさ("fine" 細かい 7.5px／"normal" 普通 15px／"large" 大きい 30px。大きい・なしは公開版と同じ背景と演出)。タイトルの設定で選ぶ(battleBg.js)
+//  ・btnSide：タッチ操作の戦闘のボタン(衝撃波・回避)を出す側("right" 右下／"left" 左下)。タイトルの設定で選ぶ(タッチ操作のときだけ出す)
 //------------------------------------------------------------------------------
 var viewOpt = {
     KEY:"dronekun_view",
@@ -1358,6 +1359,7 @@ var viewOpt = {
     pointer:true,
     grid:true,
     gridSize:"large",   //はじめは大きい(公開版と同じ背景と演出)
+    btnSide:"right",    //タッチ操作の衝撃波・回避のボタンを出す側："right" 右下／"left" 左下(左右を入れ替える。viewOpt.touchX)
     music:"suno",       //曲："suno" 標準(Suno の録音の曲)／"classic" クラシック(今の曲)。bgmTrial.js の bgmTrial.useSetting
     load:function(){
         try{
@@ -1368,10 +1370,11 @@ var viewOpt = {
             if(d.grid === false) this.grid = false;
             if(["fine","normal","large"].indexOf(d.gridSize) >= 0) this.gridSize = d.gridSize;
             if(d.music == "classic") this.music = "classic";
+            if(d.btnSide == "left") this.btnSide = "left";
         }catch(e){}
     },
     save:function(){
-        try{ localStorage.setItem(this.KEY, JSON.stringify({ hitbox:this.hitbox, graze:this.graze, pointer:this.pointer, grid:this.grid, gridSize:this.gridSize, music:this.music })); }catch(e){}
+        try{ localStorage.setItem(this.KEY, JSON.stringify({ hitbox:this.hitbox, graze:this.graze, pointer:this.pointer, grid:this.grid, gridSize:this.gridSize, music:this.music, btnSide:this.btnSide })); }catch(e){}
     },
     toggle:function(_key){
         this[_key] = !this[_key];
@@ -1383,6 +1386,10 @@ var viewOpt = {
     },
     showPointer:function(){
         return this.pointer || !this.inBattle();
+    },
+    //タッチ操作のボタンの横の位置(右下に置くときの位置 _x を、左下の設定なら左右反対にする)
+    touchX:function(_x){
+        return this.btnSide == "left" ? CW - _x : _x;
     }
 };
 viewOpt.load();
