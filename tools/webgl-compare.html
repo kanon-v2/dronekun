@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<!--
+  WebGL の後処理(scripts/drone/glFx.js)の見比べ
+  核弾頭の爆発を、前の描き方(キャンバス2D。横の帯をずらすゆらぎ)と WebGL(縦横の屈折・輪の色ずれ・にじみ)で並べ、
+  1コマを描く時間も比べる。ふつうのブラウザで開くと、その機械の GPU での時間が出る。
+  ヘッドレスEdgeで撮るとき(GPU なしのソフトウェア描画になるので、時間は参考):
+    msedge --headless=new --window-size=1920,700 --virtual-time-budget=5000 --screenshot=<出力.png> file:///.../tools/webgl-compare.html
+  #play を付けると、並べずに核弾頭を何度も落とし続ける(G キーで WebGL を入り切りして、動きで見比べる)
+  #bench を付けると、画面の細かさ ×1・×2・×4 で、1コマを描く時間を測る(GPU の処理が終わるまで待って測る)。
+    ・ふつう ・画面全体の光のにじみ(最終局面と同じ) ・方眼(普通)の光るマスのにじみ(ジャスト衝撃波の広がり)
+    GPU を使って測るとき: msedge --headless=new --use-angle=d3d11 --dump-dom "file:///.../tools/webgl-compare.html#bench"
+  #grid を付けると、核弾頭の代わりに、方眼(普通)の光るマス(かすりコンボ・ジャスト衝撃波の広がり・夜の戦場)を並べる
+-->
+<html lang="ja"><head><meta charset="UTF-8"><base href="../"><title>WebGL 見比べ</title><style>
+body{ margin:0; background:#222; color:#eee; font:13px sans-serif; }
+#Bigbox{ position:absolute; left:-9999px; top:0; width:960px; height:540px; }
+body.play #Bigbox{ position:static; }
+#grid{ display:block; }
+pre{ margin:4px 8px; }
+</style></head>
+<body><canvas id="grid"></canvas><div id="Bigbox"><canvas id="Canvas"></canvas></div><pre id="result">running...</pre>
+<script>
+var errors = [];
+window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.filename || "").split("/").pop() + ":" + e.lineno); });
+//乱数を決まった種から出す(毎回同じ絵にする)
+(function(){
+    var a = 20261020;
+    Math.random = function(){
+        a = (a + 0x6D2B79F5) | 0;
+        var t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0)/4294967296;
+    };
+})();
+</script>
+<script src="scripts/drone/embedImages.js"></script>
+<script src="scripts/drone/common.js"></script>
+<script src="scripts/drone/sound.js"></script>
+<script src="scripts/drone/bgmTrial.js"></script>
+<script>
+//ふつうに遊ぶときは Suno の曲だが、テストは今の曲で行う(録音の曲を読み込まない・曲に合わせて動く最終局面にしない)
+var bgmDefault = { finale:bgmTrial.finales[bgmTrial.finale].v, fight:bgmTrial.fightName() };
+bgmTrial.finale = 0; bgmTrial.fight = 0;
+</script>
+<script src="scripts/drone/bgmFull.js"></script>
+<script src="scripts/drone/equipment.js"></script>
+<script src="scripts/drone/armsExtra.js"></script>
+<script src="scripts/drone/bosses.js"></script>
+<script src="scripts/drone/startScreen.js"></script>
+<script src="scripts/drone/titleArt.js"></script>
+<script src="scripts/drone/mainScreen.js"></script>
+<script src="scripts/drone/forces.js"></script>
+<script src="scripts/drone/enemyArt.js"></script>
+<script src="scripts/drone/upgradeScreen.js"></script>
+<script src="scripts/drone/gameoverScreen.js"></script>
+<script src="scripts/drone/story.js"></script>
+<script src="scripts/drone/battleBg.js"></script>
+<script src="scripts/drone/bgScene.js"></script>
+<script src="scripts/drone/bossDebug.js"></script>
+<script src="scripts/drone/timeStop.js"></script>
+<script src="scripts/drone/dodge.js"></script>
+<script src="scripts/drone/rival.js"></script>
+<script src="scripts/drone/rivalTime.js"></script>
+<script src="scripts/drone/glFx.js"></script>
+<script src="scripts/drone/shotLab.js"></script>
+<script src="scripts/drone/finaleSync.js"></script>
+<script src="scripts/drone/finaleTriumph.js"></script>
+<script src="scripts/drone/gunship.js"></script>
+<script src="scripts/drone/emotion.js"></script>
+<script src="scripts/drone/emotionHint.js"></script>
+<script src="lib/peerjs.min.js"></script>
+<script src="scripts/drone/coop.js"></script>
+<script src="scripts/drone/versus.js"></script>
+<script src="scripts/drone/draw.js"></script>
+<script>
+//見比べる時点(爆発してからのフレーム)と、切り抜く大きさ(ゲームの px)
+var TIMES = [6, 13, 50, 100];
+var CUT_W = 960, CUT_H = 540, CELL = 0.5;      //画面全体を半分の大きさで並べる
+var out = [];
+var keep = ["dronekun_save", "dronekun_meta", "dronekun_best", "dronekun_cleared"].map(function(k){ return [k, localStorage.getItem(k)]; });
+function restore(){ keep.forEach(function(p){ if(p[1] === null) localStorage.removeItem(p[0]); else localStorage.setItem(p[0], p[1]); }); }
+function draw1(){ ctx.fillStyle = "white"; ctx.fillRect(0, 0, CW, CH); screens[page.number].draw(); }
+var glWanted = glFx.on;
+//WAVE8 の戦闘を少し進めて敵と弾を出し、ドローン君の近くへ核弾頭を落とす
+function startBattle(_wave){
+    game.reset(); game.wave = _wave || 8; game.owned = { gun:3, missile:2, tesla:2 }; game.slots = ["gun","missile","tesla"]; game.slotCount = 3;
+    game.seen = { prologue:true };
+    page.change(1);
+    MouseIn = true;
+    for(var f=0; f<240; f++){ MouseX = 480 + 200*Math.cos(f/50); MouseY = 330 + 80*Math.sin(f/40); mainScreen.hp = 9; mainScreen.update(); }
+}
+function dropNuke(){
+    shotLab.clear();
+    MouseX = 470; MouseY = 330;
+    var n = shotLab.nuke(CW/2, 70);
+    n.e.hp = n.e.maxHp = 1e9;
+    for(var i=0; i<NUKE_LAUNCH + NUKE_FALL + 5 && shotLab.booms.length == 0; i++){ mainScreen.hp = 9; mainScreen.invincible = 99; mainScreen.update(); }
+}
+function stepTo(_t){
+    for(var i=0; i<400 && shotLab.booms.length && shotLab.booms[0].t < _t; i++){ mainScreen.hp = 9; mainScreen.invincible = 99; mainScreen.update(); }
+}
+//今の画面を描く時間(ms)を測る(_n 回の平均)。WebGL は描き戻すときに待つので、その分も入る
+function timeDraw(_on, _n){
+    glFx.on = _on;
+    draw1();
+    var t0 = performance.now();
+    for(var i=0; i<_n; i++) draw1();
+    if(_on && glFx.gl) glFx.gl.finish();
+    return (performance.now() - t0)/_n;
+}
+
+//方眼の光るマスを並べる：場面ごとに出来事を起こし、背景だけを何コマか進めてから、同じコマを2通りに描く
+function gridCompare(){
+    viewOpt.gridSize = "normal"; viewOpt.grid = true;      //覚えない(viewOpt.save を呼ばない)
+    var scenes = [
+        ["昼：かすりコンボ", 3, function(){ mainScreen.combo = COMBO_MAX; for(var i=0; i<6; i++) battleBg.graze(drone.X - 120 + i*45, drone.Y - 60 + (i % 2)*110, 3); }, 12],
+        ["昼：ジャスト衝撃波の広がり", 3, function(){ battleBg.justSpread(drone.X, drone.Y, BG_JUST_COLOR); battleBg.ripple(drone.X, drone.Y, 36, 9, 75, BG_JUST_COLOR); }, 34],
+        ["夜の戦場：ジャスト衝撃波", 17, function(){ battleBg.justSpread(drone.X, drone.Y, BG_JUST_COLOR); battleBg.ripple(drone.X, drone.Y, 36, 9, 75, BG_JUST_COLOR); }, 40]
+    ];
+    var cw = CW*0.5, ch = CH*0.5, LAB = 22;
+    var g = document.getElementById("grid"), gx = g.getContext("2d");
+    g.width = cw*scenes.length; g.height = (ch + LAB)*2;
+    gx.fillStyle = "#222"; gx.fillRect(0, 0, g.width, g.height);
+    scenes.forEach(function(sc, col){
+        startBattle(sc[1]);
+        enemyShots = []; battleBg.reset();
+        glFx.on = false; battleBg.last = 0; draw1();
+        sc[2]();
+        for(var f=0; f<sc[3]; f++){ battleBg.last = 0; draw1(); }      //last を 0 にすると、背景が1コマ進む
+        [false, true].forEach(function(on, row){
+            glFx.on = on; battleBg.last = performance.now(); draw1();
+            var y = row*(ch + LAB);
+            gx.drawImage(canvas, 0, 0, canvas.width, canvas.height, col*cw, y + LAB, cw, ch);
+            gx.fillStyle = "#eee"; gx.font = "bold 14px sans-serif"; gx.textBaseline = "middle";
+            gx.fillText(sc[0] + "  " + (on ? "WebGL" : "前の描き方(2D)"), col*cw + 8, y + LAB/2);
+        });
+    });
+    glFx.on = glWanted;
+    out.push("WebGL: " + (glFx.ok ? "使えた" : "使えない " + glFx.fail) + "  エラー: " + (errors.length ? errors.join(" | ") : "なし"));
+    out.push(glFx.ok && !errors.length ? "RESULT: OK" : "RESULT: NG");
+}
+
+//1コマを描く時間(ms)。最後にキャンバスの1点を読んで、GPU の処理が終わるまで待つ(待たないと、頼んだだけの時間になる)
+function benchDraw(_n, _extra){
+    draw1(); if(_extra) _extra();
+    ctx.getImageData(0, 0, 1, 1);
+    var t0 = performance.now();
+    for(var i=0; i<_n; i++){ draw1(); if(_extra) _extra(); ctx.getImageData(0, 0, 1, 1); }
+    return (performance.now() - t0)/_n;
+}
+function bench(){
+    startBattle(8);
+    var bloom = function(){ glFx.post([], 0, { full:1, thr:0.55, bloom:1.1, wide:0.4 }); };
+    out.push("細かさ  キャンバス      ふつう   +画面全体のにじみ   方眼の光るマス(切/入)");
+    [1, 2, 4].forEach(function(s){
+        canvas.width = CW*s; canvas.height = CH*s; renderScale = s;
+        ctx.setTransform(s, 0, 0, s, 0, 0);
+        glFx.on = false; viewOpt.gridSize = "large";
+        var base = benchDraw(30);
+        glFx.on = true;
+        var full = benchDraw(30, bloom);
+        viewOpt.gridSize = "normal"; battleBg.reset(); battleBg.justSpread(drone.X, drone.Y, BG_JUST_COLOR);
+        glFx.on = false; var gOff = benchDraw(30);
+        glFx.on = true; var gOn = benchDraw(30);
+        out.push("×" + s + "     " + canvas.width + "x" + canvas.height + "   " + base.toFixed(2) + "    " + full.toFixed(2) + "            " + gOff.toFixed(2) + " / " + gOn.toFixed(2));
+    });
+    glFx.on = glWanted; viewOpt.gridSize = "large";
+    out.push("WebGL: " + (glFx.ok ? "使えた" : "使えない " + glFx.fail) + "  " + (glFx.gl ? glFx.gl.getParameter(glFx.gl.RENDERER) : ""));
+    out.push("エラー: " + (errors.length ? errors.join(" | ") : "なし"));
+}
+
+if(/bench/.test(location.hash)){
+    try{ bench(); }catch(e){ out.push("例外: " + e.message + " " + (e.stack || "")); }
+}else if(/grid/.test(location.hash)){
+    try{ gridCompare(); }catch(e){ out.push("例外: " + e.message + " " + (e.stack || "")); out.push("RESULT: NG"); }
+}else if(/play/.test(location.hash)){
+    //動きで見比べる：核弾頭を落とし続ける
+    document.body.className = "play"; document.getElementById("grid").style.display = "none";
+    glFx.on = true;
+    startBattle();
+    mainScreen.update = (function(f){ return function(){
+        mainScreen.hp = 9; mainScreen.invincible = 99;
+        if(!shotLab.nukes.length && !shotLab.booms.length) shotLab.nuke(CW/2, 70).e.hp = 1e9;
+        return f.apply(this, arguments);
+    }; })(mainScreen.update);
+    restore();
+    document.getElementById("result").textContent = "G キーで WebGL の入り切り(画面の上に出る)";
+}else try{
+    startBattle();
+    dropNuke();
+    var B = shotLab.booms[0], cx = Math.max(CUT_W/2, Math.min(CW - CUT_W/2, B.x)), cy = Math.max(CUT_H/2, Math.min(CH - CUT_H/2, B.y)), cw = CUT_W*CELL, ch = CUT_H*CELL;
+    var g = document.getElementById("grid"), gx = g.getContext("2d"), LAB = 22;
+    g.width = cw*TIMES.length; g.height = (ch + LAB)*2;
+    gx.fillStyle = "#222"; gx.fillRect(0, 0, g.width, g.height);
+    var times = [];
+    TIMES.forEach(function(t, col){
+        stepTo(t);
+        [false, true].forEach(function(on, row){
+            glFx.on = on; draw1();
+            var s = renderScale, y = row*(ch + LAB);
+            gx.drawImage(canvas, (cx - CUT_W/2)*s, (cy - CUT_H/2)*s, CUT_W*s, CUT_H*s, col*cw, y + LAB, cw, ch);
+            gx.fillStyle = "#eee"; gx.font = "bold 14px sans-serif"; gx.textBaseline = "middle";
+            gx.fillText((on ? "WebGL" : "前の描き方(2D)") + "  爆発から " + t + " フレーム", col*cw + 8, y + LAB/2);
+        });
+        times.push([t, timeDraw(false, 20), timeDraw(true, 20)]);
+    });
+    glFx.on = glWanted;
+    out.push("WebGL: " + (glFx.ok ? "使えた" : "使えない " + glFx.fail) + "  細かさ ×" + renderScale + "  キャンバス " + canvas.width + "x" + canvas.height);
+    out.push("1コマを描く時間(ms)  時点: 2D / WebGL");
+    times.forEach(function(r){ out.push("  " + r[0] + "F: " + r[1].toFixed(2) + " / " + r[2].toFixed(2)); });
+    out.push("エラー: " + (errors.length ? errors.join(" | ") : "なし"));
+    out.push(glFx.ok && !errors.length ? "RESULT: OK" : "RESULT: NG");
+}catch(e){ out.push("例外: " + e.message + " " + (e.stack || "")); out.push("RESULT: NG"); }
+restore();
+if(!/play/.test(location.hash)) document.getElementById("result").textContent = out.join("\n");
+</script>
+</body></html>

@@ -47,6 +47,10 @@ const CELL_STYLES = {
     F:{ name:"色のふち＋大きな白い芯", bloom:0.3,  bloomW:4, body:0.9, bodyLite:0.15, core:1.4, coreIn:2, coreLite:1,    edge:0,   edgeW:0 }
 };
 const CELL_STYLE = "E";         //ふだん使う描き方
+//WebGL の後処理(glFx.js。#gl のときだけ)：光るマスを別の層に描いてぼかし、色の光としてまわりへにじませる(マスの四角いにじみ bloom の代わり)
+const BG_GL_EMIT  = 1.2;        //層に描くときの濃さ(マスの光の強さに掛ける)
+const BG_GL_BLOOM = 0.9;        //近くのにじみの強さ
+const BG_GL_WIDE  = 0.6;        //遠くまで広がる淡いにじみの強さ
 const BG_COMBO_COLOR = "255,185,0";    //かすり・かすりコンボで光るマスの色(黄色)
 const AURA_GRAY = "135,150,180"; //コンボがないときに、ドローン君の下のマスが光る色(灰色。少し青みのある銀色で光って見えるように)
 const BG_JUST_COLOR = "20,175,255";    //ジャスト衝撃波で光る方眼の色(水色。JUST_COLOR より濃くして、白い芯との差で光って見えるように)
@@ -310,7 +314,17 @@ var battleBg = {
         var C = this.cell();
         var s = CELL_STYLES[this.style] || CELL_STYLES[CELL_STYLE];
         var h = C/2, list = this.cells;
-        if(s.bloom > 0){
+        var L = list.length && glFx.ready() ? glFx.layer() : null;
+        if(L){
+            //WebGL：光るマスを層に描いてぼかし、まわりへ光としてにじませる
+            for(var k=0; k<list.length; k++){
+                var c = list[k];
+                L.fillStyle = "rgba(" + c.color + "," + Math.min(1, c.a*BG_GL_EMIT) + ")";
+                L.fillRect(c.x - h, c.y - h, C, C);
+            }
+            glFx.glow(BG_GL_BLOOM, BG_GL_WIDE);
+        }
+        if(s.bloom > 0 && !L){
             for(var k=0; k<list.length; k++){
                 var c = list[k], b = h + s.bloomW;
                 ctx.fillStyle = "rgba(" + c.color + "," + (c.a*s.bloom) + ")";

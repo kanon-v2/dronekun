@@ -177,6 +177,11 @@ const NUKE_WAVE     = 50;       //衝撃波の輪が画面の外まで広がる�
 const NUKE_HEAT     = 130;      //爆心の赤熱が冷えて消えるまで(フレーム)
 const NUKE_HEAT_R   = 0.55;     //赤熱のはじめの大きさ(NUKE_R に掛ける。冷えながら縮む)
 const NUKE_HAZE     = 18;       //熱で空気がゆらぐ強さ(はじめの横ずれ。px)
+//WebGL の後処理(glFx.js。#gl のときだけ)を使うときの強さ
+const NUKE_GL_RING  = 30;       //衝撃波の輪が後ろの景色を曲げる強さ(px。広がるにつれて弱まる)
+const NUKE_GL_HAZE  = 1.3;      //かげろうの強さ(NUKE_HAZE に掛ける。赤熱が冷めるまでゆっくり弱まる)
+const NUKE_GL_BLOOM = 1.6;      //閃光のにじむ範囲(NUKE_R に掛ける)
+const NUKE_GL_GLOW  = 0.9;      //赤熱した爆心のにじみの強さ(冷めるにつれて弱まる)
 
 //---- 障害物が横切るギミック ----
 //障害物は動く四角い壁。ドローン君は通り抜けられずに押され(drone.calcXY から shotLab.pushOut)、画面の端に挟まると被弾する。
@@ -2067,10 +2072,11 @@ var shotLab = {
     },
     //弾の上に描くもの：熱による空気のゆらぎ・火の玉・光の筋・横に伸びる光・衝撃波の輪
     drawNukeOver:function(){
+        var useGl = glFx.ready();      //WebGL の後処理を使うなら、ゆらぎは最後にまとめてシェーダーでかける
         for(var i=0; i<this.booms.length; i++){
             var B = this.booms[i];
             //熱で空気がゆらぐ：爆心のまわりを細い帯に分けて、横へずらして描き直す(キャンバスを写す。getImageData は使わない)
-            if(B.t < NUKE_HEAT){
+            if(B.t < NUKE_HEAT && !useGl){
                 var amp = NUKE_HAZE*Math.pow(1 - B.t/NUKE_HEAT, 2), HR = NUKE_R*1.1, m = ctx.getTransform();
                 for(var dy=-HR; dy<HR; dy+=4){
                     var y = B.y + dy, half = Math.sqrt(HR*HR - dy*dy), x = B.x - half, w = half*2;
@@ -2125,6 +2131,21 @@ var shotLab = {
                 ctx.lineWidth = 1;
             }
         }
+        if(useGl && this.booms.length) this.nukeGl();
+    },
+    //WebGL の後処理：熱のかげろう(縦横に揺らぐ)・衝撃波の輪の屈折と色のずれ・閃光のにじみ
+    nukeGl:function(){
+        var list = [];
+        for(var i=0; i<this.booms.length; i++){
+            var B = this.booms[i], kw = B.t/NUKE_WAVE;
+            list.push({
+                x:B.x, y:B.y,
+                haze:B.t < NUKE_HEAT ? NUKE_HAZE*NUKE_GL_HAZE*(1 - B.t/NUKE_HEAT) : 0, hazeR:NUKE_R*1.1,
+                ring:B.t < NUKE_WAVE ? NUKE_R*0.9 + 1000*Math.pow(kw, 0.7) : 0, ringAmp:B.t < NUKE_WAVE ? NUKE_GL_RING*(1 - kw) : 0,
+                bloomR:NUKE_R*NUKE_GL_BLOOM, bloom:Math.max(0, 1 - B.t/NUKE_FLASH, NUKE_GL_GLOW*(1 - B.t/NUKE_HEAT))
+            });
+        }
+        glFx.post(list, this.booms[0].t/60);
     },
     //障害物の絵(平らな塗り・濃いふちどり・左上からの光。雑魚敵の絵と同じ画風)
     drawObstacle:function(o,now){

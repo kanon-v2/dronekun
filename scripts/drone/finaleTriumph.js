@@ -173,6 +173,13 @@ const TR_SUN_A      = 0.75;     //夜明けの太陽の明るさ    //ドロー�
 const TR_NIGHT      = 0.84;     //第二形態の間の夜の戦場の色の濃さ
 const TR_EMBERS     = 70;       //舞い上がる火の粉の数
 const TR_HALO_K     = 3.2;      //弾のまわりのにじみの大きさ(弾の半径の何倍か)
+//WebGL の後処理(glFx.js。#gl のときだけ)：戦いの間、画面全体の明るい所(翼・光の弾・閃光)をにじませる。HUD の手前でかける
+const TR_GL_THR     = 0.55;     //これより明るい所をにじませる(0～1)
+const TR_GL_BLOOM   = 1.1;      //近くの強いにじみ
+const TR_GL_WIDE    = 0.4;      //遠くまで広がる淡いにじみ
+const TR_GL_KEEP_ME = 34;       //ドローン君の体の上は、この半径(px)の中のにじみを弱める(光に埋もれないように)
+const TR_GL_KEEP_KAI = 70;      //改の体の上(大きさ trScale を掛ける)
+const TR_GL_DAWN    = 0.85;     //夜明けで空が明るくなったら、にじみをこれだけ弱める(空ごと白く飛ばないように)
 //名前(登場の名前・ボスの体力ゲージ)。夜を統べる翼が、夜明けに敗れる
 const TR_NAME       = { name:"ドローン君改・天翼", en:"DRONE-KUN KAI  SERAPH", title:"夜を統べる翼" };
 
@@ -2185,6 +2192,13 @@ var finaleTri = {
         if(T.live()) T.drawFinishMark();
     };
     mainScreen.drawHud = function(){
+        //WebGL の後処理：HUD を描く前に、画面全体の光をにじませる
+        if(T.live() && glFx.ready()){
+            var k = 1 - TR_GL_DAWN*(T.dawnK || 0);
+            var e = T.boss(), keep = [{ x:drone.X, y:drone.Y, r:TR_GL_KEEP_ME }];
+            if(e) keep.push({ x:e.x, y:e.y, r:TR_GL_KEEP_KAI*(e.trScale || 1) });
+            glFx.post([], 0, { full:k, thr:TR_GL_THR, bloom:TR_GL_BLOOM, wide:TR_GL_WIDE, protect:keep });
+        }
         if(T.live() && !special.canopyOf()){
             ctx.fillStyle = "rgba(255,255,255,0.75)";
             enemyArt.roundRect(4, 4, 236, 90, 8); ctx.fill();

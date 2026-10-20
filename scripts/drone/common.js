@@ -941,7 +941,7 @@ var droneSkin = {
                 imgs[k] = new Image();
                 imgs[k].onload = function(){ if(--left == 0) done(buildOrigSheets(imgs)); };
                 imgs[k].onerror = function(){ left = -1; self.fail(_id); };
-                imgs[k].src = "images/game/Drone/" + ORIG_IMAGES[k] + ".png";
+                imgs[k].src = imgSrc("images/game/Drone/" + ORIG_IMAGES[k] + ".png");      //埋め込んだ画像(embedImages.js。WebGL へ渡せるように)
             }
             return;
         }
@@ -1328,7 +1328,7 @@ drone.look.blinks = true;   //自分のドローン君はときどきまばた�
 //  ポインタ
 //------------------------------------------------------------------------------
 var Pointer = new Image();
-Pointer.src = "images/game/pointer3.png";
+Pointer.src = imgSrc("images/game/pointer3.png");      //埋め込んだ画像(embedImages.js。WebGL へ渡せるように)
 var pointer = {
     X: 0,
     Y: 0,

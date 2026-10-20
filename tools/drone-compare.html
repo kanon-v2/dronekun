@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<!--
+  ドローン君の絵の見比べ(作り方ごと)
+    E：今の標準(common.js の drawFlatDrone。図形で描く)
+    D：WebGL 自作の3D(tools/drone-art.html の案D → tools/bake-drone.ps1 D → images/game/Drone/drone_D.png)
+    R・T：Blender(tools/blender/drone.py。R リアル・T トゥーン → images/game/Drone/drone_R.png・drone_T.png)
+  左に6方向を大きく(4倍の絵を120pxで)、右にゲームと同じ大きさ(40px)を明るい背景と暗い背景で並べる。
+  撮るとき: msedge --headless=new --allow-file-access-from-files --window-size=1500,640 --screenshot=<出力.png> file:///.../tools/drone-compare.html
+  ゲームの中で見るときは index.html#art=R のように開く(覚えない)
+-->
+<html lang="ja"><head><meta charset="UTF-8"><base href="../"><title>ドローン君の絵の見比べ</title><style>
+body{ margin:0; background:#cfd2d6; color:#222; font:13px sans-serif; }
+#Bigbox{ display:none; }
+canvas#out{ display:block; }
+</style></head>
+<body><canvas id="out"></canvas><div id="Bigbox"><canvas id="Canvas"></canvas></div>
+<script src="scripts/drone/embedImages.js"></script>
+<script src="scripts/drone/common.js"></script>
+<script>
+//向き：名前・水平の向き(度。正で左を向く)・高さ(-1 見上げる ～ 0 ふだん ～ 1 見下ろす)
+var VIEWS = [["正面",0,0],["上へ",0,-1],["下へ",0,1],["左へ",67.5,0],["右へ",-67.5,0],["後ろ",180,0]];
+var ROWS = [
+    { id:"E", name:"E 今の標準(図形)" },
+    { id:"D", name:"D WebGL 自作" },
+    { id:"R", name:"R Blender リアル" },
+    { id:"T", name:"T Blender トゥーン" }
+];
+var BIG = 120, GAME = DRONE_SIZE, LAB = 150, GAP = 8, ROWH = BIG + 26;
+var BGS = ["#efe9df", "#1b1528"];     //明るい背景(昼の紙の色)・暗い背景(夜の戦場)
+
+//書き出したシート：等倍・2倍・4倍(ゲームと同じく、半分ずつ縮めて作る)
+function sheetsOf(_img){
+    var list = [_img];
+    for(var i=0; i<2; i++){
+        var src = list[0], c = document.createElement("canvas");
+        c.width = (src.naturalWidth || src.width)/2; c.height = (src.naturalHeight || src.height)/2;
+        var g = c.getContext("2d"); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+        g.drawImage(src, 0, 0, c.width, c.height);
+        list.unshift(c);
+    }
+    list.yaws = Math.round(_img.naturalWidth/DRONE_FRAME); list.elevs = Math.round(_img.naturalHeight/DRONE_FRAME);
+    return list;
+}
+function cellOf(_list, _yaw, _elev){
+    var col = ((Math.round(_yaw/360*_list.yaws) % _list.yaws) + _list.yaws) % _list.yaws;
+    var row = Math.round((_elev + 1)/2*(_list.elevs - 1));
+    return [col, row];
+}
+function drawFrom(_g, _list, _lv, _yaw, _elev, _x, _y, _size){
+    var f = DRONE_SIZE*(1 << _lv), c = cellOf(_list, _yaw, _elev);
+    _g.drawImage(_list[_lv], c[0]*f, c[1]*f, f, f, _x, _y, _size, _size);
+}
+
+function build(sheets){
+    var out = document.getElementById("out"), g = out.getContext("2d");
+    var bigW = VIEWS.length*(BIG + GAP), gameW = VIEWS.length*(GAME + 10) + 20;
+    out.width = LAB + bigW + gameW*2 + 20; out.height = 30 + ROWS.length*ROWH;
+    g.fillStyle = "#cfd2d6"; g.fillRect(0, 0, out.width, out.height);
+    g.fillStyle = "#333"; g.font = "bold 13px sans-serif"; g.textBaseline = "middle";
+    VIEWS.forEach(function(v, i){ g.fillText(v[0], LAB + i*(BIG + GAP) + BIG/2 - 12, 15); });
+    g.fillText("ゲームの大きさ(明るい背景)", LAB + bigW + 10, 15);
+    g.fillText("ゲームの大きさ(暗い背景)", LAB + bigW + gameW + 10, 15);
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+    ROWS.forEach(function(r, ri){
+        var y = 30 + ri*ROWH, list = sheets[r.id];
+        g.fillStyle = "#222"; g.font = "bold 14px sans-serif";
+        g.fillText(r.name, 8, y + BIG/2);
+        if(!list){ g.fillText("(シートがない)", LAB, y + BIG/2); return; }
+        VIEWS.forEach(function(v, i){
+            var x = LAB + i*(BIG + GAP);
+            var grd = g.createRadialGradient(x + BIG/2, y + BIG*0.4, 5, x + BIG/2, y + BIG/2, BIG*0.7);
+            grd.addColorStop(0, "#f7f7f5"); grd.addColorStop(1, "#c3c6cb");
+            g.fillStyle = grd; g.fillRect(x, y, BIG, BIG);
+            drawFrom(g, list, 2, v[1], v[2], x, y, BIG);
+        });
+        BGS.forEach(function(bg, bi){
+            var x0 = LAB + bigW + bi*gameW;
+            g.fillStyle = bg; g.fillRect(x0, y + BIG/2 - GAME/2 - 12, gameW - 10, GAME + 24);
+            VIEWS.forEach(function(v, i){ drawFrom(g, list, 0, v[1], v[2], x0 + 10 + i*(GAME + 10), y + BIG/2 - GAME/2, GAME); });
+        });
+    });
+}
+
+var sheets = { E:buildFlatSheets() }, left = 0;
+["D","R","T"].forEach(function(id){
+    left++;
+    var img = new Image();
+    img.onload = function(){ sheets[id] = sheetsOf(img); if(--left == 0) build(sheets); };
+    img.onerror = function(){ if(--left == 0) build(sheets); };
+    img.src = "images/game/Drone/drone_" + id + ".png";
+});
+</script>
+</body></html>

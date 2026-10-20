@@ -4,6 +4,7 @@
   ドローン君は よけて動く自動プレイ(smoke-test.html の bot と同じ)で動き、標準の装備で戦う。
     #t=30            曲の30秒のところまで進めて、その画面を出す(ヘッドレスEdgeの --screenshot で撮る)
     #film=20,60,110  その時刻の画面を小さく並べた1枚にする(--window-size=1440,820 くらいで撮る)
+    &cmp             #film で、上の段に前の描き方、下の段に WebGL の後処理(glFx.js)をかけた絵を並べる(--window-size=1920,900 くらい)
     #sim             曲の最後まで戦い、区切りごとの改の体力・被弾の回数を表にする(--dump-dom で読む。経過は戦い始めからの実際の秒数。
                      体力の区切りのムービーに入った曲の時刻と行き先も出す)
     &parry           迫ってくる改を、ドローン君が着く所へ動いて PERFECT で弾き返す(付けないと何もしない)
@@ -19,6 +20,7 @@
 var errors = [];
 window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.filename || "").split("/").pop() + ":" + e.lineno); });
 </script>
+<script src="scripts/drone/embedImages.js"></script>
 <script src="scripts/drone/common.js"></script>
 <script src="scripts/drone/sound.js"></script>
 <script src="scripts/drone/bgmTrial.js"></script>
@@ -40,6 +42,7 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
 <script src="scripts/drone/dodge.js"></script>
 <script src="scripts/drone/rival.js"></script>
 <script src="scripts/drone/rivalTime.js"></script>
+<script src="scripts/drone/glFx.js"></script>
 <script src="scripts/drone/shotLab.js"></script>
 <script src="scripts/drone/finaleSync.js"></script>
 <script src="scripts/drone/finaleTriumph.js"></script>
@@ -109,7 +112,7 @@ try{
         goal = -1;
     }
     if(opt.film){
-        var cols = Math.min(3, shots.length), rows = Math.ceil(shots.length/cols), sc = one ? 1 : 0.5;
+        var cmp = /cmp/.test(H), cols = cmp ? shots.length : Math.min(3, shots.length), rows = cmp ? 2 : Math.ceil(shots.length/cols), sc = one ? 1 : 0.5;
         film = document.createElement("canvas");
         film.id = "film";
         film.width = CW*sc*cols; film.height = (CH*sc + 18)*rows;
@@ -146,11 +149,13 @@ try{
         if(T2 >= TR_LOOP[1] && finaleTri.fakeT < TR_LOOP[1] && !finaleTri.finished) T2 = TR_LOOP[0] + (T2 - TR_LOOP[1]);
         finaleTri.fakeT = T2;
         if(opt.film && fi < shots.length && finaleTri.fakeT >= shots[fi]){
-            draw1();
-            var c = fi % cols, rw = Math.floor(fi/cols);
-            fx2.drawImage(canvas, 0, 0, canvas.width, canvas.height, c*CW*sc, rw*(CH*sc + 18) + 18, CW*sc, CH*sc);
-            fx2.fillStyle = "#eee"; fx2.font = "13px monospace";
-            fx2.fillText(shots[fi] + "s " + (kai() && kai().trSec ? kai().trSec.name : "-"), c*CW*sc + 6, rw*(CH*sc + 18) + 13);
+            (cmp ? [false, true] : [glFx.on]).forEach(function(on, k){
+                glFx.on = on; draw1();
+                var c = cmp ? fi : fi % cols, rw = cmp ? k : Math.floor(fi/cols);
+                fx2.drawImage(canvas, 0, 0, canvas.width, canvas.height, c*CW*sc, rw*(CH*sc + 18) + 18, CW*sc, CH*sc);
+                fx2.fillStyle = "#eee"; fx2.font = "13px monospace";
+                fx2.fillText(shots[fi] + "s " + (kai() && kai().trSec ? kai().trSec.name : "-") + (cmp ? (on ? "  WebGL" : "  前の描き方") : ""), c*CW*sc + 6, rw*(CH*sc + 18) + 13);
+            });
             fi++;
         }
         if(opt.sim && killedAt >= 0 && finaleTri.fakeT > killedAt + 3) break;

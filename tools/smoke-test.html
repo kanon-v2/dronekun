@@ -20,6 +20,7 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
     };
 })();
 </script>
+<script src="scripts/drone/embedImages.js"></script>
 <script src="scripts/drone/common.js"></script>
 <script src="scripts/drone/sound.js"></script>
 <script src="scripts/drone/bgmTrial.js"></script>
@@ -47,6 +48,7 @@ bgmTrial.finale = 0; bgmTrial.fight = 0;
 <script src="scripts/drone/dodge.js"></script>
 <script src="scripts/drone/rival.js"></script>
 <script src="scripts/drone/rivalTime.js"></script>
+<script src="scripts/drone/glFx.js"></script>
 <script src="scripts/drone/shotLab.js"></script>
 <script src="scripts/drone/finaleSync.js"></script>
 <script src="scripts/drone/finaleTriumph.js"></script>
@@ -56,6 +58,8 @@ bgmTrial.finale = 0; bgmTrial.fight = 0;
 <script src="lib/peerjs.min.js"></script>
 <script src="scripts/drone/coop.js"></script>
 <script src="scripts/drone/versus.js"></script>
+<script src="models/relicModel.js"></script>
+<script src="scripts/drone/relic3d.js"></script>
 <script src="scripts/drone/draw.js"></script>
 <script>
 var out = [], fails = 0;
@@ -567,6 +571,31 @@ try{
     check("核弾頭(攻撃の試作)：範囲の中は被弾して爆心が赤熱する、外へ逃げれば無傷、撃ち落とせば爆発しない",
           nIn.hit && nIn.boom && nFall && nOut.boom && !nOut.hit && ndOk && errors.length == nerr,
           "中" + nIn.hit + "/" + nIn.boom + " 残り" + nFall + " 外" + nOut.boom + "/" + !nOut.hit + " 撃墜" + ndTarget + "/" + ndOk);
+
+    // WebGL の後処理(glFx.js。#gl のときだけ)：核の爆発に屈折とにじみをかけて描き戻せる(画像は埋め込みなので、キャンバスが汚染されない)
+    (function(){
+        var gerr = errors.length, keepOn = glFx.on;
+        nukeKeep(); enemyShots = []; shotLab.clear(); mainScreen.hp = 9;
+        shotLab.booms.push({ x:CW/2, y:CH/2, t:8 });
+        glFx.on = true; draw1();
+        var used = glFx.used, ok = glFx.ok;
+        glFx.on = false; draw1();
+        var off = !glFx.used;
+        glFx.on = keepOn; shotLab.clear();
+        check("WebGL の後処理：核の爆発に使え、切ると前の描き方に戻る", used && ok && off && errors.length == gerr, "使えた" + ok + " " + glFx.fail + " 使った" + used + " 切" + off);
+        //方眼(普通)の光るマスは、光の層に描いてにじませる(方眼が大きい・なしでは使わない)
+        var keepGrid = viewOpt.gridSize, g0 = glFx.glows;
+        viewOpt.gridSize = "normal"; glFx.on = true;
+        battleBg.justSpread(drone.X, drone.Y, BG_JUST_COLOR); draw1();
+        var gNormal = glFx.glows > g0;
+        viewOpt.gridSize = "large"; g0 = glFx.glows; draw1();
+        var gLarge = glFx.glows == g0;
+        viewOpt.gridSize = keepGrid; glFx.on = keepOn; battleBg.reset();
+        check("WebGL の後処理：方眼(普通)の光るマスをにじませる(大きいでは使わない)", gNormal && gLarge && errors.length == gerr, "普通" + gNormal + " 大きい" + gLarge);
+        //3Dの構造物(relic3d.js)：Blender で作った形を、向きを変えて描ける
+        var rc = relic3d.render(64, 0.5, 0.2, 1), rc2 = relic3d.render(64, 2.5, -0.3, 2);
+        check("3Dの構造物：Blender で作った形を WebGL で、向きを変えて描ける", !!rc && !!rc2 && relic3d.ok && relic3d.n > 30000 && errors.length == gerr, "使えた" + relic3d.ok + " " + relic3d.fail + " 頂点の番号" + relic3d.n);
+    })();
 
     // 感情の攻撃(emotion.js)：怒りは破片を吐いて爆発し、稲妻が当たる。破片は冷えると灰に。悲しみは淵がたまり、中では重く沈む
     var eerr = errors.length;

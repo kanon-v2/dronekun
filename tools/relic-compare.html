@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<!--
+  Blender の見比べ：見本の構造物(丸い逆三角の青銅の枠に、水色に光る石)を、作り方を変えて並べる
+    見本(画像)・キャンバスの2D図形(このページで描く。ゲームのふだんの描き方)・Blender(tools/blender/relic.py で描いた png)
+  画像の場所は #dir=フォルダのURL/ で渡す(ref.png が見本、relic_blender.png が Blender)。
+  &gl を付けると、下の段に WebGL の光のにじみ(scripts/drone/glFx.js。最終局面と同じ強さ)をかけた絵を足し、かかった時間も出す
+  &worn を付けると、錆(緑青・茶色の錆)・汚れ・欠け・角のすれを足した版で比べる(Blender は relic_blender_worn.png。relic.py の --worn で描く)
+  撮るとき: msedge --headless=new --allow-file-access-from-files --window-size=1240,620 --screenshot=<出力.png> "file:///.../tools/relic-compare.html#dir=file:///.../"
+-->
+<html lang="ja"><head><meta charset="UTF-8"><title>構造物の見比べ</title><style>
+body{ margin:0; background:#111; color:#eee; font:13px sans-serif; }
+canvas{ display:block; }
+</style></head>
+<body><canvas id="out"></canvas>
+<script>
+//glFx.js はゲームのキャンバス(canvas・ctx・CW・CH)にかける作りなので、ここでは1枚ずつ差し替えて使う
+var CW = 512, CH = 512, canvas = null, ctx = null;
+</script>
+<script src="../scripts/drone/glFx.js"></script>
+<script>
+//---- 2D図形で描く(Blender の台本と同じ輪郭の作り方) ----
+var OUTER = { c:[[-1.0,0.76],[1.0,0.76],[0.0,-0.95]], bulge:[0.07,0.20,0.20], round:0.07 };
+var LIP   = { c:[[-0.93,0.71],[0.93,0.71],[0.0,-0.86]], bulge:[0.065,0.18,0.18], round:0.06 };
+var INNER = { c:[[-0.56,0.60],[0.56,0.60],[0.0,-0.47]], bulge:[0.04,0.10,0.10], round:0.09 };
+var N_EDGE = 40, N_CORNER = 8;      //2D は角の丸みを細かく(Blender は3点にしてベベルで丸める)
+function bez(a,c,b,t){ return [(1-t)*(1-t)*a[0] + 2*(1-t)*t*c[0] + t*t*b[0], (1-t)*(1-t)*a[1] + 2*(1-t)*t*c[1] + t*t*b[1]]; }
+function outline(sp){
+    var C = sp.c, pts = [], cx = (C[0][0] + C[1][0] + C[2][0])/3, cy = (C[0][1] + C[1][1] + C[2][1])/3, u = sp.round;
+    function edge(e,t){
+        var a = C[e], b = C[(e + 1) % 3], m = [(a[0] + b[0])/2, (a[1] + b[1])/2];
+        var nx = m[0] - cx, ny = m[1] - cy, L = Math.hypot(nx, ny);
+        return bez(a, [m[0] + nx/L*sp.bulge[e]*2, m[1] + ny/L*sp.bulge[e]*2], b, t);
+    }
+    for(var e=0; e<3; e++){
+        for(var i=0; i<N_EDGE; i++) pts.push(edge(e, u + (1 - 2*u)*i/(N_EDGE - 1)));
+        var k = (e + 1) % 3, a = edge(e, 1 - u), c = edge(k, u);
+        for(var i=1; i<=N_CORNER; i++) pts.push(bez(a, C[k], c, i/(N_CORNER + 1)));
+    }
+    return pts;
+}
+//決まった並びの乱数(さざめきの模様を毎回同じに)
+var seed = 7;
+function rnd(){ seed = (seed*16807) % 2147483647; return seed/2147483647; }
+
+//汚し：欠け(外のふちの点の番号・幅(点の数)・深さ)と、粒の数
+var CHIPS_2D = [[16,3,0.05],[58,2,0.04],[84,3,0.06],[109,2,0.035],[135,3,0.045],[45,2,0.03]];
+var PATINA_CLUSTERS = 30, RUST_SPOTS = 18, SCRATCHES = 45;
+//欠け：点を中心へ寄せて輪郭に切り込みを入れる(ぎざぎざに)
+function chipped(pts, k){
+    var out = pts.map(function(p){ return [p[0], p[1]]; }), n = pts.length;
+    CHIPS_2D.forEach(function(c){
+        for(var j=-c[1]; j<=c[1]; j++){
+            var i = (c[0] + j + n) % n, f = 1 - (j*j)/((c[1] + 1)*(c[1] + 1)), jag = 0.6 + 0.4*rnd();
+            var dx = -out[i][0], dy = 0.1 - out[i][1], L = Math.hypot(dx, dy);
+            out[i][0] += dx/L*c[2]*k*f*jag; out[i][1] += dy/L*c[2]*k*f*jag;
+        }
+    });
+    return out;
+}
+function draw2d(g, S, worn){
+    var sc = S/2.16, X = function(p){ return S/2 + p[0]*sc; }, Y = function(p){ return S/2 - (p[1] + 0.08)*sc; };
+    function path(pts){ g.beginPath(); pts.forEach(function(p,i){ if(i) g.lineTo(X(p),Y(p)); else g.moveTo(X(p),Y(p)); }); g.closePath(); }
+    var O = outline(OUTER), Lp = outline(LIP), I = outline(INNER), n = O.length, per = N_EDGE + N_CORNER;
+    var O0 = O;
+    if(worn){ seed = 11; O = chipped(O, 1); seed = 11; Lp = chipped(Lp, 0.55); }
+    //外のふち(縁の外側の細い帯)
+    path(O); g.fillStyle = "#4a2e18"; g.fill();
+    //斜めの面：辺ごとに、縁の内から口へ。角の丸みのまんなかで切って留め継ぎにする
+    var FACE = [["#d9ae7c","#a77a4b"], ["#7c5534","#4c3019"], ["#c29262","#8b5f37"]];   //上・右・左(光は左上から)
+    for(var e=0; e<3; e++){
+        var from = (e*per - N_CORNER/2 + n) % n, cnt = per;
+        var poly = [], back = [];
+        for(var i=0; i<=cnt; i++){ var k = (from + i) % n; poly.push(Lp[k]); back.push(I[k]); }
+        g.beginPath();
+        poly.forEach(function(p,i){ if(i) g.lineTo(X(p),Y(p)); else g.moveTo(X(p),Y(p)); });
+        back.reverse().forEach(function(p){ g.lineTo(X(p),Y(p)); });
+        g.closePath();
+        var a = poly[Math.floor(cnt/2)], b = back[Math.floor(cnt/2)];
+        var gr = g.createLinearGradient(X(a),Y(a),X(b),Y(b));
+        gr.addColorStop(0, FACE[e][0]); gr.addColorStop(1, FACE[e][1]);
+        g.fillStyle = gr; g.fill();
+        //留め継ぎの稜線
+        g.strokeStyle = "rgba(255,235,200,0.35)"; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(X(Lp[from]),Y(Lp[from])); g.lineTo(X(I[from]),Y(I[from])); g.stroke();
+    }
+    //縁の照り(左上は明るく、右下は青い照り返し)
+    path(Lp); g.lineWidth = 2.5;
+    var rim = g.createLinearGradient(X([-1,0.8]),Y([-1,0.8]),X([0.5,-0.9]),Y([0.5,-0.9]));
+    rim.addColorStop(0, "rgba(255,235,200,0.9)"); rim.addColorStop(0.6, "rgba(150,110,70,0.6)"); rim.addColorStop(1, "rgba(120,170,255,0.7)");
+    g.strokeStyle = rim; g.stroke();
+    path(O); g.strokeStyle = "rgba(20,10,5,0.8)"; g.lineWidth = 1.5; g.stroke();
+    if(worn) drawWear(g, S, O, Lp, I, X, Y, path);
+    //口の内側の暗い壁
+    path(I); g.fillStyle = "#24160c"; g.fill();
+    //石
+    var cpts = I.map(function(p){ return [p[0]*0.94, p[1]*0.94 + 0.01]; });
+    g.save(); path(cpts); g.clip();
+    var cx = S/2, cy = Y([0,0.14]), R = sc*0.62;
+    var rg = g.createRadialGradient(cx, cy, 0, cx, cy, R);
+    rg.addColorStop(0, "#ffffff"); rg.addColorStop(0.18, "#c8ffff"); rg.addColorStop(0.45, "#2ad6e6"); rg.addColorStop(0.8, "#0d8fae"); rg.addColorStop(1, "#06506c");
+    g.fillStyle = rg; g.fillRect(0, 0, S, S);
+    //さざめき：小さな明るい粒と暗い粒を重ねる
+    seed = 7;
+    for(var i=0; i<700; i++){
+        var x = cx + (rnd() - 0.5)*R*2.2, y = cy + (rnd() - 0.5)*R*2.2, r = (2 + rnd()*5)*S/400;
+        g.fillStyle = rnd() < 0.5 ? "rgba(255,255,255,0.10)" : "rgba(0,60,90,0.10)";
+        g.beginPath(); g.ellipse(x, y, r*1.3, r, rnd()*3, 0, Math.PI*2); g.fill();
+    }
+    g.globalCompositeOperation = "lighter";
+    var gw = g.createRadialGradient(cx, cy, 0, cx, cy, R*0.45);
+    gw.addColorStop(0, "rgba(255,255,255,0.8)"); gw.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = gw; g.fillRect(0, 0, S, S);
+    g.globalCompositeOperation = "source-over";
+    if(worn){
+        //石のほこり(まだらの曇り)と、細いひび
+        seed = 5;
+        for(var i=0; i<40; i++){
+            var x = cx + (rnd() - 0.5)*R*2, y = cy + (rnd() - 0.5)*R*2, r = (6 + rnd()*18)*S/400;
+            g.fillStyle = "rgba(95,85,65," + (0.02 + rnd()*0.05) + ")";
+            g.beginPath(); g.ellipse(x, y, r*1.4, r, rnd()*3, 0, Math.PI*2); g.fill();
+        }
+        g.beginPath(); var px = X([0.38,0.42]), py = Y([0.38,0.42]); g.moveTo(px, py);
+        for(var i=0; i<4; i++){ px -= (5 + rnd()*7)*S/400; py += (3 + rnd()*8)*S/400 - 2; g.lineTo(px, py); }
+        g.strokeStyle = "rgba(0,40,50,0.5)"; g.lineWidth = 1.6*S/400; g.stroke();
+        g.strokeStyle = "rgba(230,255,255,0.6)"; g.lineWidth = 0.7*S/400; g.stroke();
+    }
+    //口のふちの内側の影
+    path(cpts); g.strokeStyle = "rgba(0,30,40,0.6)"; g.lineWidth = 4*S/400; g.stroke();
+    g.restore();
+}
+
+//錆・汚れ・角のすれ・引っかき傷・欠けの断面を、枠の面の上に描く
+function drawWear(g, S, O, Lp, I, X, Y, path){
+    var k = S/400, n = O.length;
+    g.save();
+    //枠の面(外の輪郭と口の間)だけに描く
+    g.beginPath();
+    O.forEach(function(p,i){ if(i) g.lineTo(X(p),Y(p)); else g.moveTo(X(p),Y(p)); }); g.closePath();
+    I.forEach(function(p,i){ if(i) g.lineTo(X(p),Y(p)); else g.moveTo(X(p),Y(p)); }); g.closePath();
+    g.clip("evenodd");
+    //汚れ：口のまわり(くぼみ)と下のほうが暗い
+    [[26,0.10],[16,0.12],[8,0.16]].forEach(function(w){ path(I); g.strokeStyle = "rgba(28,16,6," + w[1] + ")"; g.lineWidth = w[0]*k; g.stroke(); });
+    var dg = g.createLinearGradient(0, Y([0,0.2]), 0, Y([0,-0.95]));
+    dg.addColorStop(0, "rgba(20,12,5,0)"); dg.addColorStop(1, "rgba(20,12,5,0.4)");
+    g.fillStyle = dg; g.fillRect(0, 0, S, S);
+    //緑青：口のまわりと下のほうに、まだらの粒のかたまり
+    seed = 21;
+    for(var c=0; c<PATINA_CLUSTERS; c++){
+        var base = I[Math.floor(rnd()*n)], out = 0.02 + rnd()*rnd()*0.35;
+        var cx = base[0]*(1 + out*1.2), cy = base[1]*(1 + out) - out*0.2*rnd();
+        if(rnd() < 0.2){ cx = (rnd() - 0.5)*1.4; cy = -0.4 - rnd()*0.45; }
+        var cnt = 60 + Math.floor(rnd()*80), spread = (0.03 + rnd()*0.07);
+        for(var i=0; i<cnt; i++){
+            var x = X([cx + (rnd() + rnd() - 1)*spread*1.5, 0]), y = Y([0, cy + (rnd() + rnd() - 1)*spread*1.5]), r = (0.8 + rnd()*3)*k;
+            var col = rnd() < 0.25 ? "120,190,160" : "50,125,100", a = 0.1 + rnd()*0.2;
+            var rg = g.createRadialGradient(x, y, 0, x, y, r);
+            rg.addColorStop(0, "rgba(" + col + "," + a + ")"); rg.addColorStop(1, "rgba(" + col + ",0)");
+            g.fillStyle = rg; g.fillRect(x - r, y - r, r*2, r*2);
+        }
+    }
+    //茶色の錆の点(芯が濃く、まわりがにじむ)
+    for(var i=0; i<RUST_SPOTS; i++){
+        var p = [(rnd() - 0.5)*1.9, 0.75 - rnd()*1.6], x = X(p), y = Y(p), r = (1 + rnd()*2.5)*k;
+        g.fillStyle = "rgba(120,55,18,0.22)"; g.beginPath(); g.arc(x, y, r*2.6, 0, Math.PI*2); g.fill();
+        g.fillStyle = "rgba(70,28,8,0.7)"; g.beginPath(); g.arc(x, y, r, 0, Math.PI*2); g.fill();
+    }
+    //引っかき傷(明るい線と、その影)
+    for(var i=0; i<SCRATCHES; i++){
+        var p = [(rnd() - 0.5)*1.9, 0.75 - rnd()*1.6], x = X(p), y = Y(p), a = rnd()*Math.PI, L = (4 + rnd()*16)*k;
+        g.lineWidth = 0.8*k;
+        g.strokeStyle = "rgba(40,20,8,0.3)"; g.beginPath(); g.moveTo(x, y + k); g.lineTo(x + Math.cos(a)*L, y + Math.sin(a)*L + k); g.stroke();
+        g.strokeStyle = "rgba(255,225,180,0.35)"; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a)*L, y + Math.sin(a)*L); g.stroke();
+    }
+    //角のすれ：縁の内と留め継ぎを、ところどころ明るく
+    g.lineWidth = 1.6*k; g.strokeStyle = "rgba(255,222,170,0.75)";
+    for(var i=0; i<n; i++){
+        if(rnd() < 0.55) continue;
+        var a = Lp[i], b = Lp[(i + 1) % n];
+        g.beginPath(); g.moveTo(X(a),Y(a)); g.lineTo(X(b),Y(b)); g.stroke();
+    }
+    g.restore();
+    //欠けの断面：削れた所のふちに、地の金属の明るい線と暗い影
+    CHIPS_2D.forEach(function(c){
+        g.beginPath();
+        for(var j=-c[1] - 1; j<=c[1] + 1; j++){ var p = O[(c[0] + j + n) % n]; if(j == -c[1] - 1) g.moveTo(X(p),Y(p)); else g.lineTo(X(p),Y(p)); }
+        g.strokeStyle = "rgba(25,12,4,0.6)"; g.lineWidth = 2.4*k; g.stroke();
+        g.strokeStyle = "rgba(220,170,115,0.85)"; g.lineWidth = 1.0*k; g.stroke();
+    });
+}
+
+//---- 並べる ----
+var P = 380, LAB = 24, SMALL = [64, 32];
+var m = /dir=([^&]+)/.exec(location.hash), dir = m ? decodeURIComponent(m[1]) : "";
+var imgs = { ref:new Image(), blender:new Image() }, left = 2;
+imgs.ref.onload = imgs.blender.onload = imgs.ref.onerror = imgs.blender.onerror = function(){ if(--left == 0) build(); };
+var worn = /worn/.test(location.hash);
+imgs.ref.src = dir + "ref.png"; imgs.blender.src = dir + (worn ? "relic_blender_worn.png" : "relic_blender.png");
+
+function bgFill(g, x, y, w, h){
+    var gr = g.createLinearGradient(x, y, x + w, y + h);
+    gr.addColorStop(0, "#0a1640"); gr.addColorStop(1, "#1b3f9a");
+    g.fillStyle = gr; g.fillRect(x, y, w, h);
+}
+function build(){
+    var c2d = document.createElement("canvas"); c2d.width = c2d.height = 512;
+    var t0 = performance.now();
+    draw2d(c2d.getContext("2d"), 512, worn);
+    var ms = performance.now() - t0;
+    var cols = [["見本", imgs.ref, true], ["キャンバスの2D図形(" + ms.toFixed(1) + "ms)", c2d], ["Blender" + (worn ? "(錆・汚れ・欠け)" : ""), imgs.blender]];
+    if(worn) cols[1][0] = "キャンバスの2D図形(錆・汚れ・欠け。" + ms.toFixed(1) + "ms)";
+    var out = document.getElementById("out"), g = out.getContext("2d");
+    var useGl = /[#&]gl(&|$)/.test(location.hash), glY = LAB + P + 30 + LAB + SMALL[0] + 20;
+    out.width = cols.length*(P + 20) + 20; out.height = glY + (useGl ? LAB + P + 10 : 0);
+    g.fillStyle = "#111"; g.fillRect(0, 0, out.width, out.height);
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+    cols.forEach(function(c, i){
+        var x = 20 + i*(P + 20), y = LAB;
+        g.fillStyle = "#eee"; g.font = "bold 14px sans-serif"; g.textBaseline = "middle";
+        g.fillText(c[0], x, LAB/2);
+        bgFill(g, x, y, P, P);
+        var im = c[1];
+        if(im.width || im.naturalWidth){
+            if(c[2]){ var w = im.naturalWidth, h = im.naturalHeight, s = Math.min(P/w, P/h); g.drawImage(im, x + (P - w*s)/2, y + (P - h*s)/2, w*s, h*s); }
+            else g.drawImage(im, x, y, P, P);
+        }else{ g.fillStyle = "#f88"; g.fillText("(画像がない)", x + 10, y + 20); }
+        //ゲームで使いそうな大きさ
+        var y2 = LAB + P + 30;
+        g.fillStyle = "#aaa"; g.font = "12px sans-serif"; g.fillText("64px・32px", x, y2 - 10);
+        var sx = x;
+        SMALL.forEach(function(s){
+            bgFill(g, sx, y2, s + 8, s + 8);
+            if(im.width || im.naturalWidth){
+                if(c[2]){ var w = im.naturalWidth, h = im.naturalHeight, k = Math.min(s/w, s/h); g.drawImage(im, sx + 4 + (s - w*k)/2, y2 + 4 + (s - h*k)/2, w*k, h*k); }
+                else g.drawImage(im, sx + 4, y2 + 4, s, s);
+            }
+            sx += s + 16;
+        });
+        //WebGL の光のにじみをかけた絵(背景ごと 512px に描いてからかける。最終局面と同じ強さ)
+        if(useGl){
+            var c = document.createElement("canvas"); c.width = c.height = 512;
+            var cg = c.getContext("2d"); cg.imageSmoothingEnabled = true; cg.imageSmoothingQuality = "high";
+            bgFill(cg, 0, 0, 512, 512);
+            if(cols[i][2]){ var w = im.naturalWidth, h = im.naturalHeight, k2 = Math.min(512/w, 512/h); cg.drawImage(im, (512 - w*k2)/2, (512 - h*k2)/2, w*k2, h*k2); }
+            else cg.drawImage(im, 0, 0, 512, 512);
+            canvas = c; ctx = cg; glFx.on = true;
+            glFx.post([], 0, { full:1, thr:0.55, bloom:1.1, wide:0.4 });
+            var t1 = performance.now();
+            for(var r=0; r<20; r++) glFx.post([], 0, { full:1, thr:0.55, bloom:1.1, wide:0.4 });
+            glFx.gl.finish();
+            var glMs = (performance.now() - t1)/21;
+            //重ねがけしすぎないよう、もう一度描き直してから1回だけかける
+            bgFill(cg, 0, 0, 512, 512);
+            if(cols[i][2]) cg.drawImage(im, (512 - w*k2)/2, (512 - h*k2)/2, w*k2, h*k2); else cg.drawImage(im, 0, 0, 512, 512);
+            glFx.post([], 0, { full:1, thr:0.55, bloom:1.1, wide:0.4 });
+            g.fillStyle = "#eee"; g.font = "bold 14px sans-serif";
+            g.fillText("＋WebGL の光のにじみ(" + (glFx.ok ? glMs.toFixed(2) + "ms" : "使えない " + glFx.fail) + ")", x, glY + LAB/2);
+            g.drawImage(c, x, glY + LAB, P, P);
+        }
+    });
+}
+</script>
+</body></html>

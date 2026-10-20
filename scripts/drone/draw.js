@@ -70,6 +70,7 @@ function draw(now){
     sound.draw();
     coop.drawLag();     //協力プレイ・対戦で、相方から届かない間は「通信が不安定です」
     fps.draw();
+    glFx.drawInfo();     //WebGL の後処理を使っているか(#gl のときだけ)
 
     //ポインタは一番手前
     pointer.calcXY();
