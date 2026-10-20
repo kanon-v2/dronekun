@@ -4,11 +4,12 @@
   ドローン君は よけて動く自動プレイ(smoke-test.html の bot と同じ)で動き、標準の装備で戦う。
     #t=30            曲の30秒のところまで進めて、その画面を出す(ヘッドレスEdgeの --screenshot で撮る)
     #film=20,60,110  その時刻の画面を小さく並べた1枚にする(--window-size=1440,820 くらいで撮る)
-    #sim             曲の最後まで戦い、区切りごとの改の体力・被弾の回数を表にする(--dump-dom で読む)
+    #sim             曲の最後まで戦い、区切りごとの改の体力・被弾の回数を表にする(--dump-dom で読む。経過は戦い始めからの実際の秒数。
+                     体力の区切りのムービーに入った曲の時刻と行き先も出す)
     &parry           迫ってくる改を、ドローン君が着く所へ動いて PERFECT で弾き返す(付けないと何もしない)
     &god             被弾しない(付けないと、被弾は数えるが倒れないようにする)
     &gear=2          装備(0 弱い・1 標準・2 最強)
-    &nogate          体力の関門をなくす(体力の減り方を測る。とどめの前には倒れる)
+    &nogate          体力の区切り(TR_BREAKS)をなくす(体力の減り方を測る。とどめの前には倒れる)
     #sim&plain       比べる用：曲に合わせない、ふだんの第二形態と100秒戦い、20秒ごとの被弾の回数を出す
 -->
 <html lang="ja"><head><meta charset="UTF-8"><base href="../"><title>最終局面の試作(Suno)</title>
@@ -78,7 +79,7 @@ function kai(){ return enemies.filter(function(e){ return e.type == "kai"; })[0]
 
 try{
     var keep = { save:localStorage.getItem("dronekun_save"), meta:localStorage.getItem("dronekun_meta"), best:localStorage.getItem("dronekun_best") };
-    if(opt.nogate){ TR_GATES.length = 0; finaleTri.floor = function(){ return 0; }; }
+    if(opt.nogate){ TR_BREAKS.length = 0; finaleTri.floor = function(){ return 0; }; }
     bgmTrial.finale = opt.plain ? 0 : bgmTrial.finales.map(function(f){ return f.v; }).indexOf("triumph");
     bossDebug.gear = opt.gear ? +opt.gear[1] : 1;
     bossDebug.kai2 = true;
@@ -123,7 +124,7 @@ try{
         var e = kai();
         if(e && e.trSec && e.trSec != lastSec){
             lastSec = e.trSec;
-            table.push(lastSec.name + "@" + finaleTri.fakeT.toFixed(1) + " 体力" + Math.round(e.hp/e.maxHp*100) + "% 被弾" + hits);
+            table.push(lastSec.name + "@" + finaleTri.fakeT.toFixed(1) + "(経過" + (f/60).toFixed(1) + ") 体力" + Math.round(e.hp/e.maxHp*100) + "% 被弾" + hits);
         }
         //PERFECT で弾き返す：着く所へ動き、着く0.05秒前に衝撃波
         if(opt.parry && e && e.trApproach){
@@ -134,7 +135,9 @@ try{
             if(left <= 0.06 && left > 0.04){ mainScreen.yaruki = Math.max(mainScreen.yaruki, YARUKI_COST); mainScreen.blast(); }
         }else bot();
         if(opt.god) mainScreen.invincible = 10;
+        var cut0 = finaleTri.cut, cutAt = finaleTri.fakeT;
         mainScreen.update();
+        if(finaleTri.cut && !cut0) table.push("ムービー@" + cutAt.toFixed(1) + "→" + finaleTri.cut.to);
         if(finaleTri.result){ results.push(finaleTri.fakeT.toFixed(2) + ":" + finaleTri.result); finaleTri.result = null; }
         maxShots = Math.max(maxShots, enemyShots.length);
         if(killedAt < 0 && (!kai() || kai().dead) && finaleTri.fakeT > 20) killedAt = finaleTri.fakeT;

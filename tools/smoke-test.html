@@ -1105,9 +1105,17 @@ try{
     mainScreen.damage = dmg0;
     var trOwn = trPil == 3 && trHits > 0 && trKinds.tFeather && trKinds.tOrb && trKinds.tLance && trKinds.tMote;
     draw1();
-    //体力の関門：最高潮の前は TR_GATES より減らない(大きな一撃でも倒れない)
+    //体力の区切り：TR_BREAKS[0] まで削ると、ムービーに入って曲が「沈む」の少し前へ飛び(弾が消え、撃たない)、沈むの頭で終わる
+    var trSink = finaleTri.sec(TR_BREAKS[0].to);
     tb.hp = 10; mainScreen.hitEnemy(tb, tb.maxHp, "gun");
-    var trGate = !tb.dead && tb.hp >= tb.maxHp*TR_GATES[0][1] - 1;
+    var trFloor = !tb.dead && tb.hp >= tb.maxHp*TR_BREAKS[0].hp - 1;
+    trRun(finaleTri.fakeT, finaleTri.fakeT + 0.05);
+    var trCut = !!finaleTri.cut && Math.abs(finaleTri.fakeT - (trSink.from - TR_CUT_SEC)) < 0.1 && special.holdFire() && enemyShots.length == 0;
+    draw1();
+    trRun(finaleTri.fakeT, trSink.from - 0.05, function(){ if(enemyShots.length) trCut = false; });
+    trCut = trCut && !!finaleTri.cut && tb.harmless;
+    trRun(trSink.from - 0.05, trSink.from + 0.1);
+    var trGate = trFloor && trCut && !finaleTri.cut && tb.trMode == "sink" && !special.holdFire();
     //沈む → 迫る → 最高潮の頭で弾き返す
     var trDeep = 0;
     trRun(93.1, 104.9, function(){ trDeep = Math.max(trDeep, shotLab.deeps.length); MouseX = drone.X; MouseY = drone.Y; });
@@ -1155,7 +1163,7 @@ try{
     finaleTri.fakeT = null; bgmTrial.finale = 0; finaleTri.keepMusic = false; finaleTri.names();
     check("最終局面の試作(Suno)：曲の頭で改が故障し、再構築プロトコルで組み上がり、拍で撃ち、奥から迫る突進をジャストで弾き(着いたあと少し遅れても)、夜明けに反撃して、最後の和音でとどめ",
           trRebuild && trAwake && trOwn && trGate && trHush && trParry && trBreath && trRelease && trDawn && trLose && trLast && trAgain && trKill && trClear && errors.length == trErr && KAI2.name != TR_NAME.name,
-          "再構築" + trRebuild + "(故障" + trFail + " 始動" + trProto + " 羽根" + trWing.toFixed(1) + ") 完全体" + trAwake + "(" + trShots + ") 攻撃" + trOwn + "(" + Object.keys(trKinds).join(",") + " 柱" + trPil + "/" + trHits + ") 関門" + trGate +
+          "再構築" + trRebuild + "(故障" + trFail + " 始動" + trProto + " 羽根" + trWing.toFixed(1) + ") 完全体" + trAwake + "(" + trShots + ") 攻撃" + trOwn + "(" + Object.keys(trKinds).join(",") + " 柱" + trPil + "/" + trHits + ") 区切り" + trFloor + "/" + trCut + "/" + trGate +
           " 迫る" + trHush + " 弾く" + trWait + "/" + trParry + " 息つぎ" + trBreath + "/" + trRelease + " 夜明け" + trDawn + "/" + trLose + " 最後" + trLast + " くり返し" + trAgain +
           " とどめ" + trKill + " クリア" + trClear + " " + errors.slice(trErr).join(" "));
 

@@ -229,6 +229,28 @@ function recTrack(_o){
             this.ended = { t:T, p:p };
             return true;
         },
+        //元の曲の _p 秒へ飛ぶ(くり返しはそのまま)。前の音は _fade 秒で消し、新しい音は同じだけかけて上げる(つなぎ目をなじませる)
+        jump:function(_p,_fade){
+            if(!this.src || !this.buf) return false;
+            var I = this.info(), ac = sound.ctx, T = ac.currentTime + 0.03, F = _fade || 0.12, vol = this.mute ? 0 : _o.vol;
+            var og = this.gain, os = this.src;
+            og.gain.setValueAtTime(og.gain.value, T);
+            og.gain.linearRampToValueAtTime(0, T + F);
+            try{ os.stop(T + F + 0.02); }catch(e){}
+            var s = ac.createBufferSource(), g = ac.createGain();
+            s.buffer = this.buf;
+            s.loop = true;
+            s.loopStart = I.loopStart;
+            s.loopEnd = I.loopEnd;
+            g.gain.setValueAtTime(0, T);
+            g.gain.linearRampToValueAtTime(vol, T + F);
+            s.connect(g); g.connect(sound.bgmGain);
+            s.start(T, _p);
+            this.src = s; this.gain = g;
+            this.at = T - _p;
+            this.ended = null;
+            return true;
+        },
         //開いた音を手放す(流している間は手放さない。ファイルは残るので、また使うときは開き直すだけ)
         drop:function(){
             if(!this.src) this.buf = null;

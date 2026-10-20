@@ -14,7 +14,9 @@
 //    最後の突進(179.8秒～)：奥へ下がってから迫り、最後の和音(184.3秒)に着く。体力が TR_FINISH 以下で
 //      ジャスト衝撃波を合わせると、とどめ(曲はくり返しを抜けて最後まで鳴る：triumph.finish)。
 //      決められなければ、曲は夜明け(155.9秒)へ戻ってくり返す
-//  体力の関門：TR_GATES の小節までは、体力がその割合より減らない。夜明けからは、とどめでしか倒れない
+//  体力の区切り(TR_BREAKS)：体力を決まった割合まで削ると、短いムービー(trCut)に入り、曲をその先の区切りの少し前へ飛ばして、
+//    ムービーの終わりがちょうど区切りの頭になるようにする(削った分だけ展開が進む。時間がたつまで減らない、ということがないように)。
+//    削りきれなければ、曲の流れのまま進む。区切りの頭までは、その割合より減らない。最後の突進からは、とどめでしか倒れない
 //  細かい効果音は小さくする(Lyria の試作と同じ：finaleSync.js の FS_SE_QUIET・FS_SE_DUCK)
 //  special の kai・kaiRevive・kaiFx・kaiAwakeFx・draw・drawBossBar、shotLab の onBlast・step・draw・drawUnder・drawFront、
 //  battleBg.drawDark、dodge.drawUnder、mainScreen の hitEnemy・drawHud、sound の play・stopMusic を包む
@@ -41,9 +43,21 @@ const TR_SECTIONS = [
     { bar:123, name:"end" }
 ];
 const TR_OWN        = ["feathers","halo","pillars","bands","lances"];    //このファイルで出す攻撃
-const TR_GATES      = [[70, 0.6], [104, 0.35]];  //[この小節まで, 体力がこの割合より減らない]。夜明けからは、とどめでしか倒れない
+//体力の区切り：hp(割合)まで削ると、ムービーに入って to の区切りへ進む(曲が to より前で、いま戦っている区切りのとき)。
+//to の区切りの頭までは、体力が hp より減らない。text：ムービーで出す文
+const TR_BREAKS     = [
+    { hp:0.6,  to:"sink", text:"天翼の羽根が、砕け散る" },
+    { hp:0.35, to:"dawn", text:"夜を統べる翼が、揺らぐ" },
+    { hp:0.2,  to:"last", text:"天翼、最後の力を振り絞る" }
+];
+const TR_CUT_SEC    = 3;        //ムービーの長さ(秒。曲はその先の区切りの、この秒数だけ前へ飛ぶ)
+const TR_CUT_WAIT   = 1;        //区切りに入ってから、この小節数はムービーにしない(夜明けへ戻ったすぐあとなど)
+const TR_CUT_FADE   = 0.12;     //曲を飛ばすときのつなぎ目(秒。閃光と衝撃の音で隠れる長さ)
+const TR_CUT_BAR    = 56;       //ムービーの上下の黒い帯の高さ(px)
+const TR_CUT_STOP   = 16;       //ムービーの始めに止まる時間(フレーム)
+const TR_CUT_HOME   = [CW/2, 170];  //ムービーの間に改が戻っていく所(px。次の区切りがここから始まる)
 const TR_HP_MUL     = 7;        //体力(ふだんの第二形態の何倍か。曲がふだんの第二形態よりずっと長いので。標準の装備で、とどめの前に TR_FINISH を少し切るくらい)
-const TR_FINISH     = 0.2;      //最後の突進を弾いて倒せる体力(割合)。これより多ければ大きなダメージだけ(TR_LAST_DMG)
+const TR_FINISH     = 0.2;      //最後の突進を弾いて倒せる体力(割合。TR_BREAKS の最後と同じ)。これより多ければ大きなダメージだけ(TR_LAST_DMG)
 const TR_LAST_DMG   = 0.15;     //最後の突進を弾いたが、倒しきれないときのダメージ(第二形態の体力の割合)
 const TR_PARRY_DMG  = [0.1, 0.16];  //最高潮の頭で弾き返したときのダメージ(JUST・PERFECT)
 const TR_DAWN_POW   = 1.6;      //夜明けから、改へのダメージを何倍にするか
@@ -380,7 +394,7 @@ var finaleTri = {
         var a = this.barTime(TR_PROTO_BAR), b = TR_SECTIONS[1].from;
         return Math.max(0, Math.min(1, (_p - a)/(b - a)));
     },
-    //再構築の間の改の絵(draw から)：痙攣・設計図の線・組み上がった羽根・本体・ノイズ・走査線
+    //再構築の間の改の絵(draw から)：痙攣・設計図の線・組み上がった羽根・本体・ノイズ・体を囲むかぎ括弧
     drawRebuild:function(_e,_body,_orig){
         var p = this.pos(), k = p < 0 ? 0 : this.rebuildK(p), pulse = _e.trFlap || 0;
         if(k > 0){
@@ -405,14 +419,6 @@ var finaleTri = {
             _e.fsNoise = 0;
         }
         if(k > 0 && k < 1 && !_body){
-            //走査線：体を上下になぞる
-            var y = Math.sin(p*5)*44;
-            ctx.globalCompositeOperation = "lighter";
-            ctx.fillStyle = "rgba(" + TR_GLOW + ",0.18)";
-            ctx.fillRect(-60, y - 6, 120, 12);
-            ctx.fillStyle = "rgba(235,215,255,0.8)";
-            ctx.fillRect(-64, y - 0.75, 128, 1.5);
-            ctx.globalCompositeOperation = "source-over";
             //体を囲むかぎ括弧(小節の頭で締まる)
             var b = 52 + 6*(1 - pulse), c = 12;
             ctx.strokeStyle = "rgba(" + TR_GLOW + ",0.8)"; ctx.lineWidth = 2;
@@ -548,6 +554,7 @@ var finaleTri = {
         this.pillars = []; this.queue = []; this.shards = [];
         this.log = []; this.logF = 0; this.bannerT = null; this.forceN = null;
         this.dawnK = 0; this.dawnFlash = 0; this.finished = false; this.keepMusic = false; this.result = null;
+        this.cut = null;
         battleBg.far = 0;
     },
 
@@ -559,6 +566,12 @@ var finaleTri = {
         var p = this.pos();
         if(p < 0) return false;
         if(_e.trR0 == null){ _e.trR0 = _e.r; _e.trScale = 1; _e.trPulse = 0; _e.trCycle = 0; _e.trFlap = _e.trFlap || 0; _e.trFold = 0; _e.trFire = 0; }
+        //体力の区切りのムービー：その間は改をムービーで動かす。終わったら(曲が区切りの頭に着いたら)、ふだんどおり区切りへ入る
+        if(this.cut){
+            if(p < this.cut.end && p > this.cut.end - TR_CUT_SEC - 1){ this.cutStep(_e, p); return true; }
+            this.cut = null;
+            _e.mode = "idle"; _e.harmless = false; _e.phased = false;
+        }else if(this.cutDue(_e, p)) return true;
         //着いた瞬間までに衝撃波が出ていなければ、TR_LATE_SEC だけ待つ(その間は区切りを進めず、改は着く所で止まったまま)。
         //最後の突進では、着いた瞬間に曲が頭へ戻ることがあるので、戻ったときも待つ
         if(_e.trApproach && _e.trBlastP == null && !this.finished){
@@ -641,11 +654,99 @@ var finaleTri = {
         }
         return false;
     },
-    //体力の関門(割合。夜明けからは1だけ残す)
+    //体力がこれより減らない(まだ着いていない区切りの TR_BREAKS。最後の突進からは1だけ残す)
     floor:function(_e){
-        var bar = this.beatAt(Math.max(0, this.pos()))/4;
-        for(var i=0; i<TR_GATES.length; i++) if(bar < TR_GATES[i][0]) return Math.ceil(_e.maxHp*TR_GATES[i][1]);
+        var p = Math.max(0, this.pos());
+        for(var i=0; i<TR_BREAKS.length; i++) if(p < this.sec(TR_BREAKS[i].to).from) return Math.ceil(_e.maxHp*TR_BREAKS[i].hp);
         return 1;
+    },
+    //体力の区切りまで削ったら、ムービーに入る(いま戦っている区切りで、入ってから TR_CUT_WAIT 小節たっていて、行き先の区切りまで TR_CUT_SEC より前のとき)
+    cutDue:function(_e,_p){
+        var sec = this.section(_p);
+        if(!sec.list || mainScreen.state != "play" || _e.mode == "stagger" || _p < this.barTime(sec.bar + TR_CUT_WAIT)) return false;
+        for(var i=0; i<TR_BREAKS.length; i++){
+            var B = TR_BREAKS[i], to = this.sec(B.to);
+            if(_p >= to.from) continue;
+            if(_e.hp > Math.ceil(_e.maxHp*B.hp) || to.from - _p <= TR_CUT_SEC) return false;
+            this.startCut(_e, B, to);
+            return true;
+        }
+        return false;
+    },
+    //ムービーの始まり：止まって、閃光と衝撃の音の陰で曲を区切りの少し前へ飛ばす。弾を消し、改はのけぞって砕けた羽根を散らす
+    startCut:function(_e,_B,_to){
+        var M = mainScreen, p = _to.from - TR_CUT_SEC;
+        this.calm(_e);
+        this.clearShots();
+        _e.mode = "fs";
+        _e.trMode = null; _e.trApproach = false; _e.trLate = null;
+        _e.harmless = true; _e.phased = true;
+        var dx = _e.x - drone.X, dy = _e.y - drone.Y, d = Math.hypot(dx,dy) || 1;
+        _e.vx = dx/d*TR_FLING*0.6; _e.vy = dy/d*TR_FLING*0.6 - 2;
+        _e.flash = 14;
+        _e.look.setFace("hurt", 90);
+        this.cut = { text:_B.text, to:_B.to, end:_to.from, f:0 };
+        if(this.fakeT != null) this.fakeT = p;
+        else triumph.jump(p, TR_CUT_FADE);
+        this.queue = []; this.pillars = [];
+        _e.trBeatN = null;
+        M.hitStop = Math.max(M.hitStop, TR_CUT_STOP);
+        this.impact = { x:_e.x, y:_e.y, p0:p };     //閃光は曲の時刻で進める(画面全体の閃光 flashT は、止まっている間も消えないので使わない)
+        M.zoomT = ZOOM_TIME; M.zoomX = _e.x; M.zoomY = _e.y;
+        M.guard = Math.max(M.guard, TR_CUT_SEC*60 + 30);
+        fx.flare(_e.x, _e.y, 260, TR_GLOW, 26);
+        fx.ring(_e.x, _e.y, 300, TR_GLOW, 28, 10);
+        fx.ring(_e.x, _e.y, 180, JUST_COLOR, 22, 6);
+        battleBg.ripple(_e.x, _e.y, 60, 11, 100, TR_GLOW);
+        fx.shake(24);
+        this.shardsAt(_e.x, _e.y, 30, true);
+        this.feathersBurst(_e, 26, false);
+        sound.play("glitch");
+        fsSfx.impact(true);
+        fsSfx.shatter();
+    },
+    //ムービーの間：改は吹き飛んでから、TR_CUT_HOME へ戻って身構える(次の区切りがそこから始まる)。羽根がときどき舞い落ちる
+    cutStep:function(_e,_p){
+        var c = this.cut, k = 1 - (c.end - _p)/TR_CUT_SEC;
+        c.f++;
+        _e.harmless = true; _e.phased = true;
+        _e.timer = 999; _e.gunT = 999;
+        if(k < 0.3){ _e.vx *= 0.9; _e.vy *= 0.9; }
+        else{
+            //ばねで戻る(速さを残して、pose が翼を動かせるように)
+            _e.vx = (_e.vx + (TR_CUT_HOME[0] - _e.x)*0.004)*0.9;
+            _e.vy = (_e.vy + (TR_CUT_HOME[1] - _e.y)*0.004)*0.9;
+        }
+        _e.x += _e.vx; _e.y += _e.vy;
+        _e.t = (_e.t || 0) + 1;
+        if(c.f % 12 == 0) this.shardsAt(_e.x + (Math.random() - 0.5)*80, _e.y + (Math.random() - 0.5)*40, 2, true);
+        //区切りの直前は、鼓動のように一度だけ光る(ムービーから戦いへ戻る合図)
+        if(!c.beat && c.end - _p < 0.5){
+            c.beat = true;
+            fx.ring(_e.x, _e.y, 160, TR_FIRE, 18, 5);
+            battleBg.ripple(_e.x, _e.y, 30, 8, 60, TR_GLOW);
+            _e.look.setMood("fierce");
+        }
+        this.pose(_e);
+    },
+    //ムービーの上下の黒い帯と文
+    drawCut:function(){
+        var c = this.cut;
+        if(!c) return;
+        var p = this.pos(), k = Math.max(0, Math.min(1, 1 - (c.end - p)/TR_CUT_SEC));
+        var inK = Math.min(1, k/0.12), outK = Math.min(1, (1 - k)/0.1), a = Math.min(inK, outK), h = TR_CUT_BAR*a*(2 - a);
+        ctx.fillStyle = "rgba(0,0,0,0.92)";
+        ctx.fillRect(-20, -20, CW + 40, h + 20);
+        ctx.fillRect(-20, CH - h, CW + 40, h + 20);
+        var ta = Math.max(0, Math.min(1, (k - 0.1)/0.15))*outK;
+        if(ta <= 0) return;
+        ctx.save();
+        ctx.globalAlpha = ta;
+        ctx.font = "bold 22px sans-serif";
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillStyle = "rgba(230,215,255,1)";
+        ctx.fillText(c.text, CW/2, CH - h/2);
+        ctx.restore();
     },
     gate:function(_e){ _e.hp = Math.max(_e.hp, Math.min(_e.maxHp, this.floor(_e))); },
     //夜明けから：体力が減るほど、大きな翼の先の羽根から欠けて舞い落ちる
@@ -1655,6 +1756,7 @@ var finaleTri = {
         }
         this.drawShards();
         this.drawImpact();
+        this.drawCut();
         if(this.dawnFlash > 0){
             ctx.save();
             ctx.globalCompositeOperation = "lighter";
@@ -2023,7 +2125,7 @@ var finaleTri = {
 
 (function(){
     var kai = special.kai, kaiRevive = special.kaiRevive, kaiFx = special.kaiFx, kaiAwakeFx = special.kaiAwakeFx;
-    var draw = special.draw, drawBossBar = special.drawBossBar;
+    var draw = special.draw, drawBossBar = special.drawBossBar, holdFire = special.holdFire;
     var onBlast = shotLab.onBlast, step = shotLab.step, sdraw = shotLab.draw, drawUnder = shotLab.drawUnder, drawFront = shotLab.drawFront;
     var drawDark = battleBg.drawDark, droneUnder = dodge.drawUnder;
     var hitEnemy = mainScreen.hitEnemy, drawHud = mainScreen.drawHud;
@@ -2049,6 +2151,11 @@ var finaleTri = {
     special.kaiAwakeFx = function(_e){
         if(T.on() && _e.trSong){ T.awake(_e); return; }
         kaiAwakeFx.call(this,_e);
+    };
+    //体力の区切りのムービーの間は、ドローン君の装備と衝撃波を止める
+    special.holdFire = function(){
+        if(T.cut && T.boss()) return true;
+        return holdFire.call(this);
     };
     special.draw = function(_e,_body){
         var self = this;
@@ -2085,7 +2192,7 @@ var finaleTri = {
         }
         drawHud.call(this);
     };
-    //改へのダメージ：夜明けからは強く。関門より下へは減らない(関門の下で倒れないよう、いったん体力を足して計算する)
+    //改へのダメージ：夜明けからは強く。体力の区切り(floor)より下へは減らない(その下で倒れないよう、いったん体力を足して計算する)
     mainScreen.hitEnemy = function(_e,_dmg,_src){
         if(_e.type != "kai" || !_e.trSong || _e.form != 2 || _src == "trFinish" || !T.on() || _e.dead) return hitEnemy.call(this,_e,_dmg,_src);
         if(T.dawnK > 0) _dmg *= TR_DAWN_POW;
