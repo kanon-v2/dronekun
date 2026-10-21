@@ -73,6 +73,16 @@ const PUP_LINES = {
 };
 const PUP_ALLY_LINES = ["ありがとう！","目がさめた！","いっしょに戦う！","もう操られない！","まかせて！","おかえしだ！","ついていく！"];
 const PUP_SAY_T       = 150;        //吹き出しを出している長さ
+//Blender で描いた絵(tools/blender/puppeteer.py で書き出す。images/game/puppeteer/)。読み込むまでと #pup2d のときは図形の絵
+//範囲はゲームの px で[左, 上, 幅, 高さ](原点は仮面の中心・手の甲・操り板のまんなか)。絵はゲームの1px = px 画素
+const PUP_ART = {
+    px:3,
+    body:{ area:[-76,-50,152,178], frames:16, cols:4 },     //マント・頭巾・襟(裾がなびく)
+    mask:{ area:[-20,-24,40,48], frames:16, cols:8 },       //仮面(番号 = ひびA + ひびB*2 + ひびC*4 + 口を開く*8)
+    hand:{ area:[-22,-26,44,68], frames:8, cols:8 },        //手(指がうごめく。左右で別の絵)
+    bar:{ area:[-28,-18,56,34], frames:1, cols:1 }          //操り板
+};
+const PUP_ART_EYES    = [[-8.6,-6],[8.6,-6]];  //目の奥の赤い光の位置(仮面の中心から)
 
 BOSS_TYPES.puppeteer = { name:"傀儡師", r:26, en:"THE PUPPETEER", title:"糸を操る支配者" };
 COUNTER_TYPES.push("puppet");       //投げつけてくる人形を、ジャスト衝撃波で弾く(糸ごと断ち切る)
@@ -663,8 +673,82 @@ var puppeteer = {
         ctx.lineWidth = 1;
     },
 
+    //Blender の絵：はじめて描くときに読み込む。そろうまでは図形の絵
+    baked:{
+        imgs:null, left:0,
+        ready:function(){
+            if(/pup2d/.test(location.hash)) return false;
+            if(!this.imgs){
+                var self = this, names = ["body","mask","handL","handR","bar"];
+                this.imgs = {}; this.left = names.length;
+                names.forEach(function(n){
+                    var im = new Image();
+                    im.onload = function(){ self.left--; };
+                    im.onerror = function(){ self.left = -1; };     //見つからなければ図形の絵のまま
+                    im.src = "images/game/puppeteer/" + n + ".png";
+                    self.imgs[n] = im;
+                });
+            }
+            return this.left == 0;
+        },
+        //コマ _f を、原点に合わせて描く。_white は被弾で白く光らせる
+        draw:function(_name,_spec,_f,_white){
+            var im = this.imgs[_name], a = _spec.area, P = PUP_ART.px;
+            if(_white) im = tintedImage(im, "255,255,255");
+            var f = ((_f % _spec.frames) + _spec.frames) % _spec.frames;
+            ctx.drawImage(im, (f % _spec.cols)*a[2]*P, Math.floor(f/_spec.cols)*a[3]*P, a[2]*P, a[3]*P, a[0], a[1], a[2], a[3]);
+        }
+    },
+    //傀儡師(Blender の絵。translate済み。仮面の中心が原点)。動き(手の位置・仮面の傾き・操り板の揺れ)は図形の絵と同じ
+    artBaked:function(_e,_body){
+        var A = enemyArt, t = _e.t, K = this.baked, white = !!_body;
+        //盾にしている間：まわりに糸の繭(薄い糸が回る)
+        if(_e.phased){
+            ctx.strokeStyle = "rgba(" + PUP_STRING + ",0.35)";
+            for(var i=0; i<5; i++){
+                ctx.beginPath();
+                ctx.ellipse(0, 30, 66, 84, t*0.01 + i*Math.PI/5, 0, Math.PI*2);
+                ctx.stroke();
+            }
+        }
+        //マントの裾からこぼれる紫のもや
+        for(var i=0; i<3; i++){
+            var ph = ((t*0.012 + i/3) % 1);
+            ctx.fillStyle = "rgba(120,70,170," + (0.25*(1 - ph)) + ")";
+            A.circle(Math.sin(i*2.1 + t*0.02)*30, 104 + ph*30, 8 + ph*10); ctx.fill();
+        }
+        //マント・頭巾・襟(裾のなびきは図形の絵と同じ速さ)
+        K.draw("body", PUP_ART.body, Math.floor(t*0.08/(Math.PI*2)*PUP_ART.body.frames), white);
+        //仮面：ひびは幕が進むたびに増え、よろけると口が開く
+        var m = (_e.stage >= 2 || _e.mode == "stun" ? 1 : 0) + (_e.stage >= 3 ? 2 : 0)
+              + (_e.mode == "last" || _e.mode == "rallied" ? 4 : 0) + (_e.mode == "stun" || _e.mode == "rallied" ? 8 : 0);
+        ctx.save();
+        ctx.rotate(_e.maskA);
+        K.draw("mask", PUP_ART.mask, m, white);
+        //目の奥の赤い光(本気のときは強く、ゆっくり脈打つ)
+        var glow = (_e.mode == "last" || _e.mode == "solo" ? 0.9 : 0.55) + 0.1*Math.sin(t*0.09);
+        for(var s=0; s<2; s++) A.halo(PUP_ART_EYES[s][0], PUP_ART_EYES[s][1], 6, "229,48,43", glow);
+        ctx.restore();
+        //操り板と手
+        var hf = Math.floor(t*0.07/(Math.PI*2)*PUP_ART.hand.frames);
+        for(var k=0; k<2; k++){
+            var h = _e.hands[k], hx = h.x, hy = h.y - h.lift, s = k == 0 ? -1 : 1;
+            ctx.save();
+            ctx.translate(hx, hy + 20);
+            ctx.rotate(Math.sin(t*0.05 + k)*0.12 - s*h.lift*0.01);
+            K.draw("bar", PUP_ART.bar, 0, white);
+            ctx.restore();
+            ctx.save();
+            ctx.translate(hx, hy);
+            ctx.rotate(s*0.08);
+            K.draw(k == 0 ? "handL" : "handR", PUP_ART.hand, hf, white);
+            ctx.restore();
+        }
+    },
+
     //傀儡師(translate済み。仮面の中心が原点)
     art:function(_e,_body){
+        if(this.baked.ready()){ this.artBaked(_e,_body); return; }
         var C = ENEMY_COLOR, A = enemyArt, t = _e.t;
         var cloak = _body || (_e.mode == "rallied" ? "#3a2440" : "#2a2236");
         //盾にしている間：まわりに糸の繭(薄い糸が回る)

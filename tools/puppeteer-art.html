@@ -5,6 +5,7 @@
   ヘッドレスEdgeで撮る：msedge --headless=new --disable-gpu --allow-file-access-from-files --virtual-time-budget=3000
                         --window-size=1920,1080 --screenshot=<出力.png> file:///.../tools/puppeteer-art.html
   #only=番号(0～3) で1場面だけを等倍で出す(--window-size=960,540)
+  #pup2d で前の図形の絵(Blender の絵を使わない)
 -->
 <html lang="ja"><head><meta charset="UTF-8"><base href="../"><title>傀儡師の見た目</title>
 <style>body{margin:0;background:#888}#Bigbox{position:absolute;left:-9999px}#out{display:block}</style></head>
@@ -55,6 +56,7 @@ bgmTrial.finale = 0; bgmTrial.fight = 0;
 <script src="scripts/drone/finaleTriumph.js"></script>
 <script src="scripts/drone/gunship.js"></script>
 <script src="scripts/drone/puppeteer.js"></script>
+<script src="scripts/drone/puppetStage.js"></script>
 <script src="scripts/drone/emotion.js"></script>
 <script src="scripts/drone/emotionHint.js"></script>
 <script src="lib/peerjs.min.js"></script>
@@ -90,6 +92,14 @@ function pups(){ return enemies.filter(function(e){ return e.type == "puppet" &&
 //ドローン君は撃たない(人形の糸がすぐ切れて、場面が進みすぎないように)
 var hold = true, hold0 = special.holdFire;
 special.holdFire = function(){ return hold || hold0.apply(this, arguments); };
+//Blender の絵(images/game/puppeteer/)を読み込んでから撮る(#pup2d なら図形の絵)
+function waitArt(){
+    var a = puppeteer.baked.ready(), s = puppetStage.ready();      //どちらも呼んで読み込みを始める
+    if(/pup2d/.test(location.hash) || (a || puppeteer.baked.left < 0) && (s || puppetStage.left < 0)) droneSkin.prepare(STAGE_SKIN, run);
+    else setTimeout(waitArt, 50);
+}
+setTimeout(waitArt, 0);
+function run(){
 try{
 bossDebug.god = true;
 bossDebug.puppeteer = true;
@@ -119,5 +129,6 @@ step(PUP_RALLY_CUT + 40);
 snap("一斉反撃");
 }catch(ex){ document.getElementById("log").textContent += "EX " + ex.message + " " + ex.stack; }
 document.getElementById("log").textContent += "shots " + shotN + " errors " + errors.join(" / ");
+}
 </script>
 </body></html>

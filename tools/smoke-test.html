@@ -52,6 +52,7 @@ bgmTrial.finale = 0; bgmTrial.fight = 0;
 <script src="scripts/drone/finaleTriumph.js"></script>
 <script src="scripts/drone/gunship.js"></script>
 <script src="scripts/drone/puppeteer.js"></script>
+<script src="scripts/drone/puppetStage.js"></script>
 <script src="scripts/drone/emotion.js"></script>
 <script src="scripts/drone/emotionHint.js"></script>
 <script src="lib/peerjs.min.js"></script>
@@ -1823,6 +1824,8 @@ try{
     var perr = errors.length;
     tap(bossDebug.rivalRows()[RIVAL_WAVES.length + 2]);
     var pGo = page.number == 1 && game.wave == 10 && bossDebug.puppeteer && bossTypeFor(10) == "puppeteer", pb = null;
+    //舞台(puppetStage.js)：傀儡師戦の間だけ舞台になり、ドローン君の見た目が替わる
+    var pStageOn = puppetStage.on() && droneSkin.current == STAGE_SKIN, pSkin0 = puppetStage.skinBefore;
     var pShield = false, pStages = {}, pThrow = false, pCut = false, pThread = false, pAllyShot = false, pLast = false, pRally = false, pKill = false, pFloor = true;
     for(var i=0; i<9000 && page.number == 1; i++){
         bot();
@@ -1859,6 +1862,9 @@ try{
           " 味方の弾" + pAllyShot + " 解放" + puppeteer.freed + " 下限" + pFloor + " 合図" + pLast + " 一斉" + pRally + " 撃破" + pKill + " エラー" + (errors.length - perr));
     check("傀儡師(試作)：倒すとメニューへ戻り、ふつうのボスに戻る",
           page.number == 0 && bossDebug.menu && !bossDebug.puppeteer && bossTypeFor(10) == "fortress", bossDebug.msg);
+    check("傀儡師(試作)：戦いの間だけ人形劇の舞台になり、ドローン君の見た目が替わって、出ると元に戻る",
+          pStageOn && !puppetStage.on() && puppetStage.skinBefore == null && droneSkin.current == pSkin0,
+          "舞台" + pStageOn + " 出たあと" + puppetStage.on() + " 見た目" + pSkin0 + "→" + droneSkin.current);
     //武器試用：選んだ装備で、尽きずに出てくる雑魚敵と戦う(無敵。与えたダメージを数える)
     bossDebug.god = false;    //武器試用は無敵の設定によらず無敵
     tap(bossDebug.tools()[0]);
