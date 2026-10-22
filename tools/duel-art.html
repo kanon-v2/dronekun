@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<!--
+  協力プレイの一騎打ち(coopDuel.js)の見た目の確認ページ。通信はせず、相手の状態を作って場面を並べて撮る。
+  名乗り(せりふ)・戦い(相手が再構築したあとの光の翼)・自分の再構築プロトコル・決着 を半分の大きさで2×2に並べる。
+  #guest でゲスト(P2。ピンクのドローン君)の画面にする。
+  撮り方：msedge --headless=new --disable-gpu --allow-file-access-from-files --virtual-time-budget=3000 --window-size=960,560 --screenshot=out.png file:///…/tools/duel-art.html
+-->
+<html lang="ja"><head><meta charset="UTF-8"><base href="../"><title>一騎打ちの見た目</title><style>body{margin:0;background:#222}</style></head>
+<body><div id="Bigbox" style="display:none"><canvas id="Canvas"></canvas></div>
+<script>window.requestAnimationFrame = function(){};</script>
+<script src="scripts/drone/common.js"></script>
+<script src="scripts/drone/sound.js"></script>
+<script src="scripts/drone/bgmTrial.js"></script>
+<script src="scripts/drone/bgmFull.js"></script>
+<script src="scripts/drone/equipment.js"></script>
+<script src="scripts/drone/armsExtra.js"></script>
+<script src="scripts/drone/bosses.js"></script>
+<script src="scripts/drone/startScreen.js"></script>
+<script src="scripts/drone/titleArt.js"></script>
+<script src="scripts/drone/mainScreen.js"></script>
+<script src="scripts/drone/forces.js"></script>
+<script src="scripts/drone/enemyArt.js"></script>
+<script src="scripts/drone/upgradeScreen.js"></script>
+<script src="scripts/drone/gameoverScreen.js"></script>
+<script src="scripts/drone/story.js"></script>
+<script src="scripts/drone/battleBg.js"></script>
+<script src="scripts/drone/bgScene.js"></script>
+<script src="scripts/drone/bossDebug.js"></script>
+<script src="scripts/drone/timeStop.js"></script>
+<script src="scripts/drone/dodge.js"></script>
+<script src="scripts/drone/rival.js"></script>
+<script src="scripts/drone/rivalTime.js"></script>
+<script src="scripts/drone/shotLab.js"></script>
+<script src="scripts/drone/finaleSync.js"></script>
+<script src="scripts/drone/finaleTriumph.js"></script>
+<script src="scripts/drone/gunship.js"></script>
+<script src="scripts/drone/puppeteer.js"></script>
+<script src="scripts/drone/emotion.js"></script>
+<script src="scripts/drone/emotionHint.js"></script>
+<script src="lib/peerjs.min.js"></script>
+<script src="scripts/drone/coop.js"></script>
+<script src="scripts/drone/coopMirror.js"></script>
+<script src="scripts/drone/versus.js"></script>
+<script src="scripts/drone/coopDuel.js"></script>
+<script src="scripts/drone/draw.js"></script>
+<script>
+(function(){
+    var guest = location.hash.indexOf("guest") >= 0;
+    coop.active = true; coop.role = guest ? "guest" : "host"; coop.paint();
+    coop.partner = { pos:{ X:0, Y:0 }, page:8 };    //相方がいることにする(いないと、ホストはすぐ勝ちになる)
+    window.onerror = function(m, f, l){ document.title = "ERR " + m + " @" + l; };
+    renderScale = 1;
+    var film = document.createElement("canvas"), sc = 0.5;
+    film.width = CW*sc*2; film.height = CH*sc*2;
+    var g = film.getContext("2d");
+    document.body.appendChild(film);
+    var fx0 = guest ? CW*0.8 : CW*0.2;
+    function other(_o){ var o = { ph:"f", x:CW - fx0, y:CH/2 - 30, d:0, hp:coopDuel.mh*0.6, mh:coopDuel.mh, dm:0, rb:0, dead:0, gd:0, bl:[0,0,0] }; for(var k in _o) o[k] = _o[k]; coopDuel.read(o); }
+    function run(_n){ for(var i=0; i<_n; i++){ MouseX = fx0 + Math.sin(i*0.05)*40; MouseY = CH/2 + 40; MouseIn = true; coopDuel.update(); } }
+    function shot(_i){ ctx.fillStyle = "white"; ctx.fillRect(0,0,CW,CH); duelScreen.draw(); g.drawImage(canvas, 0, 0, canvas.width, canvas.height, (_i % 2)*CW*sc, Math.floor(_i/2)*CH*sc, CW*sc, CH*sc); }
+    coopDuel.begin();
+    other({ ph:"i" });
+    run(200); shot(0);                                  //名乗り(ふたりのせりふ)
+    other({ ph:"f" }); run(160);
+    other({ ph:"f", rb:2, hp:coopDuel.mh }); run(40); coopDuel.hp = coopDuel.mh*0.3; shot(1);   //戦い：相手が再構築したあと
+    coopDuel.hp = 0; coopDuel.other.rb = 0; coopDuel.zero(); run(150); shot(2);   //自分の再構築プロトコル
+    other({ ph:"f", rb:2, dead:1 }); run(220); shot(3);   //決着
+})();
+</script>
+</body></html>

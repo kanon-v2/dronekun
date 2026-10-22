@@ -8,7 +8,12 @@
 //  ・ゲストは自分のドローン君と武器を自分の画面で動かし、敵に与えたダメージ・
 //    拾ったアイテム・衝撃波を「合計値」でホストへ送る(途中が抜けても合計なので狂わない)
 //  ・被弾の判定は、それぞれが自分のドローン君について行う
-//  ・強化・装備・パーツはそれぞれ別。敵の体力は2倍
+//  ・ステージはひとり用と同じ(ストーリーは流さない)。敵の体力は2倍
+//  ・進み具合・能力・パーツ・装備は、ホストはひとり用の記録をそのまま使って育てる。ゲストは自分の記録で始めるが、何も書かない
+//    (参加中はホストと同じだけパーツを受け取り、強化・装備はそれぞれ別。save.readOnly)
+//  ・倒れても、相方が COOP_REVIVE_TIME 生き残れば耐久1で復活する。ふたりとも倒れたらゲームオーバー
+//  ・回避ダッシュ(dodge.js)・時止めワープ(timeStop.js)も使える。ライバル・最終局面の中身は coopMirror.js で写す
+//  ・WAVE20をクリアすると、ふたりの一騎打ち(coopDuel.js)のあとエンディング
 //------------------------------------------------------------------------------
 const COOP_TYPES  = ["bug","dasher","shooter","tank","spinner","bomber","kin","mdrone","heli","panzer","goldbug","carrier","queen","fortress","kai","canopy","pod","chrono","chronoClone"];
 const COOP_SHOTS  = Object.keys(SHOT_KINDS);  //弾の種類の番号(試作の弾 shotLab.js も後ろに並ぶ)
@@ -17,6 +22,8 @@ const COOP_MODES  = ["enter","idle","aim","dash","spiral","triple","laserAim","l
 const COOP_STATES = ["start","play","clear","over"];
 const COOP_LIMIT  = 12000;  //1回に送る状態の大きさの上限(バイト)。超えるときはゲストから遠いものから削る
 const COOP_HP_MUL = 2;      //協力プレイでの敵の体力の倍率
+const COOP_REVIVE_TIME = 600;   //倒れたあと、相方がこの時間(フレーム。10秒)生き残っていたら、耐久1で復活する
+const COOP_REVIVE_GUARD = 120;  //復活したあとの無敵(フレーム)
 const COOP_ID_PREFIX = "dronekun-room-";  //PeerJSのIDの頭に付ける(ほかのアプリのIDとぶつからないように)
 const COOP_CODE_CHARS = "abcdefghjkmnpqrstuvwxyz23456789";  //部屋コードに使う文字(見間違えやすい i l o 0 1 は使わない)
 const COOP_TIMEOUT = 30000; //相方から何も届かないまま、この時間(ミリ秒)たったら切断とみなす(回線が数秒～十数秒悪くなっても続けられるよう長め)
@@ -30,7 +37,8 @@ const COOP_BUFFER_MAX = 32000;    //送れずにたまっている量(バイト)
 const COOP_RECONNECT_AFTER = 4000;  //(ミリ秒)
 const COOP_RECONNECT_EVERY = 5000;  //(ミリ秒)
 const COOP_SERVER_RETRY = 2000;     //仲介サーバーとのつながりが切れたら、この時間(ミリ秒)あとにつなぎ直す(つなぎ直しに要る)
-const P2_COLOR    = "40,130,230";
+const P1_COLOR    = "45,50,65";     //ホスト(P1)の名札・耐久の色(ドローン君はふだんの色のまま)
+const P2_COLOR    = "235,85,160";   //ゲスト(P2)のドローン君の色(同胞の色 KIN_COLORS・ライバルの紺・改の赤紫と見分けられるように)
 
 var enemySeq = 0;           //敵の通し番号(ホストとゲストで同じ敵を指すため)
 var pickupSeq = 0;
@@ -93,6 +101,8 @@ var coop = {
     gotDone:{},
     blastDone:0,
     blockDone:0,        //ホスト：ゲストのバリアが防いだ弾を、何個目まで消したか
+    clears:[0],         //ゲスト→ホスト：回避で消した・切り落とした弾 [回数, (x1,y1,x2,y2,幅)…最近のもの]
+    clearDone:0,        //ホスト：何回目まで消したか
     //出来事(衝撃波・ボス撃破・ジャスト衝撃波)
     events:[],
     evSeq:0,
@@ -301,19 +311,38 @@ var coop = {
             versus.start(this.role == "host");
             return;
         }
-        //協力プレイ用の能力・パーツ・前の装備・進み具合から始める(ひとり用とは別に残す。save.metaKey)
+        //ひとり用と同じ能力・パーツ・前の装備から始める(ホストはひとり用の記録をそのまま育てる。ゲストは自分の記録を読むだけで書かない。save.readOnly)
+        //ステージはひとり用と同じ(ストーリーは流さない)。ホストはひとり用の「出撃」と同じく新しい周を始め、その難易度のいちばん先のWAVEから
         this.active = true;
         this.waiting = false;
         game.reset();
         save.loadMeta();
+        game.newRun(this.diff);
         game.useKept();
+        save.clear();       //ホストのこの周の進み具合は、ここから書き直す(ゲストは書かない)
         enemySeq = 0;
         pickupSeq = 0;
         this.resetExchange();
-        if(this.role == "host") this.playWave = game.reachOf(this.diff);    //はじめは、その難易度のいちばん先のWAVEへ(ゲストにはホストから届く)
+        if(this.role == "host"){
+            game.wave = game.reachOf(this.diff);    //ゲストにはホストから届く
+            game.seen.prologue = true;
+        }
         this.localReady = false;
         this.msg = "";
-        storyScreen.start("prologue",function(){ page.change(2); });
+        this.paint();
+        coopDuel.result = "";   //前の一騎打ちの結果を、エンディングに出さないように
+        goUpgrade();
+    },
+
+    //ゲスト(P2)のドローン君は違う色にする(自分の画面でも相方の画面でも)
+    paint:function(){
+        var guest = this.active && this.role == "guest";
+        drone.look.tint = guest ? P2_COLOR : null;
+        this.look.tint = this.active && this.role == "host" ? P2_COLOR : null;
+    },
+    //相方の名札・耐久の色
+    partnerColor:function(){
+        return this.role == "host" ? P2_COLOR : P1_COLOR;
     },
 
     resetExchange:function(){
@@ -322,6 +351,9 @@ var coop = {
         this.partsGot = 0; this.partnerParts = 0;
         this.checkpoint = null; this.wantContinue = false; this.hostCn = false;
         this.applied = {}; this.gotDone = {}; this.blastDone = 0; this.blockDone = 0;
+        this.clears = [0]; this.clearDone = 0;
+        if(typeof coopMirror != "undefined") coopMirror.reset();
+        dodge.watch = false;
         arms.blockLog = [0];    //バリアで防いだ数(ゲスト→ホスト)
         this.events = []; this.evSeq = 0; this.evSeen = 0;
         this.snap = null; this.snapQ = -1; this.appliedQ = -1;
@@ -371,6 +403,7 @@ var coop = {
         this.checkpoint = null; this.wantContinue = false; this.hostCn = false;
         this.partsGot = 0; this.partnerParts = 0;
         versus.active = false;
+        coopDuel.active = false;
         this.inRoom = false;
         this.active = false;
         this.role = null;
@@ -378,9 +411,94 @@ var coop = {
         this.partner = null;
         this.localReady = false;
         this.playWave = 0;
+        this.paint();
     },
 
     say:function(_m){ this.msg = _m; this.msgTime = 240; },
+
+    //相方が戦闘画面で倒れずにいるか(自分が倒れたときの復活の数え方に使う)
+    partnerAlive:function(){
+        var P = this.partner;
+        return !!(P && !P.down && P.page == 1);
+    },
+    //倒れている間、相方が COOP_REVIVE_TIME の間生き残っていたら、耐久1で復活する(ふたりとも自分の画面で数える)
+    reviveStep:function(){
+        var M = mainScreen;
+        if(!M.down || M.state != "play"){ M.downT = 0; return; }
+        if(!this.partnerAlive()) return;    //相方も倒れている(ふたりとも倒れたらゲームオーバー)・相方がいない間は進めない
+        if(++M.downT < COOP_REVIVE_TIME) return;
+        M.down = false;
+        M.downT = 0;
+        M.hp = 1;
+        M.invincible = COOP_REVIVE_GUARD;
+        M.yaruki = Math.max(M.yaruki, YARUKI_COST);
+        drone.look.setFace("dizzy", FACE_DIZZY_TIME);
+        fx.ring(drone.X, drone.Y, 90, "255,255,255", 22, 5);
+        fx.flare(drone.X, drone.Y, 60, this.role == "guest" ? P2_COLOR : "255,240,200", 18);
+        fx.sparks(drone.X, drone.Y, 20, "255,240,200", 6, 2.5);
+        popup(drone.X, drone.Y - 40, "復活！", "#2a8", true);
+        sound.play("warpIn");
+        this.addEvent(5, drone.X, drone.Y);    //相方の画面にも「復活！」と出す
+    },
+
+    //------------------------------------------------------------ 相方の時止めワープ(timeStop.js)
+    //相方が時を止めている間は、自分も止まった時の中にいる(動けず、当たらない。敵と弾も止まる)。相方だけが動ける
+    partnerStopped:function(){
+        return this.active && page.number == 1 && !!this.partner && this.partner.ts > 0 && this.partner.page == 1;
+    },
+    //相方の時止めの段階が届いた(_ts：timeStop.code)。止まる・動き出す瞬間に音を出し、組み上がったら新しい場所へすぐ移す
+    readStop:function(_P,_ts){
+        var was = _P.ts || 0;
+        _P.ts = _ts || 0;
+        if(was == _P.ts) return;
+        if(_P.ts == 4 || (was == 3 && _P.ts != 3)){ _P.pos.X = _P.tx; _P.pos.Y = _P.ty; }
+        if(page.number != 1 || timeStop.active) return;
+        if(!was && _P.ts){ sound.play("timeStop"); sound.timeWarp(true); }
+        if(was == 3 && _P.ts != 3) sound.play("warpIn");
+        if(was && !_P.ts){ sound.timeWarp(false); sound.play("timeResume"); }
+    },
+    stopK:0,    //相方が止めた時の、色の抜け具合(0～1)
+    //相方が時を止めている間：周りの色を抜いて、相方だけを色のまま描く(mainScreen.draw から。自分のドローン君を描いたあと)
+    drawStopped:function(){
+        var P = this.partner;
+        this.stopK = Math.min(1, this.stopK + 0.08);
+        var p = this.stopK;
+        ctx.save();
+        ctx.globalCompositeOperation = "saturation";
+        ctx.fillStyle = "rgba(128,128,128," + (0.92*p) + ")";
+        ctx.fillRect(-40,-40,CW + 80,CH + 80);
+        ctx.globalCompositeOperation = "source-over";
+        ctx.fillStyle = "rgba(15,25,55," + (0.45*p) + ")";
+        ctx.fillRect(-40,-40,CW + 80,CH + 80);
+        ctx.restore();
+        //ワープ中(粒子になって飛んでいる間)は、相方の体は見えず、光だけ
+        if(P.ts == 3){
+            enemyArt.halo(P.pos.X, P.pos.Y, 22, WARP_COLOR, 0.35);
+            return;
+        }
+        this.drawPartner();
+        if(P.ts == 2){
+            ctx.strokeStyle = "rgba(" + WARP_COLOR + "," + (0.5 + 0.4*Math.sin(time*0.15)) + ")";
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(P.pos.X, P.pos.Y, 30, 0, Math.PI*2); ctx.stroke();
+            ctx.lineWidth = 1;
+        }
+    },
+    //相方が時を止めている間の案内(画面の上)
+    drawStopUi:function(){
+        if(!this.partnerStopped()){ this.stopK = 0; return; }
+        if(timeStop.active) return;
+        ctx.save();
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "rgba(10,20,40,0.6)";
+        ctx.fillRect(0, CH/2 - 150, CW, 40);
+        ctx.font = "bold 20px sans-serif";
+        ctx.fillStyle = "rgb(" + WARP_COLOR + ")";
+        ctx.fillText((this.role == "host" ? "P2" : "P1") + "が時を止めた……", CW/2, CH/2 - 130);
+        ctx.restore();
+        ctx.fillStyle = "#000";
+    },
 
     //相方(敵の狙い用)
     partnerTarget:function(){
@@ -395,6 +513,7 @@ var coop = {
         if(!this.inRoom) return;
         if(this.grazeCd > 0) this.grazeCd--;
         this.framesSinceSnap++;
+        if(this.active && page.number == 1) this.reviveStep();
         //しばらく何も届かなければ切断とみなす(相方がタブを閉じた・回線が切れた)。
         //始まる前は数えない(ホストが招待リンクを送るため別のアプリに切り替えている間は、ホストの画面が止まっているため)
         if((this.active || versus.active) && this.connOpen && Date.now() - this.lastRecv > COOP_TIMEOUT){
@@ -462,17 +581,18 @@ var coop = {
     },
 
     phase:function(){
-        switch(page.number){ case 1: return "b"; case 3: return "o"; case 5: return "e"; }
+        switch(page.number){ case 1: return "b"; case 3: return "o"; case 5: return "e"; case 8: return "d"; }
         return "u";
     },
 
     //------------------------------------------------------------ ホスト→ゲスト
     buildHost:function(){
-        var s = { q:++this.sendQ, ph:this.phase(), w:game.wave, sc:game.score, ev:this.events, rd:this.localReady ? game.wave : 0, pc:this.partsGot, cn:this.wantContinue ? 1 : 0, d:this.diff, pw:this.playWave };
+        var s = { q:++this.sendQ, ac:this.active ? 1 : 0, ph:this.phase(), w:game.wave, sc:game.score, ev:this.events, rd:this.localReady ? game.wave : 0, pc:this.partsGot, cn:this.wantContinue ? 1 : 0, d:this.diff, pw:this.playWave };
         if(!this.active) return s;
         var M = mainScreen;
         var r = Math.round;
-        s.h = [r(drone.X), r(drone.Y), drone.look.shown, M.hp, M.maxHp, M.down ? 1 : 0, page.number];
+        if(page.number == 8) s.du = coopDuel.build();    //一騎打ち(coopDuel.js)
+        s.h = [r(drone.X), r(drone.Y), drone.look.shown, M.hp, M.maxHp, M.down ? 1 : 0, page.number, M.down ? M.downT : 0, timeStop.code()];
         if(page.number != 1) return s;
         s.st = COOP_STATES.indexOf(M.state);
         s.stt = M.stateTime;
@@ -485,14 +605,17 @@ var coop = {
         var shs = enemyShots.slice().sort(byDist);
         var pks = pickups.slice().sort(byDist);
         var arm = this.armsSummary();
+        var mir = coopMirror.build();   //ライバル・改の中身と演出の状態(coopMirror.js)
         var caps = [90,220,45,1];   //敵・弾・アイテム・武器
         for(var tries=0; tries<30; tries++){
             s.e = []; s.b = null; s.bm = null; s.bk = null;
             for(var i=0; i<Math.min(caps[0],ens.length); i++) this.packEnemy(ens[i], s);
-            s.s = [];
+            s.s = []; s.sx = [];
             for(var i=0; i<Math.min(caps[1],shs.length); i++){
                 var b = shs[i];
                 s.s.push(r(b.x), r(b.y), r(b.vx*10), r(b.vy*10), Math.max(0,COOP_SHOTS.indexOf(b.kind || "normal")));
+                var x = coopMirror.shotExtra(b);     //ライバルの針・改の光の槍などの中身(coopMirror.js)
+                if(x) s.sx.push(i, x);
             }
             s.p = [];
             for(var i=0; i<Math.min(caps[2],pks.length); i++){
@@ -500,6 +623,7 @@ var coop = {
                 s.p.push(p.id, r(p.x), r(p.y), COOP_PICKS.indexOf(p.kind));
             }
             s.a = caps[3] ? arm : 0;
+            s.mr = mir;
             if(JSON.stringify(s).length <= COOP_LIMIT) break;
             if(caps[3]){ caps[3] = 0; continue; }
             if(caps[1] > 30){ caps[1] -= 15; continue; }
@@ -565,12 +689,14 @@ var coop = {
         var M = mainScreen, r = Math.round;
         var g = {
             q:++this.sendQ,
-            x:r(drone.X), y:r(drone.Y), d:drone.look.shown, hp:M.hp, mh:M.maxHp, dn:M.down ? 1 : 0,
+            x:r(drone.X), y:r(drone.Y), d:drone.look.shown, hp:M.hp, mh:M.maxHp, dn:M.down ? 1 : 0, dt:M.down ? M.downT : 0, ts:timeStop.code(),
             pg:page.number, rd:this.localReady ? game.wave : 0,
             dm:this.dmg, got:this.got.slice(-30), bl:this.blast, ev:this.events, pc:this.partsGot, cn:this.wantContinue ? 1 : 0,
-            br:arms.blockLog    //バリアで防いだ数と、最近防いだ位置(ホストで弾を消してもらう)
+            br:arms.blockLog,   //バリアで防いだ数と、最近防いだ位置(ホストで弾を消してもらう)
+            cl:this.clears      //回避で消した・切り落とした弾(dodge.js)
         };
         if(page.number == 1) g.a = this.armsSummary();
+        if(page.number == 8) g.du = coopDuel.build();    //一騎打ち(coopDuel.js)
         if(JSON.stringify(g).length > COOP_LIMIT){ g.a = 0; }
         return g;
     },
@@ -581,10 +707,12 @@ var coop = {
         this.guestQ = _g.q || 0;
         if(!this.partner) this.partner = { pos:{ X:_g.x, Y:_g.y }, look:new DroneLook() };
         var P = this.partner;
-        P.tx = _g.x; P.ty = _g.y; P.dir = _g.d; P.hp = _g.hp; P.mh = _g.mh; P.down = !!_g.dn;
+        P.tx = _g.x; P.ty = _g.y; P.dir = _g.d; P.hp = _g.hp; P.mh = _g.mh; P.down = !!_g.dn; P.downT = _g.dt || 0;
+        this.readStop(P, _g.ts);
         P.page = _g.pg; P.rd = _g.rd; P.arms = _g.a || null;
         this.shareParts(_g.pc);
         P.cn = !!_g.cn;
+        if(page.number == 8) coopDuel.read(_g.du);
         if(page.number != 1 || !this.active) return;
         //敵へのダメージ(合計値の増えた分だけ反映)
         var dm = _g.dm || {};
@@ -616,6 +744,13 @@ var coop = {
                 if(Math.hypot(enemyShots[i].x - bl[1], enemyShots[i].y - bl[2]) < BLAST_RADIUS) enemyShots.splice(i,1);
             }
         }
+        //ゲストが回避で消した・切り落とした弾(dodge.js)：その線(円)のまわりの弾を消す(新しい分だけ。最近の8つまで届く)
+        var cl = _g.cl || [0];
+        if(cl[0] > this.clearDone){
+            var n = Math.min(cl[0] - this.clearDone, (cl.length - 1)/5);
+            this.clearDone = cl[0];
+            for(var k=cl.length - n*5; k<cl.length; k+=5) this.removeShots(cl[k], cl[k+1], cl[k+2], cl[k+3], cl[k+4]);
+        }
         //ゲストのバリアが防いだ弾：防いだ位置にいちばん近い弾を消す(新しく防いだ分だけ。最近の6つまで届く)
         var br = _g.br || [0];
         if(br[0] > this.blockDone){
@@ -632,6 +767,30 @@ var coop = {
         }
     },
 
+    //(_x1,_y1)-(_x2,_y2)の線から _R(＋弾の大きさ)以内の敵の弾を消す
+    removeShots:function(_x1,_y1,_x2,_y2,_R){
+        var sx = _x2 - _x1, sy = _y2 - _y1, L2 = sx*sx + sy*sy || 1;
+        for(var i=enemyShots.length-1; i>=0; i--){
+            var b = enemyShots[i];
+            if(b.behind) continue;
+            var u = Math.max(0, Math.min(1, ((b.x - _x1)*sx + (b.y - _y1)*sy)/L2));
+            if(Math.hypot(b.x - (_x1 + sx*u), b.y - (_y1 + sy*u)) <= _R + (b.r || 5)) enemyShots.splice(i,1);
+        }
+    },
+    //回避で弾を消した・切り落とした(dodge.js)。ゲストはホストへ知らせる(ホストの画面の弾が本物なので)
+    clearShots:function(_x1,_y1,_x2,_y2,_R){
+        if(!this.isGuest()) return;
+        var r = Math.round, c = this.clears;
+        c[0]++;
+        c.push(r(_x1), r(_y1), r(_x2), r(_y2), r(_R));
+        if(c.length > 1 + 8*5) c.splice(1, 5);
+    },
+    //ジャスト回避の見切りが始まった・切り返しで続いた(dodge.js)。_len：ゆっくりの長さ(フレーム)
+    onDodgeSlow:function(_len,_just){
+        if(!this.active) return;
+        this.addEvent(6, drone.X, drone.Y, _len*2 + (_just ? 1 : 0));
+    },
+
     //ゲスト：ホストの状態を読んで、進行を合わせる
     readHost:function(_s){
         if(_s.q <= this.snapQ) return;     //同じ状態・順番が入れ替わって遅れて届いた古い状態は読まない
@@ -641,18 +800,22 @@ var coop = {
         if(DIFFICULTIES[_s.d]) this.diff = _s.d;   //難易度はホストに合わせる
         if(_s.pw != null) this.playWave = _s.pw;   //次に出撃するWAVEもホストに合わせる
         if(!this.active){
-            //ホストの応答が来たらゲーム開始
+            //ホストが始めたらゲーム開始。WAVEはホストに合わせる(クリアしたことにはしない)
+            if(!_s.ac) return;
             this.startGame();
+            game.wave = _s.w;
             return;
         }
         if(_s.h){
             if(!this.partner) this.partner = { pos:{ X:_s.h[0], Y:_s.h[1] }, look:new DroneLook() };
             var P = this.partner;
-            P.tx = _s.h[0]; P.ty = _s.h[1]; P.dir = _s.h[2]; P.hp = _s.h[3]; P.mh = _s.h[4]; P.down = !!_s.h[5]; P.page = _s.h[6];
+            P.tx = _s.h[0]; P.ty = _s.h[1]; P.dir = _s.h[2]; P.hp = _s.h[3]; P.mh = _s.h[4]; P.down = !!_s.h[5]; P.page = _s.h[6]; P.downT = _s.h[7] || 0;
+            this.readStop(P, _s.h[8]);
             P.arms = _s.a || null;
         }
         game.score = _s.sc;
         this.shareParts(_s.pc);
+        if(page.number == 8) coopDuel.read(_s.du);
         this.hostCn = !!_s.cn;
         //ホストがコンティニューして強化画面へ戻った：自分も押していれば一緒に戻る
         if(page.number == 3 && this.wantContinue && _s.ph == "u"){
@@ -668,7 +831,7 @@ var coop = {
             }
             game.wave = _s.w;
             this.localReady = false;
-            if(game.wave > FINAL_WAVE) storyScreen.start("ending",function(){ page.change(5); });
+            if(game.wave > FINAL_WAVE) coopDuel.begin();    //最終決戦：一騎打ち(coopDuel.js)
             else goUpgrade();
             return;
         }
@@ -681,8 +844,8 @@ var coop = {
     },
 
     //------------------------------------------------------------ 出来事(衝撃波・ボス撃破・ジャスト衝撃波)
-    addEvent:function(_type,_x,_y){
-        this.events.push([++this.evSeq, _type, Math.round(_x), Math.round(_y)]);
+    addEvent:function(_type,_x,_y,_z){
+        this.events.push([++this.evSeq, _type, Math.round(_x), Math.round(_y), _z || 0]);
         if(this.events.length > 6) this.events.shift();
     },
     readEvents:function(_other){
@@ -701,9 +864,30 @@ var coop = {
                 popup(e[2], e[3] - 60, "ボス撃破！ 報酬+1", "#c33");
             }else if(e[1] == 3 && page.number == 1){
                 //相方のジャスト衝撃波：敵と弾を動かしているホストがゆっくりにする(ゲストの画面にもそのまま届く)
-                if(this.role == "host") mainScreen.slowmo = Math.max(mainScreen.slowmo, JUST_COOP_SLOW);
+                //相方のジャスト衝撃波：自分の画面も同じようにゆっくりになる(ホストの世界がゆっくり進むので、敵と弾はふたりとも同じ速さ)
+                mainScreen.startJustSlow(!!e[4]);
                 fx.ring(e[2], e[3], 90, JUST_COLOR, 22, 4);
                 popup(e[2], Math.max(40, e[3] - 50), "JUST!", "rgb(" + JUST_COLOR + ")", true);
+            }else if(e[1] == 6 && page.number == 1){
+                //相方のジャスト回避(見切り)・切り返しの続き。ホストは敵と弾をゆっくりにする(e[4]：長さ×2＋ジャスト回避なら1)
+                //自分の画面も同じ見切りの演出になる。ホストは dodge.slowStep で敵と弾をゆっくりにする(ゲストの画面にもそのまま届く)
+                var len = e[4] >> 1;
+                dodge.watchSlow(len);
+                if(e[4] & 1){
+                    fx.ring(e[2], e[3], 80, DODGE_COLOR, 18, 4);
+                    popup(e[2], Math.max(40, e[3] - 50), "ジャスト回避！", "rgb(" + DODGE_COLOR + ")", true);
+                }
+            }else if(e[1] == 7 && this.role == "host" && page.number == 1){
+                //ゲストのジャスト衝撃波：改の突進を弾き返す(ゲストの位置で判定する。finaleTriumph.js)
+                coopMirror.partnerBlast(e[2], e[3]);
+            }else if(e[1] == 8 && this.role == "guest" && page.number == 1){
+                //時の枷が閉じたとき、輪の中にいた(ホストが判定する。rivalTime.js)
+                rivalTime.shackle(rival.alive() || { lv:0 }, e[4]);
+            }else if(e[1] == 5 && page.number == 1){
+                //相方が復活した
+                fx.ring(e[2], e[3], 90, "255,255,255", 22, 5);
+                popup(e[2], e[3] - 40, "相方が復活！", "#2a8", true);
+                sound.play("warpIn");
             }else if(e[1] == 4 && this.role == "host" && page.number == 1){
                 //ゲストのジャスト・カウンター：その敵(突進・人間のドローン)をホストの画面で弾き返す(e[2] は敵の番号)
                 for(var j=0; j<enemies.length; j++){
@@ -719,9 +903,9 @@ var coop = {
         if(this.role == "guest") this.blast = [this.blast[0] + 1, Math.round(_x), Math.round(_y)];
     },
     //ジャスト衝撃波を出した(mainScreen.justBlast から)。相方に知らせ、ホストが敵と弾をゆっくりにする
-    onJust:function(_x,_y){
+    onJust:function(_x,_y,_good){
         if(!this.active) return;
-        this.addEvent(3,_x,_y);
+        this.addEvent(3, _x, _y, _good ? 1 : 0);
     },
     //ゲストがジャスト・カウンターで突進を弾き返した(mainScreen.counter から)。動かすのはホストなので知らせる
     onCounter:function(_e){
@@ -769,7 +953,7 @@ var coop = {
         var n = _total - this.partnerParts;
         this.partnerParts = _total;
         game.gainParts(n);
-        if(page.number == 1 && this.partner) popup(this.partner.pos.X, this.partner.pos.Y - 24, "パーツ+" + n, "rgb(" + P2_COLOR + ")");
+        if(page.number == 1 && this.partner) popup(this.partner.pos.X, this.partner.pos.Y - 24, "パーツ+" + n, "rgb(" + this.partnerColor() + ")");
     },
     //ゲストの攻撃が当たった(ダメージはホストへ送る)
     guestHit:function(_e,_dmg,_src){
@@ -792,6 +976,15 @@ var coop = {
         M.paused = false;
         //ボスの着地の瞬間のヒットストップ(届いた状態だけは読んでおく)
         if(M.hitStop > 0){ M.hitStop--; this.guestSync(); return; }
+        //時止めワープ(timeStop.js)：時が止まっている間は演出だけを進める(敵と弾はホストの画面でも止まる。届いた状態は写す)
+        if(timeStop.step()){ this.guestSync(); return; }
+        //ホストが時を止めている間は、自分も止まった時の中(動けず、撃てず、当たらない)
+        if(this.partnerStopped()){ this.guestSync(); return; }
+        //ジャスト衝撃波(自分か相方)のゆっくり：ホストと同じく、このコマを飛ばす(mainScreen.justSlowStep)
+        if(M.justSlowStep()) return;
+        coopMirror.guestFrame();    //最終局面の曲の時刻・時の枷の遅さ(coopMirror.js)
+        //ライバルの登場・目覚めの間は、ホストの画面で時が止まっている：自分も動けず、当たらない
+        if(coopMirror.worldHeld()){ this.guestSync(); M.updateEffects(); M.tickTimers(); return; }
         M.stateTime++;
         M.clock++;
         if(M.tint && --M.tint.life <= 0) M.tint = null;
@@ -816,18 +1009,21 @@ var coop = {
             return;
         }
         if(!M.down && M.state != "over"){
+            dodge.update();     //右クリックの回避ダッシュ(dodge.js)
             drone.update();
             M.updateYaruki();
             if(Click == 1 && M.state == "play") M.blast();
         }
         this.guestSync();
-        arms.update(M.state == "play" && !M.down && !special.holdFire());    //ドローン君改の復活の間は撃たない
+        dodge.slowStep();   //見切りの演出(敵と弾をゆっくりにするのはホスト。ゲストの画面にはゆっくり進んだ状態が届く)
+        if(rivalTime.armsStep()) arms.update(M.state == "play" && !M.down && !special.holdFire());    //ドローン君改の復活の間は撃たない。時の枷の間は装備が遅れる
         this.guestCollide();
         M.updateShots();
         M.updatePickups();
         M.updateEffects();
         if(M.invincible > 0) M.invincible--;
         if(M.guard > 0) M.guard--;
+        timeStop.tick();    //時止めワープのクールタイム
         if(M.yarukiMsg > 0) M.yarukiMsg--;
         if(M.rareMsgTime > 0) M.rareMsgTime--;
         M.tickTimers();
@@ -840,7 +1036,7 @@ var coop = {
             var e = enemies[i];
             e.x += e.vx; e.y += e.vy; e.t++;
             if(e.flash > 0) e.flash--;
-            if(e.look) e.look.update(dirFromVel(e.vx,e.vy), e.vx);
+            if(e.look && !(e.type == "kai" && e.trSong)) e.look.update(dirFromVel(e.vx,e.vy), e.vx);    //最終局面の改の向きはホストから写す(coopMirror.js)
         }
         if(!S || !S.e || this.appliedQ == S.q) return;
         var dt = Math.max(1, this.lastSyncGap || 2);
@@ -864,12 +1060,15 @@ var coop = {
                 if(type == "kai"){ e.look = new DroneLook(); e.look.tint = "190,20,30"; e.mines = []; e.strikes = []; }
                 if(type == "chrono") rival.guestInit(e);
                 if(type == "chronoClone") rival.guestInitClone(e);
+                //体力はホストから割合で届く。雑魚敵・レア敵はホストと同じ式で最大値を見積もる(回避の切り返しで倒せたかを数えるため。dodge.cutDown)
+                var HT = ENEMY_TYPES[type] || RARE_TYPES[type];
+                if(HT && HT.hp) e.maxHp = Math.ceil(HT.hp*(1 + (game.wave - 1)*ENEMY_HP_GROW)*difficulty().hp)*COOP_HP_MUL;
             }else{
                 e.vx = (x - e.x)/dt*0.5 + e.vx*0.5;
                 e.vy = (y - e.y)/dt*0.5 + e.vy*0.5;
             }
             e.x = x; e.y = y;
-            e.hp = S.e[i+4];
+            e.hp = S.e[i+4]/100*e.maxHp;
             var p1 = S.e[i+5]/100, p2 = S.e[i+6], fl = S.e[i+7];
             if(fl & 1) e.flash = Math.max(e.flash,3);
             e.slow = (fl & 2) ? 2 : 0;
@@ -941,6 +1140,9 @@ var coop = {
             enemyShots.push({ x:S.s[i], y:S.s[i+1], vx:S.s[i+2]/10, vy:S.s[i+3]/10, r:SHOT_KINDS[kind].r, kind:kind,
                               grazed:false, color:"150,20,30" });
         }
+        var sx = S.sx || [];
+        for(var i=0; i<sx.length; i+=2) if(enemyShots[sx[i]]) coopMirror.applyShot(enemyShots[sx[i]], sx[i+1]);
+        coopMirror.apply(S.mr);     //ライバル・改の中身と演出の状態を写す(coopMirror.js)
         //アイテム(自分が拾ったものは出さない)
         var mine = {};
         for(var i=0; i<this.got.length; i++) mine[this.got[i]] = true;
@@ -963,6 +1165,7 @@ var coop = {
         //ドローン君改が倒れて復活する見た目と音(ホストと同じく、届いた mode で決まる)
         for(var i=0; i<enemies.length; i++) if(enemies[i].type == "kai" && enemies[i].look) special.kaiFx(enemies[i]);
         if(M.down) return;
+        coopMirror.guestHazards();  //ホストの動きの中で判定している当たり(coopMirror.js)
         for(var i=0; i<enemies.length; i++){
             var e = enemies[i];
             if(e.dead) continue;
@@ -979,7 +1182,8 @@ var coop = {
                 var nB = special.kaiBlades(e);
                 for(var k=0; k<nB; k++){
                     var a = e.bladeA + k*Math.PI*2/nB;
-                    if(Math.hypot(drone.X - (e.x + Math.cos(a)*64), drone.Y - (e.y + Math.sin(a)*64)) < 12 + HIT_CORE && M.canBeHit()) M.damage();
+                    var bR = special.bladeR(e);
+                    if(Math.hypot(drone.X - (e.x + Math.cos(a)*bR), drone.Y - (e.y + Math.sin(a)*bR)) < 12 + HIT_CORE && M.canBeHit()) M.damage();
                 }
                 //落雷(予告が終わる瞬間に範囲内なら被弾)
                 for(var k=0; k<e.strikes.length; k++){
@@ -1016,8 +1220,8 @@ var coop = {
         ctx.font = "bold 12px sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillStyle = "rgb(" + P2_COLOR + ")";
-        ctx.fillText(label + (P.down ? " ダウン" : ""), P.pos.X, P.pos.Y - 32);
+        ctx.fillStyle = "rgb(" + this.partnerColor() + ")";
+        ctx.fillText(label + (P.down ? " ダウン" + (this.partnerAlive() ? "　復活まで" + Math.ceil(Math.max(0, COOP_REVIVE_TIME - (P.downT || 0))/60) + "秒" : "") : ""), P.pos.X, P.pos.Y - 32);
         ctx.fillStyle = "#000";
     },
 
@@ -1087,13 +1291,13 @@ var coop = {
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
         ctx.font = "bold 12px sans-serif";
-        ctx.fillStyle = "rgb(" + P2_COLOR + ")";
+        ctx.fillStyle = "rgb(" + this.partnerColor() + ")";
         var label = this.role == "host" ? "P2" : "P1";
         if(P && P.mh){
             ctx.fillText(label + " 耐久",14,104);
             for(var i=0; i<P.mh; i++){
                 if(i < P.hp){ ctx.fillRect(66 + i*14,98,11,11); }
-                else{ ctx.strokeStyle = "rgba(" + P2_COLOR + ",0.5)"; ctx.strokeRect(66.5 + i*14,98.5,10,10); }
+                else{ ctx.strokeStyle = "rgba(" + this.partnerColor() + ",0.5)"; ctx.strokeRect(66.5 + i*14,98.5,10,10); }
             }
         }else{
             ctx.fillText(label + "：接続待ち",14,104);
@@ -1229,7 +1433,7 @@ var coopScreen = {
         ctx.fillText(coop.mode == "vs"
             ? "ドローン君同士の1対1。装備を3つ選んで戦います（インターネット接続が必要）"
             : coop.mode == null ? "招待された部屋につないでいます"
-            : "ストーリーモードをふたりで。敵の体力は2倍、強化・装備はそれぞれ別です（インターネット接続が必要）",CW/2,GS*3.8);
+            : "ひとり用と同じステージをふたりで。進み具合はホストのひとり用と共通です（インターネット接続が必要）",CW/2,GS*3.8);
 
         if(!coop.available){
             ctx.fillStyle = "#c33";

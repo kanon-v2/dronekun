@@ -757,12 +757,12 @@ var endingScreen = {
         this.newRecord = game.score > best;
         if(this.newRecord) save.setBest(game.score);
         this.best = Math.max(best, game.score);
-        //クリアしたのでこの周のセーブは消して(パーツ・能力は残す)、クリア済みの印を残す(協力プレイではひとり用のセーブは消さない)
+        //クリアしたのでこの周のセーブは消して(パーツ・能力は残す)、クリア済みの印を残す(協力プレイのゲストは書かない。save.readOnly)
         this.coopMode = coop.active;
         game.keepProgress();
-        save.writeMeta();       //協力プレイは協力プレイ用に書く
-        if(!coop.active) save.clear();
-        try{ localStorage.setItem("dronekun_cleared","1"); }catch(e){}
+        save.writeMeta();
+        save.clear();
+        if(!save.readOnly()){ try{ localStorage.setItem("dronekun_cleared","1"); }catch(e){} }
         this.t = 0;
     },
     update:function(){
@@ -790,7 +790,13 @@ var endingScreen = {
         ctx.font = "16px sans-serif";
         ctx.fillText(this.newRecord ? "ハイスコア更新！" : "ハイスコア " + this.best,CW/2,GS*9.6);
         ctx.fillStyle = "#888";
-        ctx.fillText("遊んでくれてありがとう。",CW/2,GS*11.6);
+        //協力プレイ：最後の一騎打ちの結果(coopDuel.js)
+        if(this.coopMode && coopDuel.result){
+            ctx.fillStyle = "#e8c070";
+            ctx.fillText(coopDuel.resultText(),CW/2,GS*10.7);
+            ctx.fillStyle = "#888";
+            ctx.fillText("遊んでくれてありがとう。",CW/2,GS*12.0);
+        }else ctx.fillText("遊んでくれてありがとう。",CW/2,GS*11.6);
         ctx.globalAlpha = 1;
         ctx.font = "bold 22px serif";
         if(endTitleButton.contains(MouseX,MouseY)){

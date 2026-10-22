@@ -56,7 +56,9 @@ bgmTrial.finale = 0; bgmTrial.fight = 0;
 <script src="scripts/drone/emotionHint.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="scripts/drone/coop.js"></script>
+<script src="scripts/drone/coopMirror.js"></script>
 <script src="scripts/drone/versus.js"></script>
+<script src="scripts/drone/coopDuel.js"></script>
 <script src="scripts/drone/draw.js"></script>
 <script>
 var out = [], fails = 0;
@@ -2518,6 +2520,62 @@ function finish2(){
               flyOk, "数:" + flyCount + " ふつう:" + plainN + "/1000 全種:" + allPick + " gazed:" + gazed + " jolted:" + jolted + " swing:" + swung.toFixed(3) + " rose:" + rose.toFixed(1) + " fell:" + fell +
               " mail:" + mailN + " lost:" + lostTurn + " greet:" + greeted + " roll:" + rolled + " err:" + errors.slice(flyErr).join("/"));
     }catch(e){ fails++; L("NG   例外 " + e.stack); }
+    //協力プレイの一騎打ち(coopDuel.js)：再構築プロトコルと決着の決まり。通信はせず、相手の状態(coopDuel.read に届くもの)を作って確かめる
+    try{
+        var dErr = errors.length;
+        coop.active = true; coop.role = "host"; coop.partner = { pos:{ X:0, Y:0 }, page:8 };
+        var dm = 0;
+        var foe = function(_o){ var o = { ph:"f", x:700, y:270, d:0, hp:100, mh:100, dm:dm, rb:0, dead:0, gd:0, bl:[0,0,0] }; for(var k in _o) o[k] = _o[k]; coopDuel.read(o); };
+        var hitMe = function(_n, _o){ dm += _n*10; foe(_o || {}); };
+        var runD = function(_n){ for(var i=0; i<_n; i++){ MouseIn = true; MouseX = 200; MouseY = 270; coopDuel.update(); } };
+        var start = function(){ dm = 0; coopDuel.begin(); foe({ ph:"i" }); runD(DUEL_INTRO + 2); foe({}); mainScreen.guard = 0; dodge.reset(); };
+        //1. 先に倒れると再構築：その間は被弾せず、耐久は満ちていき、終わると満タン・攻撃が強くなる。そのあと倒れると負け
+        start();
+        var fightOk = coopDuel.phase == "fight" && coopDuel.live();
+        hitMe(coopDuel.mh + 1);
+        var rb1 = coopDuel.rb == 1 && coopDuel.phase == "rebuild" && !coopDuel.dead;
+        runD(Math.round(DUEL_REBUILD/2));
+        var hpMid = coopDuel.hp;
+        hitMe(coopDuel.mh*2);
+        var safe = coopDuel.hp >= hpMid - 0.01 && coopDuel.phase == "rebuild";
+        var filling = hpMid > coopDuel.mh*0.3 && hpMid < coopDuel.mh*0.7;
+        runD(DUEL_REBUILD);
+        var after = coopDuel.rb == 2 && coopDuel.phase == "fight" && coopDuel.hp == coopDuel.mh && coopDuel.pow == DUEL_REBUILD_POW;
+        mainScreen.guard = 0; dodge.reset();
+        hitMe(coopDuel.mh + 1);
+        var lose1 = coopDuel.dead && coopDuel.phase == "result" && coopDuel.result == "lose";
+        check("一騎打ち：先に倒れると再構築し、その間は被弾せず耐久が満ちていき、終わると満タン・攻撃" + DUEL_REBUILD_POW + "倍。2度目に倒れると負け",
+              fightOk && rb1 && safe && filling && after && lose1, "戦い" + fightOk + " 再構築" + rb1 + " 途中の被弾なし" + safe + " 満ちていく" + Math.round(hpMid/coopDuel.mh*100) + "% 終わり" + after + " 負け" + lose1);
+        //2. 相手がもう再構築していれば、自分は再構築せずに負け
+        start();
+        foe({ rb:2 });
+        hitMe(coopDuel.mh + 1, { rb:2 });
+        check("一騎打ち：相手が再構築したあとに倒れると、再構築せずに負け", coopDuel.rb == 0 && coopDuel.result == "lose", "rb" + coopDuel.rb + " " + coopDuel.result);
+        //3. ほぼ同時に倒れ、相手が先に負けた：再構築の途中でもすぐ勝ち
+        start();
+        hitMe(coopDuel.mh + 1);
+        runD(30);
+        foe({ dead:1 });
+        runD(1);
+        check("一騎打ち：再構築の途中で相手が倒れたら、その場で勝ち", coopDuel.result == "win" && coopDuel.phase == "result", coopDuel.phase + " " + coopDuel.result);
+        //4. 相手が再構築している間は攻撃が届かない・凍った相手への一撃も2倍にならない(ホストだけ強くならない)
+        start();
+        foe({ rb:1, ph:"r" });
+        var d0 = coopDuel.dealt;
+        mainScreen.hitEnemy(coopDuel.foe, 5, "gun");
+        var blocked = coopDuel.dealt == d0;
+        foe({});
+        coopDuel.foe.frozen = 30;
+        mainScreen.hitEnemy(coopDuel.foe, 1, "gun");
+        var one = coopDuel.dealt - d0, want = Math.round(1*VS_DAMAGE_MUL.gun*(1 + BUFF_POWER*game.buff("power"))*mainScreen.comboMul()*10);
+        check("一騎打ち：相手の再構築中は攻撃が届かず、凍った相手への一撃も2倍にならない", blocked && one == want, "届いた" + !blocked + " 一撃" + one + "/" + want);
+        //5. 決着のあと、エンディングに結果を出す
+        foe({ dead:1 });
+        runD(DUEL_RESULT_AUTO + 2);
+        check("一騎打ち：決着のあとエンディングへ進み、結果を出す", page.number == 5 && coopDuel.result == "win" && /P1（あなた）/.test(coopDuel.resultText()) && errors.length == dErr, "page" + page.number + " " + coopDuel.resultText() + " " + errors.slice(dErr).join("/"));
+        coop.active = false; coop.role = null; coop.partner = null; coopDuel.active = false; coopDuel.result = ""; coop.paint();
+        page.change(0);
+    }catch(e){ fails++; L("NG   例外 " + e.stack); coop.active = false; coop.role = null; coop.partner = null; }
     //テスト前の見た目の設定を戻す
     try{ if(keepSkin) localStorage.setItem(droneSkin.KEY, keepSkin); else localStorage.removeItem(droneSkin.KEY); }catch(e){}
     report();

@@ -17,7 +17,8 @@
 //  光る目、まわりに暗い炎と歯車のかけら、長く暗い色のハチマキ
 //  時の速さの仕組み：mainScreen.update が rivalTime.frame() で1コマごとに進め、加速・時飛ばしの分だけ敵と弾を余分に動かす。
 //  ドローン君の時が遅い間は、drone.calcXY の追従が遅れ(rivalTime.delay)、装備は何コマかに1回だけ動く(rivalTime.armsStep)
-//  協力プレイには対応していない(凍結)
+//  協力プレイ：ホストが動かし、輪・裂け目などはゲストへ写す(coopMirror.js)。枷の輪はいちばん近いドローン君を追い、閉じたときは
+//  ふたりとも判定する(ゲストの分はホストが判定して知らせる。出来事 8)。ゲストの時の遅さは coopMirror.guestFrame
 //------------------------------------------------------------------------------
 //時の枷
 const CT_SHACKLE_K      = 0.42;         //枷をかけられたドローン君の時の速さ(動き・装備)
@@ -136,8 +137,8 @@ var rivalTime = {
         if(this.preview > 0) this.preview--;
         //時の枷の輪：ゆっくりドローン君へ寄る
         for(var i=0; i<this.rings.length; i++){
-            var R = this.rings[i], dx = drone.X - R.x, dy = drone.Y - R.y, d = Math.hypot(dx,dy), f = CT_SHACKLE_FOLLOW[e.lv]*w*(R.n == 1 ? CT_SHACKLE_LUNGE : 1);
-            if(d > f){ R.x += dx/d*f; R.y += dy/d*f; } else { R.x = drone.X; R.y = drone.Y; }
+            var R = this.rings[i], tg = nearestPlayer(R.x, R.y), dx = tg.X - R.x, dy = tg.Y - R.y, d = Math.hypot(dx,dy), f = CT_SHACKLE_FOLLOW[e.lv]*w*(R.n == 1 ? CT_SHACKLE_LUNGE : 1);
+            if(d > f){ R.x += dx/d*f; R.y += dy/d*f; } else { R.x = tg.X; R.y = tg.Y; }
             if(R.flash > 0) R.flash--;
         }
         this.rings = this.rings.filter(function(R){ return R.n > 0 || R.flash > 0; });
@@ -319,7 +320,8 @@ var rivalTime = {
 
     //------------------------------------------------------------ 時の枷
     ringStart:function(_e){
-        this.rings.unshift({ x:drone.X, y:drone.Y, n:CT_SHACKLE_TICKS, R:CT_SHACKLE_R[0], flash:0 });
+        var tg = aimAt || drone;
+        this.rings.unshift({ x:tg.X, y:tg.Y, n:CT_SHACKLE_TICKS, R:CT_SHACKLE_R[0], flash:0 });
         sound.play("timeStop");
         rivalSfx.tick(true);
     },
@@ -331,12 +333,17 @@ var rivalTime = {
         if(_R.n > 0) return;
         _R.flash = 16;
         fx.ring(_R.x, _R.y, CT_SHACKLE_R[1] + 20, CT_SLOW, 14, 4);
-        if(Math.hypot(drone.X - _R.x, drone.Y - _R.y) <= CT_SHACKLE_R[1] && !mainScreen.down) this.shackle(_e);
-        else popup(_R.x, _R.y - CT_SHACKLE_R[1] - 8, "かわした！", "rgb(30,150,200)");
+        var me = Math.hypot(drone.X - _R.x, drone.Y - _R.y) <= CT_SHACKLE_R[1] && !mainScreen.down;
+        //協力プレイの相方(ゲスト)も輪の中にいれば、枷がかかったと知らせる(coop.readEvents)
+        var P = coop.partnerTarget(), them = !!P && Math.hypot(P.X - _R.x, P.Y - _R.y) <= CT_SHACKLE_R[1];
+        if(them) coop.addEvent(8, P.X, P.Y, Math.round(CT_SHACKLE_BEATS[_e.lv]*rival.beatF()));
+        if(me) this.shackle(_e);
+        else if(!them) popup(_R.x, _R.y - CT_SHACKLE_R[1] - 8, "かわした！", "rgb(30,150,200)");
     },
     //ドローン君に枷をかける(時が遅くなる)
-    shackle:function(_e){
-        this.shackleF = this.shackleT = Math.round(CT_SHACKLE_BEATS[_e.lv]*rival.beatF());
+    //_f：長さ(フレーム。協力プレイのゲストはホストから届く)
+    shackle:function(_e,_f){
+        this.shackleF = this.shackleT = _f || Math.round(CT_SHACKLE_BEATS[_e.lv || 0]*rival.beatF());
         popup(drone.X, drone.Y - 36, "時が…遅い！", "rgb(70,90,200)");
         drone.look.setFace("sad", 90);
         fx.shake(5);
