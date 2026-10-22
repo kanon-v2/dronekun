@@ -434,7 +434,7 @@ var puppetStage = {
         if(puppetStage.on() && puppetStage.ready()){
             puppetStage.drawCurtain();
             puppetStage.drawTone();
-            puppetStage.drawHud(this);
+            if(!puppeteer.cine()) puppetStage.drawHud(this);     //明かすムービーの間は表示を隠す
             return;
         }
         return hud0.apply(this, arguments);
@@ -442,7 +442,7 @@ var puppetStage = {
     var bar0 = special.drawBossBar;
     special.drawBossBar = function(){
         var b = puppeteer.alive();
-        if(b && puppetStage.on() && puppetStage.ready()){ puppetStage.drawBossBar(b); return; }
+        if(b && puppetStage.on() && puppetStage.ready()){ if(!puppeteer.cine()) puppetStage.drawBossBar(b); return; }
         return bar0.apply(this, arguments);
     };
     //人形の糸の強さ：木の溝に紫の糸の色、金のふち

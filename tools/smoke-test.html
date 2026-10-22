@@ -1826,7 +1826,7 @@ try{
     var pGo = page.number == 1 && game.wave == 10 && bossDebug.puppeteer && bossTypeFor(10) == "puppeteer", pb = null;
     //舞台(puppetStage.js)：傀儡師戦の間だけ舞台になり、ドローン君の見た目が替わる
     var pStageOn = puppetStage.on() && droneSkin.current == STAGE_SKIN, pSkin0 = puppetStage.skinBefore;
-    var pTwist = false, pSnap = false, pSubs = {}, pShield = false, pStages = {}, pThrow = false, pCut = false, pThread = false, pAllyShot = false, pLast = false, pRally = false, pKill = false, pFloor = true;
+    var pTwist = false, pSnap = false, pCine = false, pCineReady = false, pSubs = {}, pShield = false, pStages = {}, pThrow = false, pCut = false, pThread = false, pAllyShot = false, pLast = false, pRally = false, pKill = false, pFloor = true;
     for(var i=0; i<9000 && page.number == 1; i++){
         bot();
         mainScreen.update();
@@ -1841,7 +1841,8 @@ try{
             var h0 = pb.hp; mainScreen.hitEnemy(pb, 5); if(pb.hp == h0) pShield = true;
         }
         if(puppeteer.threads.length) pThread = true;
-        if(puppeteer.twist){ pTwist = pTwist || pb.mode == "last"; if(puppeteer.twist.cut >= 0) pSnap = true; }     //操られていた：影の糸が下り、とどめで切れる
+        if(puppeteer.twist){ pTwist = pTwist || pb.mode == "last"; if(puppeteer.twist.cut >= 0) pSnap = true; }
+        if(puppeteer.cine()){ pCine = true; if(puppeteer.ready) pCineReady = true; }     //明かすムービーの間は一斉反撃の合図ができない     //操られていた：影の糸が下り、とどめで切れる
         if(puppeteer.shots.length) pAllyShot = true;
         //投げつけてきた人形はジャスト・カウンターで糸ごと断ち切る
         pups.forEach(function(p){
@@ -1861,7 +1862,7 @@ try{
           pGo && pShield && pStages.summon && pStages.act && pStages.stun && pStages.solo && pThrow && pCut && pThread && pAllyShot && puppeteer.freed == 7 && pFloor && pLast && pRally && pKill && errors.length == perr,
           "始まる" + pGo + " 盾" + pShield + " 動き" + Object.keys(pStages).join(",") + " 投げ" + pThrow + " 断ち切り" + pCut + " 糸" + pThread +
           " 味方の弾" + pAllyShot + " 攻撃" + Object.keys(pSubs).join(",") + " 解放" + puppeteer.freed + " 下限" + pFloor + " 合図" + pLast + " 一斉" + pRally + " 撃破" + pKill + " エラー" + (errors.length - perr));
-    check("傀儡師(試作)：最後のあがきで、傀儡師を操る影の糸が下りてきて、とどめで切れる", pTwist && pSnap, "影" + pTwist + " 切れる" + pSnap);
+    check("傀儡師(試作)：最後のあがきで、傀儡師を操る影の糸が下りてきて(ムービーの間は合図できない)、とどめで切れる", pTwist && pSnap && pCine && !pCineReady, "影" + pTwist + " ムービー" + pCine + " 合図" + pCineReady + " 切れる" + pSnap);
     check("傀儡師(試作)：倒すとメニューへ戻り、ふつうのボスに戻る",
           page.number == 0 && bossDebug.menu && !bossDebug.puppeteer && bossTypeFor(10) == "fortress", bossDebug.msg);
     //傀儡師の手の攻撃：4種類がそれぞれ最後まで動いて終わり、つまみ取りに捕まると被弾する

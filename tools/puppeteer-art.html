@@ -123,7 +123,8 @@ function film(){
         step(60); b.count = 99999; shot(n++, "第二幕");
         b.stage = 3; step(110); b.count = 99999; shot(n++, "第三幕");
         b.mode = "last"; b.count = 9999; puppeteer.twist = { t:0, x:b.x, cut:-1 };
-        [40, 90, 150, 230].forEach(function(at, i){ step(at - (i ? [40,90,150][i - 1] : 0)); shot(n++, "影 f" + at); });
+        [30, 110, 170, 250].forEach(function(at, i){ step(at - (i ? [30,110,170][i - 1] : 0)); shot(n++, "影 f" + at); });
+        step(PUP_TWIST.cine + 30 - 250);
         puppeteer.twist.cut = 0; step(20); shot(n++, "糸が切れる");
         step(60); shot(n++, "影が退く");
         return;
