@@ -1860,7 +1860,7 @@ var mainScreen = {
         }
 
         //体力ゲージ(硬い敵が傷ついたとき)
-        if(_e.maxHp > 1 && _e.hp < _e.maxHp && !_e.boss && !_e.clone){     //分身は本物と見分けがつかないよう出さない
+        if(_e.maxHp > 1 && _e.hp < _e.maxHp && !_e.boss && !_e.clone && _e.type != "puppet"){     //分身は本物と見分けがつかないよう出さない。傀儡師の人形は自分で糸の強さを出す
             var w = _e.r*2;
             ctx.fillStyle = "#ddd";
             ctx.fillRect(_e.x - w/2, _e.y - _e.r - 10, w, 4);

@@ -5,7 +5,7 @@
   ヘッドレスEdgeで撮る：msedge --headless=new --disable-gpu --allow-file-access-from-files --virtual-time-budget=3000
                         --window-size=1920,1080 --screenshot=<出力.png> file:///.../tools/puppeteer-art.html
   #only=番号(0～3) で1場面だけを等倍で出す(--window-size=960,540)
-  #pup2d で前の図形の絵(Blender の絵を使わない)
+  #pup2d で前の図形の絵(Blender の絵を使わない)。#fire でドローン君が撃つ(装備の見た目の確認)
 -->
 <html lang="ja"><head><meta charset="UTF-8"><base href="../"><title>傀儡師の見た目</title>
 <style>body{margin:0;background:#888}#Bigbox{position:absolute;left:-9999px}#out{display:block}</style></head>
@@ -90,7 +90,7 @@ function step(_n,_until){
 function boss(){ return enemies.filter(function(e){ return e.type == "puppeteer"; })[0]; }
 function pups(){ return enemies.filter(function(e){ return e.type == "puppet" && !e.dead; }); }
 //ドローン君は撃たない(人形の糸がすぐ切れて、場面が進みすぎないように)
-var hold = true, hold0 = special.holdFire;
+var hold = !/fire/.test(location.hash), hold0 = special.holdFire;     //#fire なら撃つ(装備の見た目の確認。場面は進みやすい)
 special.holdFire = function(){ return hold || hold0.apply(this, arguments); };
 //Blender の絵(images/game/puppeteer/)を読み込んでから撮る(#pup2d なら図形の絵)
 function waitArt(){
@@ -99,7 +99,55 @@ function waitArt(){
     else setTimeout(waitArt, 50);
 }
 setTimeout(waitArt, 0);
+//#film：傀儡師の動きをコマ送りで並べる(上2段：攻撃の前のため → 身を乗り出す → 戻る。下の段：高笑い)
+function film(){
+    bossDebug.god = true; bossDebug.puppeteer = true; bossDebug.start(10);
+    step(3000, function(){ var b = boss(); return b && b.mode == "act" && b.sub == "rest"; });
+    var b = boss();
+    outC.width = 1200; outC.height = 690;
+    octx.fillStyle = "#222"; octx.fillRect(0, 0, outC.width, outC.height);
+    var shot = function(_n, _label){
+        ctx.fillStyle = "white"; ctx.fillRect(0,0,CW,CH); screens[page.number].draw();
+        var x = (_n % 4)*300, y = Math.floor(_n/4)*230;
+        if(/film=act/.test(location.hash)) octx.drawImage(canvas, 0, 0, CW*renderScale, CH*renderScale, x, y, 300, 169);
+        else octx.drawImage(canvas, 120*renderScale, 30*renderScale, 680*renderScale, 510*renderScale, x, y, 300, 225);
+        octx.fillStyle = "#fff"; octx.font = "bold 13px sans-serif"; octx.fillText(_label, x + 6, y + 16);
+    };
+    var n = 0;
+    if(/film=act/.test(location.hash)){
+        //幕間(緞帳が下りて舞台が変わる)と、最後のあがきで明かされる影
+        puppeteer.bound().forEach(function(p){ p.hp = p.maxHp = 1e9; });
+        b.count = 99999;
+        b.stage = 2;
+        [8, 30, 50, 75].forEach(function(at, i){ step(at - (i ? [8,30,50][i - 1] : 0)); shot(n++, "幕間 f" + at); });
+        step(60); b.count = 99999; shot(n++, "第二幕");
+        b.stage = 3; step(110); b.count = 99999; shot(n++, "第三幕");
+        b.mode = "last"; b.count = 9999; puppeteer.twist = { t:0, x:b.x, cut:-1 };
+        [40, 90, 150, 230].forEach(function(at, i){ step(at - (i ? [40,90,150][i - 1] : 0)); shot(n++, "影 f" + at); });
+        puppeteer.twist.cut = 0; step(20); shot(n++, "糸が切れる");
+        step(60); shot(n++, "影が退く");
+        return;
+    }
+    if(/film=atk/.test(location.hash)){
+        //手の攻撃：叩きつけ・なぎ払い・つまみ取り・指はじきを3コマずつ
+        puppeteer.bound().forEach(function(p){ p.hp = p.maxHp = 1e9; });
+        b.count = 99999;
+        [["slam",[30,64,80]],["sweep",[30,58,70]],["grab",[60,84,92]],["flick",[25,40,52]]].forEach(function(a){
+            puppeteer.stopHands(b);
+            puppeteer.handAttack(b, a[0], false);
+            var f = 0;
+            a[1].forEach(function(at){ step(at - f); f = at; shot(n++, a[0] + " f" + at); });
+            step(200, function(){ return !puppeteer.handBusy(b); });
+        });
+        return;
+    }
+    b.antic = PUP_ANTIC_T; b.sub = "film"; b.lastSub = "film";
+    for(var i=0; i<8; i++){ shot(n++, "ため・乗り出し f" + i*6); step(6); }
+    b.laugh = PUP_LAUGH_T;
+    for(var i=0; i<4; i++){ step(5); shot(n++, "高笑い f" + i*5); }
+}
 function run(){
+if(/film/.test(location.hash)){ try{ film(); }catch(ex){ document.getElementById("log").textContent += "EX " + ex.message; } return; }
 try{
 bossDebug.god = true;
 bossDebug.puppeteer = true;

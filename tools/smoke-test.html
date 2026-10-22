@@ -1826,21 +1826,22 @@ try{
     var pGo = page.number == 1 && game.wave == 10 && bossDebug.puppeteer && bossTypeFor(10) == "puppeteer", pb = null;
     //舞台(puppetStage.js)：傀儡師戦の間だけ舞台になり、ドローン君の見た目が替わる
     var pStageOn = puppetStage.on() && droneSkin.current == STAGE_SKIN, pSkin0 = puppetStage.skinBefore;
-    var pShield = false, pStages = {}, pThrow = false, pCut = false, pThread = false, pAllyShot = false, pLast = false, pRally = false, pKill = false, pFloor = true;
+    var pTwist = false, pSnap = false, pSubs = {}, pShield = false, pStages = {}, pThrow = false, pCut = false, pThread = false, pAllyShot = false, pLast = false, pRally = false, pKill = false, pFloor = true;
     for(var i=0; i<9000 && page.number == 1; i++){
         bot();
         mainScreen.update();
         var pbNow = enemies.filter(function(e){ return e.type == "puppeteer"; })[0];
         if(pbNow) pb = pbNow;
-        if(!pbNow){ if(pb && pb.dead) pKill = true; if(i % 20 == 0) draw1(); continue; }
+        if(!pbNow){ if(pb && pb.dead) pKill = true; if(puppeteer.twist && puppeteer.twist.cut >= 0) pSnap = true; if(i % 20 == 0) draw1(); continue; }
         if(mainScreen.bossFreeze || mainScreen.state != "play"){ if(i % 20 == 0) draw1(); continue; }
-        pStages[pb.mode] = true;
+        pStages[pb.mode] = true; pSubs[pb.mode + ":" + pb.sub] = true;
         var pups = enemies.filter(function(e){ return e.type == "puppet" && !e.dead; });
         if(pb.mode == "act" && pups.length && pb.phased){
             //盾にしている間は傀儡師に効かない
             var h0 = pb.hp; mainScreen.hitEnemy(pb, 5); if(pb.hp == h0) pShield = true;
         }
         if(puppeteer.threads.length) pThread = true;
+        if(puppeteer.twist){ pTwist = pTwist || pb.mode == "last"; if(puppeteer.twist.cut >= 0) pSnap = true; }     //操られていた：影の糸が下り、とどめで切れる
         if(puppeteer.shots.length) pAllyShot = true;
         //投げつけてきた人形はジャスト・カウンターで糸ごと断ち切る
         pups.forEach(function(p){
@@ -1859,9 +1860,35 @@ try{
     check("傀儡師(試作)：人形を盾にし、糸を切ると味方になり、3幕のあと一斉反撃で倒す",
           pGo && pShield && pStages.summon && pStages.act && pStages.stun && pStages.solo && pThrow && pCut && pThread && pAllyShot && puppeteer.freed == 7 && pFloor && pLast && pRally && pKill && errors.length == perr,
           "始まる" + pGo + " 盾" + pShield + " 動き" + Object.keys(pStages).join(",") + " 投げ" + pThrow + " 断ち切り" + pCut + " 糸" + pThread +
-          " 味方の弾" + pAllyShot + " 解放" + puppeteer.freed + " 下限" + pFloor + " 合図" + pLast + " 一斉" + pRally + " 撃破" + pKill + " エラー" + (errors.length - perr));
+          " 味方の弾" + pAllyShot + " 攻撃" + Object.keys(pSubs).join(",") + " 解放" + puppeteer.freed + " 下限" + pFloor + " 合図" + pLast + " 一斉" + pRally + " 撃破" + pKill + " エラー" + (errors.length - perr));
+    check("傀儡師(試作)：最後のあがきで、傀儡師を操る影の糸が下りてきて、とどめで切れる", pTwist && pSnap, "影" + pTwist + " 切れる" + pSnap);
     check("傀儡師(試作)：倒すとメニューへ戻り、ふつうのボスに戻る",
           page.number == 0 && bossDebug.menu && !bossDebug.puppeteer && bossTypeFor(10) == "fortress", bossDebug.msg);
+    //傀儡師の手の攻撃：4種類がそれぞれ最後まで動いて終わり、つまみ取りに捕まると被弾する
+    tap(bossDebug.rivalRows()[RIVAL_WAVES.length + 2]);
+    var hb = null, hOk = {}, hGrab = false, hShots = false, god0 = bossDebug.god;
+    for(var i=0; i<3000 && page.number == 1; i++){ mainScreen.update(); hb = puppeteer.alive(); if(hb && hb.mode == "act" && mainScreen.state == "play") break; }
+    ["slam","sweep","grab","flick"].forEach(function(kind){
+        if(!hb) return;
+        puppeteer.stopHands(hb); hb.sub = "rest"; hb.count = 9999;      //ほかの攻撃を止めて、手の攻撃だけ
+        puppeteer.bound().forEach(function(p){ p.hp = p.maxHp = 1e9; });     //人形が解放されてよろけ、手の攻撃が止まらないように
+        var n0 = enemyShots.length, hp0 = mainScreen.hp, j = 0, phs = {};
+        bossDebug.god = kind != "grab"; mainScreen.invincible = 0;
+        puppeteer.handAttack(hb, kind, false);
+        while(puppeteer.handBusy(hb) && j < 600){
+            MouseIn = true; MouseX = 300; MouseY = 380; mainScreen.update(); j++;
+            hb.hands.forEach(function(h){ if(h.atk) phs[h.atk.ph] = true; });
+            if(j % 20 == 0) draw1();
+        }
+        hOk[kind] = j < 600 && Object.keys(phs).length >= 2;
+        if(kind == "grab") hGrab = mainScreen.hp < hp0;
+        if(kind == "slam" || kind == "flick") hShots = hShots || enemyShots.length > n0;
+    });
+    bossDebug.god = god0;
+    tap(backBtn());
+    check("傀儡師(試作)：手の攻撃(叩きつけ・なぎ払い・つまみ取り・指はじき)が最後まで動き、つまみ取りに捕まると被弾する",
+          hOk.slam && hOk.sweep && hOk.grab && hOk.flick && hGrab && hShots && page.number == 0,
+          JSON.stringify(hOk) + " つまみ" + hGrab + " 弾" + hShots + " 画面" + page.number);
     check("傀儡師(試作)：戦いの間だけ人形劇の舞台になり、ドローン君の見た目が替わって、出ると元に戻る",
           pStageOn && !puppetStage.on() && puppetStage.skinBefore == null && droneSkin.current == pSkin0,
           "舞台" + pStageOn + " 出たあと" + puppetStage.on() + " 見た目" + pSkin0 + "→" + droneSkin.current);

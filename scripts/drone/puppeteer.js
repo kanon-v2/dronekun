@@ -12,11 +12,37 @@
 //  デバッグのメニューの「傀儡師(試作)」で WAVE10 の強さで戦う(bossDebug.puppeteer)。ふつうの周には出ない。
 //  協力プレイには対応していない(試作のため)。
 //------------------------------------------------------------------------------
-const PUP_HP_MUL      = 1.2;        //体力(ほかのボスと同じ式の値に掛ける)
+const PUP_HP_MUL      = 2.4;        //体力(ほかのボスと同じ式の値に掛ける)
 const PUP_LAND_Y      = 118;        //降りてきて止まる高さ(仮面の中心)
+//大きさと動き(Cuphead・カービィのボスのように、画面を支配する大きさと大げさな動き)
+const PUP_SCALE       = 2.3;        //体(マント・頭巾・襟・仮面)を描く倍率
+const PUP_HAND_SCALE  = 2.1;        //手と操り板を描く倍率
+const PUP_HAND_REST   = [[-240,38],[240,38]];  //手のふだんの場所(仮面の中心から)
+const PUP_HAND_SPRING = 0.05;       //手が目標へ引かれる強さ(ばね)
+const PUP_HAND_DAMP   = 0.84;       //手の動きの減り方(小さいほど行きすぎない)
+const PUP_ANTIC_T     = 34;         //攻撃の前のため(のけぞって縦に伸びる → 一気に身を乗り出す)の長さ(フレーム)
+const PUP_ANTIC_SPLIT = 0.62;       //ためのうち、のけぞっている割合(残りで一気に乗り出す)
+const PUP_LUNGE       = [0.3,0.22,70];      //身を乗り出したときの横・縦の大きくなる割合と、下へ出る量(px)
+const PUP_STRETCH     = [0.2,0.3,55];       //のけぞったときの横に細くなる・縦に伸びる割合と、上へ引く量(px)
+const PUP_BOB         = [11,0.065,0.05];    //ふだんの上下の揺れ(px)・速さ、体の振り子の揺れ(ラジアン)
+const PUP_LAUGH_T     = 90;         //ドローン君が被弾したときに高笑いする長さ(フレーム)
+const PUP_LAUGH       = [26,0.32,0.16];     //高笑いの跳ねる高さ(px)・速さ・体の傾き(ラジアン)
+const PUP_SQUASH      = [0.03,0.32,0.16];   //撃たれたとき・糸を切られたときのつぶれる勢いと、つぶれの大きさ
+const PUP_HAND_SWAY   = [70,45];    //手のふだんの揺れの幅(横・縦 px)
+const PUP_HAND_THRUST = 0.35;       //身を乗り出したとき、手がドローン君のほうへ伸びる割合
+const PUP_LIFT_MUL    = 3;          //糸を引いて手を持ち上げる量の倍率(大げさに)
+const PUP_LOOK        = 7;          //仮面がドローン君のほうへ向く量(px)
+//手の攻撃(長さはフレーム、速さは px/フレーム、r は手の当たりの半径)
+const PUP_HAND_GROW = 1.4;          //攻撃に出た手は、手前へ迫るようにこの倍率まで大きくなる(当たりの大きさ r もこの大きさに合わせてある)
+const PUP_SLAM  = { aim:50, lock:12, speed:24, floor:468, stay:28, r:54, shots:5 };     //叩きつけ：ドローン君の上へ来て、床まで一気に落ちる。床で漆の玉が左右と上へ跳ねる
+const PUP_SWEEP = { aim:46, lock:10, speed:24, band:58, r:60 };                         //なぎ払い：画面の端からドローン君の高さを平手で払う(予告の帯)
+const PUP_GRAB  = { chase:75, snap:9, hold:24, r:48, lag:0.07 };                        //つまみ取り：かぎ爪で追ってきて、ぱっとつまむ
+const PUP_FLICK = { aim:30, n:5, every:7, spread:0.16 };                                //指はじき：指さして、漆の玉を続けてはじく
+const PUP_RAGE_GAP = 26;            //怒っているときは、もう片方の手も少し遅れて同じ攻撃をする
+const PUP_POSE  = { spread:8, claw:9, fist:10, point:11 };     //手の絵のコマ(handL/handR.png の HAND_FRAMES のあと)
 const PUP_STAGES      = [3,4];      //第1幕・第2幕の人形の数
 const PUP_OFFS        = [[-160,0,160],[-230,-80,80,230]];  //人形を吊る位置(傀儡師からの横のずれ。幕ごと)
-const PUP_PUPPET_HP   = 0.1;        //人形の糸の強さ(傀儡師の体力に掛ける。装備「標準」で1幕10秒あまり)
+const PUP_PUPPET_HP   = 0.05;       //人形の糸の強さ(傀儡師の体力に掛ける。装備「標準」で1幕10秒あまり。傀儡師の体力を2倍にしたとき、人形は変えないよう半分に)
 const PUP_PUPPET_R    = 15;
 const PUP_LEN         = [150,190];  //糸の長さ(この間でばらつく)
 const PUP_DROP_T      = 70;         //人形が吊られて出てくる長さ(フレーム)
@@ -24,8 +50,8 @@ const PUP_STAGE_HP    = [0.72,0.45];    //隙の間に削れる下限(第1幕・
 const PUP_STUN_T      = 300;        //全員解放されてよろけている長さ(フレーム)
 const PUP_RALLY_HP    = 0.2;        //この割合を切ると最後のあがき(一斉反撃ができる)
 const PUP_FLOOR       = 0.05;       //一斉反撃のほかでは、これより減らない(とどめは一斉反撃で)
-const PUP_ACTS        = ["volley","throw","thread","dance","throw","volley","thread"];  //第1幕・第2幕の攻撃の順番
-const PUP_SOLO        = ["thread","hands","spiral","thread","hands"];   //第3幕の攻撃の順番
+const PUP_ACTS        = ["volley","throw","thread","slam","dance","grab","throw","volley","sweep","thread"];  //第1幕・第2幕の攻撃の順番(slam・grab・sweep・flick は手の攻撃)
+const PUP_SOLO        = ["thread","slam","sweep","hands","grab","spiral","flick","slam","thread","grab"];   //第3幕の攻撃の順番
 const PUP_REST        = [70,50];    //攻撃と攻撃の間(ふだん・怒り)
 const PUP_VOLLEY_GAP  = 22;         //人形が順に撃つ間(フレーム)
 const PUP_VOLLEY_N    = [3,5];      //人形が1回に撃つ扇の弾の数(第1幕・第2幕)
@@ -69,22 +95,35 @@ const PUP_LINES = {
     stage2:"代わりの人形なら、いくらでもいる",
     solo:  "よくも、わたしの人形を…！",
     last:  "なぜだ…なぜ人形が逆らう！",
+    twist: "わたしも…人形だったのか…",
     die:   "糸が…ほどける…"
 };
-const PUP_ALLY_LINES = ["ありがとう！","目がさめた！","いっしょに戦う！","もう操られない！","まかせて！","おかえしだ！","ついていく！"];
+//最後のあがきで明かされる「傀儡師も操られていた」：上の闇から巨大な影の手が操り板を下ろし、傀儡師の頭と両手にも糸がついていた
+const PUP_TWIST = {
+    down:90,            //影の手が下りてくる長さ(フレーム)
+    voice:[[100,"愚かな人形よ……"],[200,"おまえの糸も、わたしが握っている"]],  //上の闇からの声(出す時刻とせりふ)
+    voiceT:110,         //声を出している長さ
+    reply:330,          //傀儡師が気づく時刻
+    jerk:6,             //操られている傀儡師が、ぎくしゃく動く間隔(フレーム)
+    scale:4.2,          //影の手の大きさ(手の絵の倍率)
+    y:-46,              //影の手の高さ(下りきったところ。握った操り板が傀儡師の頭のすぐ上に来る)
+    eyes:[150,34],      //闇の奥の目(影の手からの横のずれ・画面の高さ)
+    leave:150           //糸が切れてから、影が闇へ退いて消えるまで
+};
+const PUP_ALLY_LINES =["ありがとう！","目がさめた！","いっしょに戦う！","もう操られない！","まかせて！","おかえしだ！","ついていく！"];
 const PUP_SAY_T       = 150;        //吹き出しを出している長さ
 //Blender で描いた絵(tools/blender/puppeteer.py で書き出す。images/game/puppeteer/)。読み込むまでと #pup2d のときは図形の絵
 //範囲はゲームの px で[左, 上, 幅, 高さ](原点は仮面の中心・手の甲・操り板のまんなか)。絵はゲームの1px = px 画素
+//px は絵の1px あたりの画素(tools/blender/puppeteer.py の PX と同じ)。ゲームではこの範囲を PUP_SCALE・PUP_HAND_SCALE 倍で描く
 const PUP_ART = {
-    px:3,
-    body:{ area:[-76,-50,152,178], frames:16, cols:4 },     //マント・頭巾・襟(裾がなびく)
-    mask:{ area:[-20,-24,40,48], frames:16, cols:8 },       //仮面(番号 = ひびA + ひびB*2 + ひびC*4 + 口を開く*8)
-    hand:{ area:[-22,-26,44,68], frames:8, cols:8 },        //手(指がうごめく。左右で別の絵)
-    bar:{ area:[-28,-18,56,34], frames:1, cols:1 }          //操り板
+    body:{ area:[-76,-50,152,178], frames:8, cols:4, px:5 },    //マント・頭巾・襟(裾がなびく)
+    mask:{ area:[-20,-24,40,48], frames:16, cols:8, px:7 },     //仮面(番号 = ひびA + ひびB*2 + ひびC*4 + 口を開く*8)
+    hand:{ area:[-22,-26,44,68], frames:12, cols:6, px:5, wiggle:8 },  //手(0～7 指がうごめく、8～ 攻撃の形 PUP_POSE。左右で別の絵)
+    bar:{ area:[-28,-18,56,34], frames:1, cols:1, px:5 }        //操り板
 };
 const PUP_ART_EYES    = [[-8.6,-6],[8.6,-6]];  //目の奥の赤い光の位置(仮面の中心から)
 
-BOSS_TYPES.puppeteer = { name:"傀儡師", r:26, en:"THE PUPPETEER", title:"糸を操る支配者" };
+BOSS_TYPES.puppeteer = { name:"傀儡師", r:48, en:"THE PUPPETEER", title:"糸を操る支配者" };
 COUNTER_TYPES.push("puppet");       //投げつけてくる人形を、ジャスト衝撃波で弾く(糸ごと断ち切る)
 
 var puppeteer = {
@@ -100,6 +139,7 @@ var puppeteer = {
     reset:function(){
         this.allies = []; this.shots = []; this.threads = [];
         this.rally = null; this.ready = false; this.finishing = false; this.mask = null; this.freed = 0;
+        this.twist = null; this.hold = 0;
     },
     alive:function(){
         for(var i=0; i<enemies.length; i++) if(enemies[i].type == "puppeteer" && !enemies[i].dead) return enemies[i];
@@ -115,7 +155,14 @@ var puppeteer = {
         _b.sub = "";        //今の攻撃
         _b.flinch = 0;      //のけぞり(糸を切られた・被弾)
         _b.maskA = 0;       //仮面の傾き
-        _b.hands = [{ x:-88, y:6, lift:0 },{ x:88, y:6, lift:0 }];
+        //手(仮面の中心からの位置。ばねで目標へ動く)。lift は糸を引いて持ち上げる量(絵の px。描くときは PUP_HAND_SCALE 倍)
+        _b.hands = PUP_HAND_REST.map(function(r){ return { x:r[0], y:r[1], vx:0, vy:0, lift:0, atk:null }; });
+        _b.bars = PUP_HAND_REST.map(function(r){ return { x:r[0], y:r[1] + 20*PUP_HAND_SCALE, vx:0, vy:0 }; });   //操り板(仮面の中心から)
+        _b.lean = 0; _b.leanV = 0;  //身を乗り出す量(マイナスはのけぞる)とその速さ
+        _b.laugh = 0;               //高笑いの残り
+        _b.squash = 0; _b.squashV = 0;  //被弾でつぶれて戻る(ばね)
+        _b.antic = 0;               //攻撃の前のための残り
+        _b.lastSub = "";
         _b.sayText = ""; _b.sayT = 0;
         _b.said = {};
         this.reset();
@@ -132,6 +179,7 @@ var puppeteer = {
         if(_e.sayT > 0) _e.sayT--;
         if(_e.flinch > 0) _e.flinch--;
         this.stepThreads(_e);
+        if(mainScreen.state == "play") this.stepHands(_e);
         if(!special.bossCommon(_e)){ this.pose(_e); return; }
         var rage = _e.enraged ? 1 : 0, play = mainScreen.state == "play";
         var nb = this.bound().length;
@@ -171,6 +219,7 @@ var puppeteer = {
                     fx.shake(18); fx.tint("150,80,220",30);
                     sound.play("warning");
                     for(var i=0; i<this.allies.length; i++) this.allies[i].look.setFace("fierce",120);
+                    this.twist = { t:0, x:_e.x, cut:-1 };      //上の闇から、傀儡師を操る影が下りてくる
                     break;
                 }
                 if(play) this.solo(_e,rage);
@@ -178,7 +227,13 @@ var puppeteer = {
             case "last":
                 //最後のあがき：糸の斬撃をしつこく
                 this.drift(_e, CW/2 + Math.sin(_e.t*0.02)*120, 0.04);
-                if(play && --_e.count <= 0){ _e.count = PUP_LAST_EVERY; this.thread(_e, 3, true); }
+                if(play && --_e.count <= 0){
+                    _e.count = PUP_LAST_EVERY;
+                    //糸の斬撃と、両手の叩きつけをかわるがわる
+                    _e.lastAlt = !_e.lastAlt;
+                    if(_e.lastAlt || this.handBusy(_e)) this.thread(_e, 3, true);
+                    else this.handAttack(_e, "slam", true);
+                }
                 break;
             case "rallied":
                 //一斉反撃を受けている(動けない)
@@ -230,6 +285,7 @@ var puppeteer = {
         _e.flinch = 40;
         _e.sayT = 0; this.say(_e,"lose");
         this.threads = [];
+        this.stopHands(_e);
         fx.shake(16);
         fx.flare(_e.x, _e.y, 90, "255,255,255", 16);
         fx.ring(_e.x, _e.y, 150, PUP_STRING, 24, 6);
@@ -292,6 +348,9 @@ var puppeteer = {
             case "thread":
                 if(--_e.count <= 0) this.rest(_e,_rage);
                 break;
+            case "slam": case "sweep": case "grab": case "flick":
+                if(!this.handBusy(_e)) this.rest(_e,_rage);     //手の攻撃が終わるまで
+                break;
         }
     },
     nextAct:function(_e){
@@ -301,6 +360,7 @@ var puppeteer = {
         else if(p == "throw") _e.throws = PUP_THROW_N[_e.stage - 1];
         else if(p == "dance") _e.count = PUP_DANCE_T;
         else if(p == "thread"){ this.thread(_e, PUP_THREAD_N[_e.stage - 1]); _e.count = PUP_THREAD_WARN + PUP_THREAD_LIVE + 10; }
+        else this.handAttack(_e, p, _e.enraged);
     },
     rest:function(_e,_rage){ _e.sub = "rest"; _e.count = PUP_REST[_rage]; },
 
@@ -313,18 +373,22 @@ var puppeteer = {
                     _e.sub = p;
                     if(p == "thread"){ this.thread(_e, PUP_THREAD_N[2]); _e.count = PUP_THREAD_WARN + PUP_THREAD_LIVE + 10; }
                     else if(p == "hands") _e.count = PUP_HANDS_T;
-                    else _e.count = PUP_SPIRAL_T;
+                    else if(p == "spiral") _e.count = PUP_SPIRAL_T;
+                    else this.handAttack(_e, p, _rage);
                 }
                 break;
             case "thread":
                 if(--_e.count <= 0) this.rest(_e,_rage);
+                break;
+            case "slam": case "sweep": case "grab": case "flick":
+                if(!this.handBusy(_e)) this.rest(_e,_rage);
                 break;
             case "hands":
                 //両手の操り板から交互に扇
                 if(_e.count % PUP_HANDS_EVERY == 0){
                     var k = (_e.count/PUP_HANDS_EVERY) % 2, h = this.handAt(_e,k), tgt = aimAt || drone;
                     _e.hands[k].lift = 12;
-                    fireFan(h.x, h.y + 18, Math.atan2(tgt.Y - h.y, tgt.X - h.x), 5 + _rage*2, 0.2, PUP_SHOT_SPEED*Math.min(1.3,danmaku()), "normal");
+                    fireFan(h.x, h.y + 20*PUP_HAND_SCALE, Math.atan2(tgt.Y - h.y, tgt.X - h.x), 5 + _rage*2, 0.2, PUP_SHOT_SPEED*Math.min(1.3,danmaku()), "normal");
                     sound.play("bossShot");
                 }
                 if(--_e.count <= 0) this.rest(_e,_rage);
@@ -348,7 +412,7 @@ var puppeteer = {
         for(var i=0; i<_n; i++){
             var h = this.handAt(_e, i % 2);
             var a = Math.atan2(tgt.Y - h.y, tgt.X - h.x) + (i - (_n - 1)/2)*PUP_THREAD_GAP*(_wide ? 1.4 : 1);
-            this.threads.push({ x:h.x, y:h.y + 18, a:a, t:0, hand:i % 2 });
+            this.threads.push({ x:h.x, y:h.y + 20*PUP_HAND_SCALE, a:a, t:0, hand:i % 2 });
         }
         _e.hands[0].lift = _e.hands[1].lift = 16;
         sound.play("tell");
@@ -367,6 +431,107 @@ var puppeteer = {
                 if(along > 0 && side < PUP_THREAD_W + HIT_CORE && ms.canBeHit()) ms.damage();
             }
             if(T.t >= PUP_THREAD_WARN + PUP_THREAD_LIVE) this.threads.splice(i,1);
+        }
+    },
+
+    //------------------------------------------------------------------ 手の攻撃
+    //片手で(怒っていると、もう片方の手も少し遅れて)。手の位置は画面の座標で動かし、pose が手の位置にうつす
+    handAttack:function(_e,_kind,_rage){
+        var k = drone.X < _e.x ? 0 : 1;
+        this.startHand(_e, k, _kind, 0);
+        if(_rage) this.startHand(_e, 1 - k, _kind, PUP_RAGE_GAP);
+    },
+    startHand:function(_e,_k,_kind,_delay){
+        var h = _e.hands[_k];
+        h.atk = { kind:_kind, ph:_kind == "grab" ? "chase" : "aim", t:0, delay:_delay, started:false, pose:null, rot:0 };
+    },
+    handBusy:function(_e){ return !!(_e.hands[0].atk || _e.hands[1].atk); },
+    stopHands:function(_e){ _e.hands[0].atk = _e.hands[1].atk = null; },
+    //手の当たり：手の(_x,_y)の半径 _r にドローン君が入ると被弾
+    handHit:function(_x,_y,_r){
+        var ms = mainScreen;
+        if(ms.state == "play" && Math.hypot(drone.X - _x, drone.Y - _y) < _r + HIT_CORE && ms.canBeHit()) ms.damage();
+    },
+    stepHands:function(_e){
+        var HS = PUP_HAND_SCALE*PUP_HAND_GROW, spd = PUP_SHOT_SPEED*Math.min(1.3, danmaku());
+        for(var k=0; k<2; k++){
+            var h = _e.hands[k], A = h.atk;
+            if(!A) continue;
+            if(A.delay > 0){ A.delay--; continue; }
+            if(!A.started){ A.started = true; A.x = _e.x + h.x; A.y = _e.y + h.y; }
+            A.t++;
+            var to = function(_x,_y,_k){ A.x += (_x - A.x)*_k; A.y += (_y - A.y)*_k; };
+            switch(A.kind){
+                case "slam":
+                    A.pose = PUP_POSE.spread; A.rot = 0;
+                    var stop = PUP_SLAM.floor - 34*HS;     //指先が床に着く高さ
+                    if(A.ph == "aim"){
+                        to(drone.X, 120, 0.12);
+                        if(A.t >= PUP_SLAM.aim){ A.ph = "lock"; A.t = 0; sound.play("tell"); }
+                    }else if(A.ph == "lock"){
+                        A.y -= 2; A.x += (Math.random() - 0.5)*4;      //ためて震える
+                        if(A.t >= PUP_SLAM.lock){ A.ph = "drop"; A.t = 0; sound.play("dash"); }
+                    }else if(A.ph == "drop"){
+                        A.y = Math.min(stop, A.y + PUP_SLAM.speed);
+                        this.handHit(A.x, A.y + 18*HS, PUP_SLAM.r);
+                        if(A.y >= stop){
+                            A.ph = "stay"; A.t = 0;
+                            fx.shake(16); mainScreen.hitStop = Math.max(mainScreen.hitStop, 4);
+                            fx.ring(A.x, PUP_SLAM.floor, 160, "200,160,120", 18, 6);
+                            fx.sparks(A.x, PUP_SLAM.floor, 18, "220,190,140", 6, 2.5);
+                            sound.play("bossDown");
+                            battleBg.ripple(A.x, PUP_SLAM.floor, 30, 8, 40);
+                            fireFan(A.x, PUP_SLAM.floor - 16, -Math.PI/2, PUP_SLAM.shots, 0.42, spd*0.85, "small");
+                            fireShot(A.x - 30, PUP_SLAM.floor - 8, Math.PI, spd*1.1, "normal");
+                            fireShot(A.x + 30, PUP_SLAM.floor - 8, 0, spd*1.1, "normal");
+                        }
+                    }else if(A.t >= PUP_SLAM.stay) h.atk = null;
+                    break;
+                case "sweep":
+                    A.pose = PUP_POSE.spread;
+                    if(A.ph == "aim"){
+                        if(A.t == 1){ A.dir = drone.X < CW/2 ? -1 : 1; }      //ドローン君から遠い端から払ってくる
+                        var sx = A.dir < 0 ? CW + 70 : -70;
+                        A.x += (sx - A.x)*0.1; A.y += (Math.max(170, Math.min(CH - 70, drone.Y)) - A.y)*0.12;
+                        A.rot = A.dir > 0 ? -Math.PI/2 : Math.PI/2;     //指先を払う向きへ
+                        if(A.t >= PUP_SWEEP.aim){ A.ph = "lock"; A.t = 0; sound.play("tell"); }
+                    }else if(A.ph == "lock"){
+                        if(A.t >= PUP_SWEEP.lock){ A.ph = "go"; A.t = 0; sound.play("dash"); fx.shake(6); }
+                    }else{
+                        A.x += A.dir*PUP_SWEEP.speed;
+                        this.handHit(A.x + A.dir*18*HS, A.y, PUP_SWEEP.r);
+                        if(A.x < -90 || A.x > CW + 90) h.atk = null;
+                    }
+                    break;
+                case "grab":
+                    if(A.ph == "chase"){
+                        A.pose = PUP_POSE.claw; A.rot = 0;
+                        to(drone.X, drone.Y - 12*HS, PUP_GRAB.lag);
+                        if(A.t >= PUP_GRAB.chase){ A.ph = "snap"; A.t = 0; A.gx = drone.X; A.gy = drone.Y - 12*HS; sound.play("tell"); }
+                    }else if(A.ph == "snap"){
+                        to(A.gx, A.gy, 0.45);
+                        if(A.t >= PUP_GRAB.snap){
+                            A.ph = "hold"; A.t = 0; A.pose = PUP_POSE.fist;
+                            this.handHit(A.x, A.y + 12*HS, PUP_GRAB.r);
+                            fx.shake(6); sound.play("blade");
+                        }
+                    }else if(A.t >= PUP_GRAB.hold) h.atk = null;
+                    break;
+                case "flick":
+                    A.pose = PUP_POSE.point;
+                    if(A.ph == "aim") to(Math.max(140, Math.min(CW - 140, drone.X + (drone.X < _e.x ? 160 : -160))), 200, 0.1);
+                    A.rot = Math.atan2(drone.Y - A.y, drone.X - A.x) - Math.PI/2;
+                    if(A.ph == "aim" && A.t >= PUP_FLICK.aim){ A.ph = "fire"; A.t = 0; A.n = 0; }
+                    if(A.ph == "fire" && A.t % PUP_FLICK.every == 1){
+                        if(A.n >= PUP_FLICK.n){ h.atk = null; break; }
+                        var tx = A.x - Math.sin(A.rot)*34*HS, ty = A.y + Math.cos(A.rot)*34*HS;
+                        fireFan(tx, ty, Math.atan2(drone.Y - ty, drone.X - tx), 1 + (A.n % 2)*2, PUP_FLICK.spread, spd*1.15, "normal");
+                        A.x += Math.sin(A.rot)*10; A.y -= Math.cos(A.rot)*10;      //はじいた反動
+                        A.n++;
+                        sound.play("enemyShot");
+                    }
+                    break;
+            }
         }
     },
 
@@ -537,6 +702,7 @@ var puppeteer = {
         }
         this.stepRally(b);
         this.stepMask();
+        this.stepTwist(b);
     },
 
     //------------------------------------------------------------------ 一斉反撃
@@ -547,6 +713,7 @@ var puppeteer = {
         this.rally = { t:0, boss:b };
         b.mode = "rallied"; b.phased = false; b.harmless = false;
         this.threads = [];
+        this.stopHands(b);
         enemyShots = [];
         mainScreen.guard = Math.max(mainScreen.guard, PUP_RALLY_CUT + PUP_RALLY_FIRE + 40);
         fx.flare(drone.X, drone.Y, 120, PUP_ALLY_COLOR, 24);
@@ -565,7 +732,11 @@ var puppeteer = {
         if(f >= 0 && f < PUP_RALLY_FIRE && !b.dead){
             //体力が、撃ち終わりでちょうど0になるように削る
             this.finishing = true;
-            if(f == PUP_RALLY_FIRE - 1) mainScreen.hitEnemy(b, b.hp + 1, "ally");
+            if(f == PUP_RALLY_FIRE - 1){
+                //とどめ：傀儡師を操っていた糸も切れる
+                if(this.twist && this.twist.cut < 0){ this.twist.cut = 0; sound.play("shatter"); fx.flare(this.twist.x, 40, 160, "255,80,90", 20); }
+                mainScreen.hitEnemy(b, b.hp + 1, "ally");
+            }
             else{
                 b.hp -= b.hp/(PUP_RALLY_FIRE - f)*0.9;
                 b.flash = 3;
@@ -584,6 +755,7 @@ var puppeteer = {
     //倒した：仮面が割れて落ち、糸がほどけて飛び散る
     onKill:function(_e){
         this.ready = false;
+        this.stopHands(_e);
         this.threads = [];
         this.mask = { x:_e.x, y:_e.y, vx:(Math.random() - 0.5)*2, vy:-5, a:0, va:(Math.random() < 0.5 ? -1 : 1)*0.08, life:150 };
         fx.flare(_e.x, _e.y, 200, "255,255,255", 30);
@@ -607,20 +779,130 @@ var puppeteer = {
 
     //------------------------------------------------------------------ 見た目
     //手の位置(画面の座標)
-    handAt:function(_b,_k){ var h = _b.hands[_k]; return { x:_b.x + h.x, y:_b.y + h.y - h.lift }; },
+    handAt:function(_b,_k){ var h = _b.hands[_k]; return { x:_b.x + h.x, y:_b.y + h.y - h.lift*PUP_LIFT_MUL*PUP_HAND_SCALE }; },
+    //体と手の動き(Cuphead のように大げさに)：
+    //攻撃の前はのけぞって縦に伸び(ため)、一気に大きくなって身を乗り出し、ばねで行きすぎて戻る。
+    //撃たれるとつぶれて戻り、ドローン君が被弾すると跳ねながら高笑い。手はばねで大きく動き、身を乗り出すとドローン君へ伸びる
     pose:function(_e){
-        for(var k=0; k<2; k++){
-            var h = _e.hands[k], s = k == 0 ? -1 : 1;
-            h.x = s*(88 + Math.sin(_e.t*0.03 + k)*6);
-            h.y = 6 + Math.sin(_e.t*0.045 + k*2)*5 + (_e.mode == "stun" ? 26 : 0);
-            if(h.lift > 0) h.lift *= 0.9;
+        var t = _e.t;
+        if(_e.laugh > 0) _e.laugh--;
+        var laugh = _e.laugh > 0 ? Math.min(1, _e.laugh/15) : 0;
+        if(_e.sub != _e.lastSub){
+            if(_e.sub && _e.sub != "rest") _e.antic = PUP_ANTIC_T;
+            _e.lastSub = _e.sub;
         }
-        var target = Math.sin(_e.t*0.025)*0.08 + (_e.flinch > 0 ? Math.sin(_e.flinch*0.6)*0.25 : 0) + (_e.mode == "stun" ? 0.35 : 0);
-        _e.maskA += (target - _e.maskA)*0.15;
+        if(_e.flinch > (_e.lastFlinch || 0)) _e.squashV += PUP_SQUASH[1];
+        _e.lastFlinch = _e.flinch;
+        if(_e.antic > 0){
+            //ため：のけぞる(マイナス) → 一気に乗り出す(1 まで)。そのあとはばねで戻る
+            var k = 1 - --_e.antic/PUP_ANTIC_T, prev = _e.lean;
+            if(k < PUP_ANTIC_SPLIT) _e.lean = -0.5*Math.sin(k/PUP_ANTIC_SPLIT*Math.PI/2);
+            else _e.lean = -0.5 + 1.5*Math.pow((k - PUP_ANTIC_SPLIT)/(1 - PUP_ANTIC_SPLIT), 0.6);
+            _e.leanV = _e.lean - prev;
+            if(_e.antic == 0) _e.squashV -= 0.12;      //乗り出しきった瞬間に縦へつぶれる
+        }else{
+            _e.leanV += -_e.lean*0.05; _e.leanV *= 0.9; _e.lean += _e.leanV;
+        }
+        _e.squashV += -_e.squash*0.22; _e.squashV *= 0.82; _e.squash += _e.squashV;
+        var lu = Math.max(0, _e.lean);
+        for(var k=0; k<2; k++){
+            var h = _e.hands[k], s = k == 0 ? -1 : 1, R = PUP_HAND_REST[k], bar = _e.bars[k], A = h.atk;
+            h.grow = (h.grow || 1) + ((A && A.started ? PUP_HAND_GROW : 1) - (h.grow || 1))*0.15;    //攻撃に出ると手前へ迫って大きく
+            //操り板：ふだんは手に持っている。手が攻撃に出ている間は、その場に残ってぶらぶら揺れる
+            if(A && A.started){
+                bar.vx += (R[0] - bar.x)*0.02 + Math.sin(t*0.07 + k)*0.15; bar.vy += (R[1] + 20*PUP_HAND_SCALE - bar.y)*0.02;
+                bar.vx *= 0.92; bar.vy *= 0.92; bar.x += bar.vx; bar.y += bar.vy;
+                var nx = A.x - _e.x, ny = A.y - _e.y;
+                h.vx = nx - h.x; h.vy = ny - h.y; h.x = nx; h.y = ny;
+                continue;
+            }
+            //ふだんは大きな8の字。身を乗り出すとドローン君へ伸び、のけぞると上へ引く。よろけると垂れ下がる
+            var tx = R[0] + Math.sin(t*0.021 + k*2)*PUP_HAND_SWAY[0], ty = R[1] + Math.sin(t*0.042 + k)*PUP_HAND_SWAY[1];
+            tx += (drone.X - _e.x - tx)*PUP_HAND_THRUST*lu; ty += (drone.Y - _e.y - ty)*PUP_HAND_THRUST*lu;
+            ty += Math.min(0, _e.lean)*120;
+            if(_e.mode == "stun"){ tx += s*40; ty += 130; }
+            var pp = this.puppeted();       //上の糸に、手もかくかく引かれる
+            if(pp){ var jk = Math.floor(t/PUP_TWIST.jerk) + k*7; tx += pp*(storyScreen.hash(jk, 3) - 0.5)*120; ty += pp*(storyScreen.hash(jk, 4) - 0.6)*90; }
+            if(_e.mode == "rallied"){ tx += Math.sin(t*0.5 + k)*60; ty += Math.cos(t*0.43 + k)*50; }
+            if(laugh){ tx -= s*90*laugh*(0.5 + 0.5*Math.sin(t*PUP_LAUGH[1]*2)); ty += 30*laugh + Math.sin(t*PUP_LAUGH[1]*2 + k)*20*laugh; }    //手をたたいて笑う
+            h.vx += (tx - h.x)*PUP_HAND_SPRING; h.vy += (ty - h.y)*PUP_HAND_SPRING;
+            h.vx *= PUP_HAND_DAMP; h.vy *= PUP_HAND_DAMP;
+            h.x += h.vx; h.y += h.vy;
+            if(h.lift > 0) h.lift *= 0.9;
+            //手に戻ってきた操り板は、手に吸いつく
+            var bx = h.x, by = h.y - h.lift*PUP_LIFT_MUL*PUP_HAND_SCALE + 20*PUP_HAND_SCALE;
+            bar.x += (bx - bar.x)*0.35; bar.y += (by - bar.y)*0.35; bar.vx = bar.vy = 0;
+        }
+        var target = Math.sin(t*0.025)*0.12 + (_e.flinch > 0 ? Math.sin(_e.flinch*0.6)*0.4 : 0) + (_e.mode == "stun" ? 0.45 : 0)
+                   - laugh*(0.22 + Math.sin(t*PUP_LAUGH[1])*0.12);
+        _e.maskA += (target - _e.maskA)*0.2;
+    },
+    //体の変形(描くときに使う)：位置のずれ・横と縦の倍率・傾き
+    bodyXf:function(_e){
+        var t = _e.t, lean = _e.lean || 0, lu = Math.max(0, lean), st = Math.max(0, -lean), sq = _e.squash || 0;
+        var laugh = _e.laugh > 0 ? Math.min(1, _e.laugh/15) : 0;
+        var bounce = laugh*Math.abs(Math.sin(t*PUP_LAUGH[1]))*PUP_LAUGH[0];
+        var breath = 0.035*Math.sin(t*0.04);
+        //上の糸に引かれて、ぎくしゃくと動かされる(一定の間隔でかくっと向きが変わる)
+        var pp = this.puppeted(), jk = Math.floor(t/PUP_TWIST.jerk);
+        var jr = pp*(storyScreen.hash(jk, 1) - 0.5)*0.3, jy = pp*(storyScreen.hash(jk, 2) - 0.5)*30;
+        return {
+            dy:Math.sin(t*PUP_BOB[1])*PUP_BOB[0] + lu*PUP_LUNGE[2] - st*2*PUP_STRETCH[2] - bounce + jy,
+            sx:PUP_SCALE*(1 + PUP_LUNGE[0]*lu - PUP_STRETCH[0]*2*st + PUP_SQUASH[2]*sq - breath*0.5),
+            sy:PUP_SCALE*(1 + PUP_LUNGE[1]*lu + PUP_STRETCH[1]*2*st - PUP_SQUASH[2]*sq + breath),
+            rot:Math.sin(t*0.03)*PUP_BOB[2] + laugh*Math.sin(t*PUP_LAUGH[1])*PUP_LAUGH[2] + jr
+        };
     },
 
+    //手の攻撃の予告(敵より奥)
+    drawHandTells:function(_e){
+        var t = _e.t, HS = PUP_HAND_SCALE*PUP_HAND_GROW;
+        for(var k=0; k<2; k++){
+            var A = _e.hands[k].atk;
+            if(!A || !A.started) continue;
+            var pulse = 0.5 + 0.5*Math.sin(t*0.4);
+            if(A.kind == "slam" && A.ph != "stay"){
+                //叩きつけ：床に落ちる手の影(近づくほど濃く小さく)と、まっすぐ下への点線
+                var fl = PUP_SLAM.floor, near = Math.max(0, Math.min(1, 1 - (fl - A.y - 34*HS)/320));
+                ctx.fillStyle = "rgba(20,8,12," + (0.25 + 0.45*near) + ")";
+                ctx.beginPath(); ctx.ellipse(A.x, fl, 70 - 25*near, 12 - 4*near, 0, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = "rgba(200,40,40," + (A.ph == "lock" ? 0.8 : 0.35 + 0.2*pulse) + ")"; ctx.lineWidth = A.ph == "lock" ? 2.5 : 1.5;
+                ctx.setLineDash([8,7]); ctx.lineDashOffset = -t;
+                ctx.beginPath(); ctx.moveTo(A.x, A.y + 40*HS); ctx.lineTo(A.x, fl); ctx.stroke();
+                ctx.setLineDash([]); ctx.lineDashOffset = 0;
+            }else if(A.kind == "sweep" && A.ph != "go"){
+                //なぎ払い：払われる高さの帯と、来る向きの山形
+                var B = PUP_SWEEP.band, lock = A.ph == "lock";
+                ctx.fillStyle = "rgba(200,40,40," + (lock ? 0.28 : 0.1 + 0.08*pulse) + ")";
+                ctx.fillRect(0, A.y - B, CW, B*2);
+                ctx.strokeStyle = "rgba(200,40,40," + (lock ? 0.9 : 0.5) + ")"; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(0, A.y - B); ctx.lineTo(CW, A.y - B); ctx.moveTo(0, A.y + B); ctx.lineTo(CW, A.y + B); ctx.stroke();
+                for(var i=0; i<6; i++){
+                    var cx = ((i*170 + t*4*A.dir) % CW + CW) % CW;
+                    ctx.beginPath(); ctx.moveTo(cx - A.dir*10, A.y - 14); ctx.lineTo(cx + A.dir*6, A.y); ctx.lineTo(cx - A.dir*10, A.y + 14); ctx.stroke();
+                }
+            }else if(A.kind == "grab" && A.ph == "chase" && A.t > PUP_GRAB.chase - 30){
+                //つまみ取り：ドローン君を囲む輪が縮む(つままれる合図)
+                var k2 = (A.t - (PUP_GRAB.chase - 30))/30, R = 70 - 40*k2;
+                ctx.strokeStyle = "rgba(" + PUP_STRING + "," + (0.4 + 0.5*k2) + ")"; ctx.lineWidth = 2;
+                for(var q=0; q<4; q++){
+                    var a = q*Math.PI/2 + t*0.08;
+                    ctx.beginPath(); ctx.arc(drone.X, drone.Y, R, a, a + 0.9); ctx.stroke();
+                }
+            }else if(A.kind == "flick" && A.ph == "aim"){
+                var tx = A.x - Math.sin(A.rot)*34*HS, ty = A.y + Math.cos(A.rot)*34*HS;
+                ctx.strokeStyle = "rgba(200,40,40," + (0.25 + 0.25*pulse) + ")"; ctx.lineWidth = 1.5;
+                ctx.setLineDash([3,6]);
+                ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(drone.X, drone.Y); ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+        ctx.lineWidth = 1;
+    },
     //糸の斬撃・人形を吊る糸(敵より奥。special.drawAttack から)
     drawAttack:function(_e){
+        this.drawTwistBack();
+        this.drawHandTells(_e);
         //糸の斬撃
         for(var i=0; i<this.threads.length; i++){
             var T = this.threads[i], L = 1400, x2 = T.x + Math.cos(T.a)*L, y2 = T.y + Math.sin(T.a)*L;
@@ -649,8 +931,8 @@ var puppeteer = {
         for(var i=0; i<B.length; i++){
             var p = B[i];
             if(p.owner != _e.id) continue;
-            var h = this.handAt(_e, p.hand), n = Math.max(1, Math.ceil(p.hp/p.maxHp*3));
-            var ends = [[h.x - 22, h.y + 20],[h.x + 22, h.y + 20],[h.x, h.y + 32]];
+            var bar = _e.bars[p.hand], bx = _e.x + bar.x, by = _e.y + bar.y, n = Math.max(1, Math.ceil(p.hp/p.maxHp*3));
+            var HS = PUP_HAND_SCALE, ends = [[bx - 22*HS, by],[bx + 22*HS, by],[bx, by + 12*HS]];
             var tips = [[p.x - 8, p.y - 8],[p.x + 8, p.y - 8],[p.x, p.y - 14]];
             var taut = p.mode == "throw" ? 1 : 0;
             for(var s=0; s<3; s++){
@@ -693,55 +975,75 @@ var puppeteer = {
         },
         //コマ _f を、原点に合わせて描く。_white は被弾で白く光らせる
         draw:function(_name,_spec,_f,_white){
-            var im = this.imgs[_name], a = _spec.area, P = PUP_ART.px;
+            var im = this.imgs[_name], a = _spec.area, P = _spec.px;
             if(_white) im = tintedImage(im, "255,255,255");
             var f = ((_f % _spec.frames) + _spec.frames) % _spec.frames;
             ctx.drawImage(im, (f % _spec.cols)*a[2]*P, Math.floor(f/_spec.cols)*a[3]*P, a[2]*P, a[3]*P, a[0], a[1], a[2], a[3]);
         }
     },
-    //傀儡師(Blender の絵。translate済み。仮面の中心が原点)。動き(手の位置・仮面の傾き・操り板の揺れ)は図形の絵と同じ
+    //傀儡師(Blender の絵。translate済み。仮面の中心が原点)
+    //体は PUP_SCALE 倍で、息づかい・身を乗り出す(大きくなって迫る)・被弾でつぶれる・高笑いで揺れる。手は離れて大きく動く
     artBaked:function(_e,_body){
         var A = enemyArt, t = _e.t, K = this.baked, white = !!_body;
+        var laugh = _e.laugh > 0 ? Math.min(1, _e.laugh/15) : 0, X = this.bodyXf(_e);
+        //体は頭の上(糸で吊られている所)を支点に振り子のように傾け、伸び縮みは仮面の中心で
+        ctx.save();
+        ctx.translate(0, -60); ctx.rotate(X.rot); ctx.translate(0, 60 + X.dy);
+        ctx.scale(X.sx, X.sy);
         //盾にしている間：まわりに糸の繭(薄い糸が回る)
         if(_e.phased){
-            ctx.strokeStyle = "rgba(" + PUP_STRING + ",0.35)";
+            ctx.strokeStyle = "rgba(" + PUP_STRING + ",0.35)"; ctx.lineWidth = 0.6;
             for(var i=0; i<5; i++){
                 ctx.beginPath();
                 ctx.ellipse(0, 30, 66, 84, t*0.01 + i*Math.PI/5, 0, Math.PI*2);
                 ctx.stroke();
             }
+            ctx.lineWidth = 1;
         }
         //マントの裾からこぼれる紫のもや
         for(var i=0; i<3; i++){
             var ph = ((t*0.012 + i/3) % 1);
-            ctx.fillStyle = "rgba(120,70,170," + (0.25*(1 - ph)) + ")";
-            A.circle(Math.sin(i*2.1 + t*0.02)*30, 104 + ph*30, 8 + ph*10); ctx.fill();
+            ctx.fillStyle = "rgba(120,70,170," + (0.2*(1 - ph)) + ")";
+            A.circle(Math.sin(i*2.1 + t*0.02)*30, 96 + ph*30, 8 + ph*10); ctx.fill();
         }
-        //マント・頭巾・襟(裾のなびきは図形の絵と同じ速さ)
-        K.draw("body", PUP_ART.body, Math.floor(t*0.08/(Math.PI*2)*PUP_ART.body.frames), white);
-        //仮面：ひびは幕が進むたびに増え、よろけると口が開く
+        //マント・頭巾・襟：裾のなびきは図形の絵と同じ速さ。コマが少ないので、となりのコマを重ねてなじませる
+        var fb = t*0.08/(Math.PI*2)*PUP_ART.body.frames, f0 = Math.floor(fb);
+        K.draw("body", PUP_ART.body, f0, white);
+        ctx.globalAlpha = fb - f0;
+        K.draw("body", PUP_ART.body, f0 + 1, white);
+        ctx.globalAlpha = 1;
+        //仮面：ひびは幕が進むたびに増え、よろけると・高笑いで口が開く。ドローン君のほうを少し見る
+        var open = _e.mode == "stun" || _e.mode == "rallied" || laugh > 0.3;
         var m = (_e.stage >= 2 || _e.mode == "stun" ? 1 : 0) + (_e.stage >= 3 ? 2 : 0)
-              + (_e.mode == "last" || _e.mode == "rallied" ? 4 : 0) + (_e.mode == "stun" || _e.mode == "rallied" ? 8 : 0);
+              + (_e.mode == "last" || _e.mode == "rallied" ? 4 : 0) + (open ? 8 : 0);
+        var lx = Math.max(-1, Math.min(1, (drone.X - _e.x)/300)), ly = Math.max(-1, Math.min(1, (drone.Y - _e.y)/400));
         ctx.save();
-        ctx.rotate(_e.maskA);
+        ctx.translate(lx*PUP_LOOK/PUP_SCALE, ly*PUP_LOOK*0.6/PUP_SCALE);
+        ctx.rotate(_e.maskA - laugh*0.1);
         K.draw("mask", PUP_ART.mask, m, white);
         //目の奥の赤い光(本気のときは強く、ゆっくり脈打つ)
         var glow = (_e.mode == "last" || _e.mode == "solo" ? 0.9 : 0.55) + 0.1*Math.sin(t*0.09);
         for(var s=0; s<2; s++) A.halo(PUP_ART_EYES[s][0], PUP_ART_EYES[s][1], 6, "229,48,43", glow);
         ctx.restore();
-        //操り板と手
-        var hf = Math.floor(t*0.07/(Math.PI*2)*PUP_ART.hand.frames);
+        ctx.restore();
+        //操り板と手(体とは別に大きく動く。動く向きへ傾く)
+        var hf = Math.floor(t*0.07/(Math.PI*2)*PUP_ART.hand.wiggle) % PUP_ART.hand.wiggle, HS = PUP_HAND_SCALE;
         for(var k=0; k<2; k++){
-            var h = _e.hands[k], hx = h.x, hy = h.y - h.lift, s = k == 0 ? -1 : 1;
+            var h = _e.hands[k], hx = h.x, hy = h.y - h.lift*PUP_LIFT_MUL*HS, s = k == 0 ? -1 : 1, bar = _e.bars[k];
+            var A = h.atk && h.atk.started ? h.atk : null;
             ctx.save();
-            ctx.translate(hx, hy + 20);
-            ctx.rotate(Math.sin(t*0.05 + k)*0.12 - s*h.lift*0.01);
+            ctx.translate(bar.x, bar.y);
+            ctx.rotate(Math.sin(t*0.05 + k)*0.12 - s*h.lift*0.01 + (A ? bar.vx*0.03 : h.vx*0.012));
+            ctx.scale(HS, HS);
             K.draw("bar", PUP_ART.bar, 0, white);
             ctx.restore();
             ctx.save();
             ctx.translate(hx, hy);
-            ctx.rotate(s*0.08);
-            K.draw(k == 0 ? "handL" : "handR", PUP_ART.hand, hf, white);
+            //攻撃中は攻撃の形と向き。速く動くと動く向きへ伸びる
+            var sp = Math.min(1, Math.hypot(h.vx, h.vy)/30);
+            ctx.rotate(A ? A.rot : s*0.08 + h.vx*0.02);
+            ctx.scale(HS*(h.grow || 1)*(1 - 0.12*sp), HS*(h.grow || 1)*(1 + 0.2*sp));
+            K.draw(k == 0 ? "handL" : "handR", PUP_ART.hand, A && A.pose != null ? A.pose : hf, white);
             ctx.restore();
         }
     },
@@ -749,6 +1051,15 @@ var puppeteer = {
     //傀儡師(translate済み。仮面の中心が原点)
     art:function(_e,_body){
         if(this.baked.ready()){ this.artBaked(_e,_body); return; }
+        //図形の絵：全体を PUP_SCALE 倍で描く(手の位置は倍率で割って渡す)
+        var e2 = Object.create(_e);
+        e2.hands = _e.hands.map(function(h){ return { x:h.x/PUP_SCALE, y:h.y/PUP_SCALE, lift:h.lift }; });
+        ctx.save();
+        ctx.scale(PUP_SCALE, PUP_SCALE);
+        this.art2d(e2,_body);
+        ctx.restore();
+    },
+    art2d:function(_e,_body){
         var C = ENEMY_COLOR, A = enemyArt, t = _e.t;
         var cloak = _body || (_e.mode == "rallied" ? "#3a2440" : "#2a2236");
         //盾にしている間：まわりに糸の繭(薄い糸が回る)
@@ -874,11 +1185,12 @@ var puppeteer = {
         }
         ctx.restore();
         ctx.lineWidth = 1;
-        //糸の強さ(小さなゲージ)
-        if(_p.hp < _p.maxHp){
-            ctx.fillStyle = "rgba(255,255,255,0.8)"; ctx.fillRect(-14, 20, 28, 4);
-            ctx.fillStyle = "rgb(" + PUP_STRING + ")"; ctx.fillRect(-14, 20, 28*Math.max(0,_p.hp)/_p.maxHp, 4);
-        }
+        if(_p.hp < _p.maxHp) this.gauge(_p);
+    },
+    //糸の強さ(小さなゲージ。translate済み)
+    gauge:function(_p){
+        ctx.fillStyle = "rgba(255,255,255,0.8)"; ctx.fillRect(-14, 20, 28, 4);
+        ctx.fillStyle = "rgb(" + PUP_STRING + ")"; ctx.fillRect(-14, 20, 28*Math.max(0,_p.hp)/_p.maxHp, 4);
     },
 
     //味方・味方の弾・一斉反撃のビーム・吹き出し・落ちる仮面(敵より手前。rival.drawIntro の前から)
@@ -935,17 +1247,24 @@ var puppeteer = {
             ctx.lineWidth = 1;
         }
         //吹き出し
-        if(b && b.sayT > 0) this.bubble(b.x, b.y, b.sayText, b.sayT, "rgb(110,60,160)", b.y < 200 ? 118 : -70);
+        if(b && b.sayT > 0) this.bubble(b.x, b.y, b.sayText, b.sayT, "rgb(110,60,160)", b.y < 200 ? 64*PUP_SCALE : -70);
         for(var i=0; i<this.allies.length; i++){
             var a = this.allies[i];
             if(a.sayT > 0 && a.sayText) this.bubble(a.x, a.y, a.sayText, a.sayT, "rgb(20,110,190)", -36);
         }
+        this.drawTwistFront();
+        if(!this.alive()) this.drawTwistBack();      //倒したあとも、影が闇へ退くところを見せる
         //落ちていく仮面
         var M = this.mask;
         if(M){
             ctx.save();
             ctx.globalAlpha = Math.min(1, M.life/40);
-            ctx.translate(M.x, M.y); ctx.rotate(M.a);
+            ctx.translate(M.x, M.y); ctx.rotate(M.a); ctx.scale(PUP_SCALE, PUP_SCALE);
+            if(this.baked.ready()){
+                this.baked.draw("mask", PUP_ART.mask, 15);     //ひびだらけで口の開いた仮面
+                ctx.restore();
+                return;
+            }
             ctx.beginPath(); ctx.ellipse(0, 0, 15, 19, 0, 0, Math.PI*2);
             enemyArt.fillInk("#efe9dc", 1.6);
             ctx.strokeStyle = ENEMY_COLOR.ink; ctx.lineWidth = 1.4;
@@ -973,6 +1292,133 @@ var puppeteer = {
         ctx.restore();
         ctx.lineWidth = 1;
     },
+    //------------------------------------------------------------------ 傀儡師を操る影
+    stepTwist:function(_b){
+        var T = this.twist;
+        if(!T) return;
+        T.t++;
+        if(_b) T.x += (_b.x - T.x)*0.05;
+        if(T.cut >= 0 && ++T.cut > PUP_TWIST.leave){ this.twist = null; return; }
+        if(_b && T.t == PUP_TWIST.reply && T.cut < 0){ _b.sayT = 0; this.say(_b, "twist"); }
+    },
+    //操られている傀儡師のぎくしゃく(0 なし ～ 1)。糸が張っている間だけ
+    puppeted:function(){
+        var T = this.twist;
+        return T && T.cut < 0 ? Math.min(1, T.t/PUP_TWIST.down) : 0;
+    },
+    //影の手の高さ・糸の張る所(画面の座標)
+    twistPose:function(){
+        var T = this.twist, k = Math.min(1, T.t/PUP_TWIST.down), e = 1 - Math.pow(1 - k, 3);
+        var up = T.cut >= 0 ? Math.pow(T.cut/PUP_TWIST.leave, 2)*260 : 0;     //糸が切れると闇へ退く
+        var y = -300 + (PUP_TWIST.y + 300)*e - up + Math.sin(T.t*0.03)*6;
+        var S = PUP_TWIST.scale;
+        return { x:T.x + Math.sin(T.t*0.017)*20, y:y, barY:y + 20*S, S:S, a:T.cut >= 0 ? Math.max(0, 1 - T.cut/PUP_TWIST.leave) : Math.min(1, k*1.5) };
+    },
+    //絵のコマを黒い影にしたもの(覚えておく)
+    shade:function(_name,_spec,_f,_col){
+        var key = _name + _f + (_col || "");
+        this.shades = this.shades || {};
+        if(!this.shades[key]){
+            var a = _spec.area, P = _spec.px, c = document.createElement("canvas");
+            c.width = a[2]*P; c.height = a[3]*P;
+            var g = c.getContext("2d");
+            g.drawImage(this.baked.imgs[_name], (_f % _spec.cols)*a[2]*P, Math.floor(_f/_spec.cols)*a[3]*P, a[2]*P, a[3]*P, 0, 0, c.width, c.height);
+            g.globalCompositeOperation = "source-in";
+            g.fillStyle = _col || "#0c0508"; g.fillRect(0, 0, c.width, c.height);
+            this.shades[key] = c;
+        }
+        return this.shades[key];
+    },
+    //影(傀儡師より奥)：上からの暗がりと、闇に光る赤い目
+    drawTwistBack:function(){
+        var T = this.twist;
+        if(!T) return;
+        var P = this.twistPose(), t = T.t;
+        ctx.save();
+        ctx.globalAlpha = P.a;
+        var g = ctx.createLinearGradient(0, 0, 0, 260);
+        g.addColorStop(0, "rgba(8,2,6,0.85)"); g.addColorStop(1, "rgba(8,2,6,0)");
+        ctx.fillStyle = g; ctx.fillRect(0, 0, CW, 260);
+        //闇の奥の目(まばたきする。下りてきた影の手の左右の上)
+        var blink = Math.abs(Math.sin(t*0.013)) < 0.05 ? 0.15 : 1, ey = PUP_TWIST.eyes[1] + (P.y - PUP_TWIST.y);
+        for(var s=-1; s<=1; s+=2){
+            var ex = P.x + s*PUP_TWIST.eyes[0];
+            enemyArt.halo(ex, ey, 30, "230,30,40", 0.7*blink);
+            ctx.fillStyle = "rgba(255,90,90," + (0.95*blink) + ")";
+            ctx.beginPath(); ctx.ellipse(ex, ey, 12, 3.5*blink, -s*0.3, 0, Math.PI*2); ctx.fill();
+        }
+        ctx.restore();
+    },
+    //影の手と操り板(傀儡師の頭の上に、手前から覆いかぶさる。赤い光のふち)
+    drawTwistHand:function(){
+        var T = this.twist;
+        if(!T) return;
+        var P = this.twistPose(), t = T.t;
+        ctx.save();
+        ctx.globalAlpha = P.a;
+        if(this.baked.ready()){
+            //赤いふち(少しずらして重ねた赤い影)の上に、黒い影
+            var S = P.S, ha = PUP_ART.hand.area, ba = PUP_ART.bar.area, self = this;
+            var layer = function(_col){
+                var hs = self.shade("handR", PUP_ART.hand, PUP_POSE.fist, _col), bs = self.shade("bar", PUP_ART.bar, 0, _col);
+                var o = _col ? [[-0.7,0],[0.7,0],[0,-0.7],[0,0.7]] : [[0,0]];
+                for(var i=0; i<o.length; i++){
+                    ctx.save(); ctx.translate(P.x, P.barY); ctx.rotate(Math.sin(t*0.02)*0.05); ctx.scale(S, S); ctx.translate(o[i][0], o[i][1]);
+                    ctx.drawImage(bs, ba[0], ba[1], ba[2], ba[3]);
+                    ctx.restore();
+                    ctx.save(); ctx.translate(P.x, P.y); ctx.scale(S, S); ctx.translate(o[i][0], o[i][1]);
+                    ctx.drawImage(hs, ha[0], ha[1], ha[2], ha[3]);
+                    ctx.restore();
+                }
+            };
+            layer("#b0182a");
+            layer(null);
+        }else{
+            ctx.fillStyle = "#0c0508"; ctx.fillRect(P.x - 120, P.barY - 8, 240, 16);
+        }
+        ctx.restore();
+    },
+    //糸(傀儡師より手前)：影の操り板から傀儡師の頭と両手へ。切れると上へ跳ね上がる。上からの声
+    drawTwistFront:function(){
+        var T = this.twist, b = this.alive();
+        if(!T) return;
+        this.drawTwistHand();
+        var P = this.twistPose(), S = P.S, ends = [[P.x - 22*S, P.barY], [P.x, P.barY + 12*S], [P.x + 22*S, P.barY]];
+        ctx.save();
+        ctx.lineCap = "round";
+        for(var i=0; i<3; i++){
+            var e = ends[i], tx, ty;
+            if(T.cut < 0 && b){
+                if(i == 1){ tx = b.x; ty = b.y - 22*PUP_SCALE; }
+                else{ var h = this.handAt(b, i == 0 ? 0 : 1); tx = h.x; ty = h.y; }
+                var k = Math.min(1, T.t/PUP_TWIST.down);
+                tx = e[0] + (tx - e[0])*k; ty = e[1] + (ty - e[1])*k;
+            }else{
+                //切れた糸：上の端から短く垂れて、跳ね上がる
+                var c = Math.max(0, T.cut);
+                tx = e[0] + Math.sin(c*0.2 + i)*20; ty = e[1] + Math.max(10, 120 - c*3);
+            }
+            ctx.strokeStyle = "rgba(255,60,70," + (0.25*P.a) + ")"; ctx.lineWidth = 5;
+            ctx.beginPath(); ctx.moveTo(e[0], e[1]); ctx.lineTo(tx, ty); ctx.stroke();
+            ctx.strokeStyle = "rgba(255,200,200," + (0.9*P.a) + ")"; ctx.lineWidth = 1.3;
+            ctx.beginPath(); ctx.moveTo(e[0], e[1]); ctx.lineTo(tx, ty); ctx.stroke();
+        }
+        //上の闇からの声
+        var V = PUP_TWIST.voice;
+        for(var i=0; i<V.length; i++){
+            var dt = T.t - V[i][0];
+            if(dt < 0 || dt > PUP_TWIST.voiceT || T.cut >= 0) continue;
+            ctx.globalAlpha = Math.min(1, dt/12, (PUP_TWIST.voiceT - dt)/12);
+            ctx.font = "700 20px " + (typeof STAGE_FONT == "string" ? STAGE_FONT : "serif");
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.lineWidth = 5; ctx.strokeStyle = "rgba(10,0,4,0.9)";
+            ctx.strokeText(V[i][1], CW/2, 236);
+            ctx.fillStyle = "rgb(255,90,100)";
+            ctx.fillText(V[i][1], CW/2, 236);
+        }
+        ctx.restore();
+    },
+
     //一斉反撃の始まり：上下の黒い帯と「みんな、いくぞ！」(画面の座標。いちばん手前)
     drawFront:function(){
         var R = this.rally;
@@ -1019,6 +1465,12 @@ var puppeteer = {
     };
     var update0 = special.update;
     special.update = function(_e,_dx,_dy,_d){
+        //幕間(緞帳が下りている間。puppetStage.js が hold を決める)は、傀儡師も人形も止まる
+        if(puppeteer.hold > 0 && (_e.type == "puppeteer" || _e.type == "puppet")){
+            if(_e.type == "puppeteer"){ _e.vx = _e.vy = 0; puppeteer.pose(_e); }
+            else _e.vx = _e.vy = 0;
+            return true;
+        }
         if(_e.type == "puppeteer"){ puppeteer.update(_e); return true; }
         if(_e.type == "puppet"){ puppeteer.puppet(_e); return true; }
         return update0.apply(this, arguments);
@@ -1045,6 +1497,15 @@ var puppeteer = {
     mainScreen.hitEnemy = function(_e,_dmg,_src){
         var r = hit0.apply(this, arguments);
         if(_e.type == "puppeteer" && !_e.dead && !puppeteer.finishing && _e.hp < _e.maxHp*PUP_FLOOR) _e.hp = _e.maxHp*PUP_FLOOR;
+        if(_e.type == "puppeteer" && !_e.phased && _e.squashV < 0.1) _e.squashV += PUP_SQUASH[0];     //撃たれるとつぶれる
+        return r;
+    };
+    //ドローン君が被弾したら、傀儡師が高笑いする
+    var damage0 = mainScreen.damage;
+    mainScreen.damage = function(){
+        var hp0 = this.hp, r = damage0.apply(this, arguments);
+        var b = puppeteer.alive();
+        if(b && this.hp < hp0 && b.mode != "rallied"){ b.laugh = PUP_LAUGH_T; }
         return r;
     };
     //一斉反撃の間は、ドローン君の装備はビームに任せて撃たない

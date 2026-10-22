@@ -4,10 +4,10 @@
 #   出力(いつもは images/game/puppeteer/)：
 #     body.png  マント・頭巾・襟(裾がなびく BODY_FRAMES コマ。横に BODY_COLS コマずつ並べる)
 #     mask.png  仮面(ひび3つ × 口の開き の16通り。番号 = ひびA + ひびB*2 + ひびC*4 + 口*8)
-#     handL.png・handR.png  手(指がうごめく HAND_FRAMES コマ)
+#     handL.png・handR.png  手(指がうごめく HAND_FRAMES コマのあとに、攻撃の形 HAND_POSES。横に6コマずつ)
 #     bar.png   操り板(十字)
 #   ゲームと同じ座標で作る：ゲームの1px = 0.1(Blender の長さ)。原点は仮面の中心。x 右・z 上(ゲームの y の逆)・y 奥。
-#   カメラは手前(-y)から、少し下から見上げる(画面の上にいるボスを見上げる向き)。絵はゲームの1px = PX 画素で描く。
+#   カメラは手前(-y)から、少し下から見上げる(画面の上にいるボスを見上げる向き)。絵はゲームの1px = PX[部位] 画素で描く。
 #   ねらい：リアルで不気味に。中身のない空っぽのマント(前の裂け目の奥は闇)、ひびの入った古い磁器の仮面、
 #   長すぎる指の青白い手、使い込まれた木の操り板。
 import bpy, sys, os, math, random
@@ -24,9 +24,9 @@ TMP = os.path.join(bpy.app.tempdir or OUTDIR, "pup_frames")
 os.makedirs(TMP, exist_ok=True)
 
 U = 0.1             # ゲームの1px の長さ
-PX = 3              # ゲームの1px を何画素で描くか(大きな画面でもぼやけないように)
+PX = {"body":5, "mask":7, "hand":5, "bar":5}    # ゲームの1px を何画素で描くか(部位ごと)。ゲームでは PUP_SCALE 倍ほどに大きく見せるので、大きな画面でもぼやけないように細かく
 CAM_TILT = 7        # 見上げる角度(度)
-BODY_FRAMES = 16    # 裾がなびく1周のコマ数
+BODY_FRAMES = 8     # 裾がなびく1周のコマ数(絵が大きいので少なめ。ゲームで2コマを重ねてなじませる)
 BODY_COLS = 4
 HAND_FRAMES = 8     # 指がうごめく1周のコマ数
 # 絵の範囲(ゲームの px。原点からの左・上・幅・高さ)。puppeteer.js の PUP_ART と同じにする
@@ -108,7 +108,12 @@ dusty = n.bsdf((0.10, 0.085, 0.08), 1.0, Sheen_Weight=0.6, Sheen_Tint=(0.5, 0.45
 low = n.band(n.z, -6.0, -9.6)       # 裾のほう
 dust = n.math("MULTIPLY", low, n.band(n.noise(3.5, 8, 0.7, 0.3), 0.42, 0.62), True)
 dust = n.math("ADD", dust, n.math("MULTIPLY", n.ao(0.6), 0.25), True)
-n.out(n.mix(fab, dusty, n.math("MULTIPLY", dust, 0.5)))
+cloth = n.mix(fab, dusty, n.math("MULTIPLY", dust, 0.5))
+# 裾のほうは闇に溶けて透ける(大きく見せても画面の下を覆いすぎないように。ちぎれた端は残す)
+gone = n.math("MULTIPLY", n.band(n.z, -4.0, -10.0), n.math("ADD", 0.6, n.math("MULTIPLY", n.noise(3, 4), 0.35)), True)
+n.out(n.mix(cloth, n.N.new("ShaderNodeBsdfTransparent").outputs[0], gone))
+try: velvet.surface_render_method = "BLENDED"     # 透けを描くため(ふつうの描き方では透けない)
+except Exception: pass
 
 # マントの裏・頭巾の中：光を返さない闇
 void, n = material("void")
@@ -562,7 +567,7 @@ CRACKS = {
 for key, paths in CRACKS.items():
     cc = coll("crack" + key)
     for pi_, p in enumerate(paths):
-        pts = jitter([gpx(q) for q in p], hash(key)*7 + pi_)
+        pts = jitter([gpx(q) for q in p], ord(key)*7 + pi_)     # hash() は実行ごとに変わるので使わない
         main = pi_ == 0
         ribbon(cc, pts, 0.07 if main else 0.05, 0.02, crack, 0.010, "crack")
         # ふちの欠け(釉がはがれて素地が見える)：ひびより太く、ところどころ
@@ -575,7 +580,14 @@ for key, paths in CRACKS.items():
 HANDS = {"R": coll("handR"), "L": coll("handL")}
 FINGER_PARTS = {"R": [], "L": []}      # コマごとに作り直す指
 
-def build_hand(side, ph):
+# 手の形(攻撃に使う)：指ごとの曲げ(None はうごめく)・指の開き・親指の向き(0 ふつう 1 外へ開く 2 握る)
+HAND_POSES = [
+    ("spread", [0.08, 0.05, 0.05, 0.08], 2.4, 1),     # 指を大きく広げた平手(叩きつけ・なぎ払い)
+    ("claw",   [0.95, 0.9, 0.9, 0.95], 1.7, 1),       # かぎ爪(つまみ取りの構え)
+    ("fist",   [1.75, 1.75, 1.75, 1.75], 0.6, 2),     # 握りこぶし(つまんだ)
+    ("point",  [0.04, 1.75, 1.75, 1.75], 0.8, 2),     # 人さし指でさす(指はじき)
+]
+def build_hand(side, ph, pose=None):
     """side "R"(ゲームの右の手。k=1)・"L"(左。k=0)。ph は指のうごめきの位相"""
     c = HANDS[side]; sgn = 1 if side == "R" else -1
     for o in FINGER_PARTS[side]:
@@ -587,8 +599,8 @@ def build_hand(side, ph):
     for f in range(4):
         fo = f - 1.5
         base = Vector((fo*0.46*sgn, -0.25, -0.45 - 0.08*abs(fo)))
-        curl = 0.45 + 0.28*math.sin(ph + f + kph)
-        spread = fo*0.13*sgn
+        curl = 0.45 + 0.28*math.sin(ph + f + kph) if pose is None else pose[1][f if sgn > 0 else 3 - f]
+        spread = fo*0.13*sgn*(1 if pose is None else pose[2])
         lens = [1.2, 0.95, 0.7]                               # 人の指よりずっと長い
         if abs(fo) > 1: lens = [l*0.86 for l in lens]       # 小指・人さし指は少し短い
         d = Vector((math.sin(spread), 0, -math.cos(spread)))
@@ -610,6 +622,10 @@ def build_hand(side, ph):
     th0 = Vector((-0.75*sgn, -0.3, -0.1))
     th1 = th0 + Vector((0.25*sgn, -0.35, -0.55))
     th2 = th1 + Vector((0.2*sgn, -0.25, -0.35 - 0.1*math.sin(ph + 2)))
+    if pose is not None and pose[3] == 1:      # 外へ開く
+        th1 = th0 + Vector((-0.45*sgn, -0.3, -0.35)); th2 = th1 + Vector((-0.4*sgn, -0.2, -0.2))
+    elif pose is not None and pose[3] == 2:    # 握る(指の前へ巻き込む)
+        th1 = th0 + Vector((0.3*sgn, -0.55, -0.35)); th2 = th1 + Vector((0.45*sgn, -0.15, -0.05))
     capsule(c, skin, th0, th1, 0.15, 0.12); capsule(c, skin, th1, th2, 0.12, 0.085)
     prim("sphere", c, knuck, th1, (0.16,)*3, seg=14, rings=10)
     o = prim("cone", c, nail, th2 + (th2 - th1).normalized()*0.15, (0.07, 0.06, 0.32), seg=10)
@@ -692,7 +708,7 @@ except AttributeError:
 
 def frame_area(key, offset=(0, 0, 0)):
     left, top, w, h = AREA[key]
-    sc.render.resolution_x = w*PX; sc.render.resolution_y = h*PX
+    sc.render.resolution_x = w*PX[key]; sc.render.resolution_y = h*PX[key]
     cam_d.ortho_scale = max(w, h)*U
     c = G(left + w/2, top + h/2) + Vector(offset)
     tilt = math.radians(CAM_TILT)
@@ -750,12 +766,13 @@ if "hand" in ONLY:
     for side in ("L", "R"):
         # 左右の手は、それぞれの場所に置いて描く(光の向きを左右でそろえる)
         paths = []
-        for f in range(HAND_FRAMES):
-            build_hand(side, 2*math.pi*f/HAND_FRAMES)
+        # 0～HAND_FRAMES-1：うごめく指　そのあと HAND_POSES の形
+        for f in range(HAND_FRAMES + len(HAND_POSES)):
+            if f < HAND_FRAMES: build_hand(side, 2*math.pi*f/HAND_FRAMES)
+            else: build_hand(side, 0, HAND_POSES[f - HAND_FRAMES])
             show(["hand" + side])
             p = os.path.join(TMP, "hand%s%02d.png" % (side, f)); render(p); paths.append(p)
-            if FAST: break
-        sheet(paths, HAND_FRAMES, os.path.join(OUTDIR, "hand%s.png" % side))
+        sheet(paths, 6, os.path.join(OUTDIR, "hand%s.png" % side))
 
 if "bar" in ONLY:
     show(["bar"]); frame_area("bar")

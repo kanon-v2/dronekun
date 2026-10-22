@@ -4,6 +4,9 @@
 #   出力(いつもは images/game/puppeteer/)：
 #     stage.jpg  奥：書き割りの夜空と紙の月(糸で吊る)・板で切り抜いた町並み(2列)・舞台の床
 #     frame.png  手前：左右の緞帳(どんちょう)・上の垂れ幕・床のふちの脚光(フットライト)。まんなかは透明
+#   --variant=2：stage2.jpg 第2幕「血の月」(赤い月・赤い照明・赤い窓)
+#   --variant=3：stage3.jpg 第3幕「悪夢」(書き割りが裂けて奥の闇が見え、糸が増え、下から赤い光)
+#   --curtain：curtain.png 幕間に下りてくる、閉じた緞帳(画面いっぱい。下のふちに金の房)
 #   奥はドローン君の動きと逆へ少しずらして貼る(奥行き)ので、ゲームの画面より STAGE_OVER 倍だけ広く描く。
 #   座標：x 右・z 上・y 奥(客席から舞台を見る)。舞台の口の幅を 9.6(ゲームの 960px)にそろえる。
 import bpy, sys, os, math, random
@@ -11,6 +14,9 @@ from mathutils import Vector
 
 ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 FAST = "--fast" in ARGS
+VARIANT = int(next((a.split("=")[1] for a in ARGS if a.startswith("--variant=")), "1"))
+CURTAIN = "--curtain" in ARGS
+V = VARIANT
 ARGV = [a for a in ARGS if not a.startswith("--")]
 OUTDIR = os.path.abspath(ARGV[0] if ARGV else "images/game/puppeteer")
 os.makedirs(OUTDIR, exist_ok=True)
@@ -97,7 +103,12 @@ def set_normal(sock, normal):
 # 書き割りの空：布に描いた夕闇の空(明るめの黄土色から上は深い藍へ)。筆の跡のむら・布目・しみ・ところどころ絵の具の剥げ
 sky, n = material("sky")
 grad = n.band(n.z, 0.3, 5.2)
-col = n.ramp(grad, [(0.0, (0.55, 0.36, 0.20)), (0.3, (0.40, 0.22, 0.18)), (0.65, (0.16, 0.11, 0.18)), (1.0, (0.06, 0.05, 0.10))])
+SKY_RAMP = {
+    1:[(0.0, (0.55, 0.36, 0.20)), (0.3, (0.40, 0.22, 0.18)), (0.65, (0.16, 0.11, 0.18)), (1.0, (0.06, 0.05, 0.10))],
+    2:[(0.0, (0.50, 0.14, 0.10)), (0.3, (0.34, 0.08, 0.08)), (0.65, (0.13, 0.04, 0.07)), (1.0, (0.05, 0.02, 0.05))],     # 血の月
+    3:[(0.0, (0.26, 0.12, 0.22)), (0.3, (0.17, 0.07, 0.16)), (0.65, (0.07, 0.03, 0.09)), (1.0, (0.02, 0.01, 0.03))],     # 悪夢
+}
+col = n.ramp(grad, SKY_RAMP[V])
 stroke = n.noise(1.0, 4, 0.6, 0.6, n.stretch(0.6, 0.6, 2.2))        # 横に流れる筆のむら
 col = n.mixc(col, n.mixc(col, (0.0, 0.0, 0.0), 0.35), n.band(stroke, 0.45, 0.75))
 stain = n.band(n.noise(0.7, 8, 0.7), 0.55, 0.8)                     # 古い布のしみ
@@ -110,7 +121,8 @@ n.out(b)
 
 # 紙の月：黄ばんだ和紙。描いた欠け(クレーター)と、ふちの破れ・裏の骨組みの影
 moon, n = material("moon")
-mc = n.mixc((0.92, 0.80, 0.52), (0.62, 0.48, 0.28), n.band(n.noise(5, 6, 0.65), 0.45, 0.72))
+MOON_COL = {1:((0.92, 0.80, 0.52), (0.62, 0.48, 0.28)), 2:((0.95, 0.22, 0.14), (0.55, 0.08, 0.06)), 3:((0.75, 0.30, 0.35), (0.35, 0.10, 0.15))}[V]
+mc = n.mixc(MOON_COL[0], MOON_COL[1], n.band(n.noise(5, 6, 0.65), 0.45, 0.72))
 mb = n.bsdf(mc, 0.9, Subsurface_Weight=0.3, Subsurface_Radius=(0.2, 0.15, 0.1))
 set_normal(mb, n.bump(n.noise(40, 6), 0.3, 0.01))
 n.out(n.add(mb, n.emit(mc, 0.25)))
@@ -126,7 +138,7 @@ bare = n.bsdf((0.30, 0.18, 0.09), 0.8)
 n.out(n.mix(paint, bare, n.math("MULTIPLY", n.band(n.noise(9, 6), 0.62, 0.72), 0.85)))
 # 窓の灯り(切り抜きの裏から透ける色紙)
 win, n = material("window")
-n.out(n.emit((1.0, 0.62, 0.25), 2.2))
+n.out(n.emit({1:(1.0, 0.62, 0.25), 2:(1.0, 0.18, 0.08), 3:(0.6, 0.2, 0.9)}[V], {1:2.2, 2:2.6, 3:1.2}[V]))
 
 # 床：古い板張り。すり減った所が明るく、継ぎ目は暗い
 floor, n = material("floor")
@@ -150,7 +162,7 @@ gold, n = material("gold")
 gb = n.bsdf((0.72, 0.52, 0.22), 0.35, 1.0)
 n.out(n.mix(gb, n.bsdf((0.12, 0.08, 0.03), 0.8), n.math("ADD", n.math("MULTIPLY", n.ao(0.15), 1.2), n.math("MULTIPLY", n.band(n.noise(10, 6), 0.5, 0.7), 0.6), True)))
 string, n = material("string")
-n.out(n.bsdf((0.32, 0.29, 0.26), 0.9))
+n.out(n.bsdf((0.32, 0.29, 0.26), 0.9) if V < 3 else n.add(n.bsdf((0.4, 0.15, 0.18), 0.9), n.emit((0.8, 0.1, 0.15), 0.4)))     # 悪夢では糸が赤く光る
 lamp, n = material("lamp")
 n.out(n.emit((1.0, 0.75, 0.4), 8.0))
 
@@ -184,6 +196,15 @@ for i in range(NZ + 1):
 for i in range(NZ):
     for j in range(NX):
         a = i*(NX + 1) + j; bf.append((a, a + 1, a + NX + 2, a + NX + 1))
+# 悪夢：書き割りに縦の大きな裂け目(ぎざぎざ)。奥の闇が見える
+TEARS = [(-3.1, 0.55, 0.2), (0.4, 0.75, -0.3), (3.6, 0.5, 0.5)] if V == 3 else []     # (横の位置, 最大の幅, 中心の高さ)
+def torn(a, b, c_, d):
+    cx = (bv[a].x + bv[c_].x)/2; cz = (bv[a].z + bv[c_].z)/2
+    for (tx, tw, tz) in TEARS:
+        w = tw*max(0, 1 - ((cz - tz)/2.6)**2) + 0.12*math.sin(cz*9 + tx*3) + 0.06*math.sin(cz*23 + tx)
+        if abs(cx - tx - 0.15*math.sin(cz*2.3 + tx)) < w: return True
+    return False
+bf = [f_ for f_ in bf if not torn(*f_)]
 back = obj("backdrop", mesh("backdrop", bv, bf), [sky]); smooth(back)
 
 # 紙の月(糸で吊る。少し傾いている)
@@ -241,7 +262,7 @@ skyline(BACK_Y - 0.7, FLOOR_Z - 0.1, 0.45, 1.0, SEED + 1, 0.7)    # ドローン
 skyline(BACK_Y - 2.2, FLOOR_Z - 0.1, 0.25, 0.6, SEED + 2)
 
 # 上から垂れる糸：ほつれた操り糸が何本も。ところどころ小さな操り板が絡んだまま吊られている
-for k in range(24):
+for k in range({1:24, 2:30, 3:70}[V]):
     x = rnd.uniform(-4.6, 4.6); yy = rnd.uniform(-0.6, BACK_Y - 0.4); zb = rnd.uniform(-0.6, 2.4)
     L_ = 6.0 - zb
     bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.005, depth=L_, location=(x, yy, zb + L_/2), rotation=(0, rnd.uniform(-0.03, 0.03), 0))
@@ -326,11 +347,16 @@ def area(name, loc, target, energy, color, size):
     L = bpy.data.lights.new(name, "AREA"); L.energy = energy; L.color = color; L.size = size
     o = bpy.data.objects.new(name, L); sc.collection.objects.link(o); o.location = loc
     o.rotation_euler = (Vector(target) - Vector(loc)).to_track_quat("-Z", "Y").to_euler()
+LIGHT = {
+    1:dict(c=(1.0, 0.84, 0.58), ce=16000, l=(0.95, 0.65, 0.45), r=(0.6, 0.45, 1.0), f=(1.0, 0.7, 0.4), fe=900),
+    2:dict(c=(1.0, 0.42, 0.32), ce=15000, l=(1.0, 0.3, 0.25), r=(0.85, 0.2, 0.35), f=(1.0, 0.35, 0.2), fe=1000),
+    3:dict(c=(0.62, 0.42, 1.0), ce=9000, l=(0.5, 0.3, 0.9), r=(0.9, 0.15, 0.25), f=(0.95, 0.12, 0.18), fe=2200),
+}[V]
 area("fill", (0, -8, 3), (0, BACK_Y, 0.5), 500, (0.8, 0.7, 0.9), 10)                 # 客席の上からの、ぼんやりした明かり
-spot("spotC", (0.0, -6, 8), (0.0, BACK_Y, 0.4), 16000, (1.0, 0.84, 0.58), 30, 0.6)            # まんなかの強いスポットライト(書き割りに丸い光)
-spot("spotL", (-6, -4, 7), (-3.2, BACK_Y, -0.4), 2500, (0.95, 0.65, 0.45), 22)
-spot("spotR", (6, -4, 7), (3.2, BACK_Y, 0.6), 3500, (0.6, 0.45, 1.0), 22)              # 右から紫がかった光
-area("foot", (0, -1.6, FLOOR_Z - 0.3), (0, BACK_Y, 1.5), 900, (1.0, 0.7, 0.4), 9)      # 脚光(下から)
+spot("spotC", (0.0, -6, 8), (0.0, BACK_Y, 0.4), LIGHT["ce"], LIGHT["c"], 30, 0.6)            # まんなかの強いスポットライト(書き割りに丸い光)
+spot("spotL", (-6, -4, 7), (-3.2, BACK_Y, -0.4), 2500, LIGHT["l"], 22)
+spot("spotR", (6, -4, 7), (3.2, BACK_Y, 0.6), 3500, LIGHT["r"], 22)              # 右から紫がかった光
+area("foot", (0, -1.6, FLOOR_Z - 0.3), (0, BACK_Y, 1.5), LIGHT["fe"], LIGHT["f"], 9)      # 脚光(下から)
 area("curtainKey", (0, -7, 1), (0, -1.5, 0), 400, (1.0, 0.8, 0.6), 8)                  # 幕を照らす
 world = bpy.data.worlds.new("w"); sc.world = world; world.use_nodes = True
 world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.02, 0.015, 0.02, 1)
@@ -360,9 +386,23 @@ def render(path, w, h, fmt, transparent):
     bpy.ops.render.render(write_still=True)
     print("書き出し:", path, w, "x", h)
 
+if CURTAIN:
+    # 閉じた緞帳だけを、手前の絵と同じカメラで描く(ほかの物は隠す)
+    for o in list(sc.objects):
+        if o.type == "MESH": o.hide_render = True
+    drape(-5.6, 5.6, 3.5, -3.3, 26, 0.0, -1, "curtainClosed")
+    cc = sc.objects["curtainClosed"]; cc.location.y = -0.35; FRAME.remove(cc)
+    for k in range(60):     # すその金の房
+        x = -5.4 + k*0.18
+        bpy.ops.mesh.primitive_cone_add(vertices=8, radius1=0.05, radius2=0.015, depth=0.22, location=(x, -1.95, -3.25), rotation=(math.pi, 0, 0))
+        bpy.context.object.data.materials.append(gold)
+    cam.location = (0, -1.5 - D/STAGE_OVER, 0.0)
+    render(os.path.join(OUTDIR, "curtain.png"), 960*PX, 540*PX, "PNG", True)
+    sys.exit(0)
 # 奥：手前の物を隠して描く(画面より STAGE_OVER 倍広い)
 for o in FRAME: o.hide_render = True
-render(os.path.join(OUTDIR, "stage.jpg"), round(960*STAGE_OVER*PX), round(540*STAGE_OVER*PX), "JPEG", False)
+render(os.path.join(OUTDIR, "stage.jpg" if V == 1 else "stage%d.jpg" % V), round(960*STAGE_OVER*PX), round(540*STAGE_OVER*PX), "JPEG", False)
+if V != 1: sys.exit(0)      # 手前の絵は第1幕と同じ
 # 手前：同じ広さのまま、奥の物は穴(透明)にして描く。ゲームでは画面の大きさで貼るので、カメラを寄せて画面ちょうどにする
 for o in FRAME: o.hide_render = False
 for o in sc.objects:
