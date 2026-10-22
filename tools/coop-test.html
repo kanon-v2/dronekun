@@ -15,7 +15,7 @@ var frames = { host:document.getElementById("host").contentWindow, guest:documen
 var st = { host:null, guest:null };
 var out = [], fails = 0;
 function L(s){ out.push(s); }
-function check(name, ok, detail){ if(!ok) fails++; L((ok ? "OK   " : "NG   ") + name + (detail ? "  (" + detail + ")" : "")); }
+function check(name, ok, detail){ if(!ok) fails++; L((ok ? "OK   " : "NG   ") + name + (detail ? "  (" + detail + ")" : "")); document.getElementById("result").textContent = out.concat(["running..."]).join(String.fromCharCode(10)); }   //途中で固まっても、どこまで進んだか見えるように
 function cmd(who, m){ frames[who].postMessage(m, "*"); }
 
 //------------------------------------------------ 偽PeerJSの中継(仲介サーバーと通信路の代わり)
@@ -82,8 +82,8 @@ var steps = [
     },
     function(next){
         cmd("guest", { cmd:"join", code:st.host.code.toUpperCase() });
-        waitFor(function(){ return both(function(s){ return s.active && s.page == 4; }); }, 8000, function(ok){
-            check("コードで入る → ふたりともプロローグ", ok, desc()); next();
+        waitFor(function(){ return both(function(s){ return s.active && s.page == 2; }); }, 8000, function(ok){
+            check("コードで入る → ふたりとも強化画面(ストーリーは流さない)", ok, desc()); next();
         });
     },
     function(next){
@@ -158,7 +158,7 @@ var steps = [
         var j0 = st.host.extra.justSlow;
         cmd("guest", { cmd:"just" });
         waitFor(function(){ return st.host.extra.justSlow > j0; }, 5000, function(ok){
-            check("ゲストのジャスト衝撃波で、ホストが敵と弾をゆっくりにする", ok && st.guest.just > 0, "ゲストのジャスト" + st.guest.just + "・ホストのスロー" + st.host.extra.justSlow);
+            check("ゲストのジャスト衝撃波で、ホストの画面も同じようにゆっくりになる", ok && st.guest.just > 0, "ゲストのジャスト" + st.guest.just + "・ホストのスロー" + st.host.extra.justSlow);
             next();
         });
     },
@@ -185,6 +185,129 @@ var steps = [
         waitFor(function(){ return st.guest.extra.cloneSeen > 0; }, 8000, function(ok){
             check("ライバルの分身がゲストにも見える", ok, "見えた" + st.guest.extra.cloneSeen);
             next();
+        });
+    },
+    function(next){
+        //ライバルの中身・針の中身がゲストに写る(coopMirror.js)
+        waitFor(function(){ return st.guest.extra.mirrored > 0 && st.guest.extra.needleX > 0; }, 8000, function(ok){
+            check("ライバルと針の中身がゲストに写る", ok, "ライバル" + st.guest.extra.mirrored + "・針" + st.guest.extra.needleX);
+            next();
+        });
+    },
+    function(next){
+        //ゲスト(P2)のドローン君は違う色(自分の画面でも、ホストの画面の相方としても)
+        var ok = st.guest.tint && st.host.ptint == st.guest.tint && !st.host.tint && !st.guest.ptint;
+        check("ゲスト(P2)のドローン君は違う色", ok, "ゲスト自分:" + st.guest.tint + " ホストから見た相方:" + st.host.ptint + " ホスト自分:" + st.host.tint);
+        next();
+    },
+    function(next){
+        //ホストだけ倒れる → ゲストが10秒生き残ると、ホストが耐久1で復活する
+        cmd("host", { cmd:"dieOne" });
+        waitFor(function(){ return st.host.extra.downSeen > 0 && st.host.extra.revived > 0 && !st.host.down && st.host.page == 1; }, 16000, function(ok, ms){
+            check("倒れても、相方が10秒生き残ると復活する", ok, "倒れていた" + st.host.extra.downSeen + "コマ・復活" + st.host.extra.revived + " " + Math.round(ms/100)/10 + "秒 " + desc());
+            next();
+        });
+    },
+    function(next){
+        //ゲストのジャスト回避(見切り)：ホストが敵と弾をゆっくりにする
+        var p0 = st.host.extra.pslow;
+        cmd("guest", { cmd:"dodgeJust" });
+        waitFor(function(){ return st.host.extra.pslow > p0 + 10; }, 5000, function(ok){
+            check("ゲストのジャスト回避で、ホストも見切りの演出になり、敵と弾がゆっくりになる", ok, "ゆっくりにしたコマ" + (st.host.extra.pslow - p0));
+            next();
+        });
+    },
+    function(next){
+        //ホストのジャスト衝撃波・ジャスト回避で、ゲストの画面も同じ演出になる
+        var j0 = st.guest.extra.justSlow, w0 = st.guest.extra.gWatch || 0;
+        cmd("host", { cmd:"just" });
+        setTimeout(function(){ cmd("host", { cmd:"dodgeJust" }); }, 2500);
+        waitFor(function(){ return st.guest.extra.justSlow > j0 && (st.guest.extra.gWatch || 0) > w0 + 10; }, 9000, function(ok){
+            check("ホストのジャスト衝撃波・ジャスト回避で、ゲストの画面も同じようにゆっくりの演出になる", ok, "ジャスト衝撃波" + (st.guest.extra.justSlow - j0) + "・見切りの演出" + ((st.guest.extra.gWatch || 0) - w0) + "コマ");
+            next();
+        });
+    },
+    function(next){
+        //ゲストが回避で消した弾は、ホストの画面でも消える
+        cmd("host", { cmd:"shoot", on:true });
+        var tries = 0;
+        var iv = setInterval(function(){ cmd("guest", { cmd:"dodgeClear" }); if(++tries > 20) clearInterval(iv); }, 300);
+        waitFor(function(){ return st.host.extra.cleared > 0; }, 8000, function(ok){
+            clearInterval(iv);
+            cmd("host", { cmd:"shoot", on:false });
+            check("ゲストが回避で消した弾を、ホストも消す", ok, "消えた弾" + st.host.extra.cleared);
+            next();
+        });
+    },
+    function(next){
+        //ゲストの時止めワープ：ホストも止まった時の中に入り、ワープが終わると動き出す
+        var s0 = st.host.extra.pStop;
+        cmd("guest", { cmd:"warp" });
+        waitFor(function(){ return st.host.extra.pStop > s0 + 20 && st.guest.ts == 0 && st.host.extra.pStop == (st.host.__last = st.host.extra.pStop) ; }, 15000, function(){
+            setTimeout(function(){
+                var stopped = st.host.extra.pStop - s0, ended = st.guest.ts == 0 && st.host.page == 1;
+                check("ゲストが時を止めると、ホストも止まり、ワープのあと動き出す", stopped > 20 && ended, "ホストが止まっていたコマ" + stopped + " ゲストの段階" + st.guest.ts);
+                next();
+            }, 1500);
+        });
+    },
+    function(next){
+        //ホストの時止めワープ：ゲストも止まった時の中に入る
+        var s0 = st.guest.extra.pStop;
+        cmd("host", { cmd:"warp" });
+        waitFor(function(){ return st.guest.extra.pStop > s0 + 20 && st.host.ts == 0; }, 15000, function(ok){
+            check("ホストが時を止めると、ゲストも止まる", ok, "ゲストが止まっていたコマ" + (st.guest.extra.pStop - s0) + " ホストの段階" + st.host.ts);
+            next();
+        });
+    },
+    function(next){
+        //最終局面(Suno)の始まり：第一形態が倒れ、曲の頭から再構築して第二形態になるまで、ゲストも止まらずに写る
+        var t0 = st.guest.extra.gFinale, e0 = st.guest.errors.length;
+        cmd("guest", { cmd:"songCheck" });
+        cmd("host", { cmd:"finale", t:0 });
+        waitFor(function(){ return st.guest.extra.gFinale > t0 + 30; }, 30000, function(ok){
+            check("最終局面の再構築から第二形態まで、ゲストも止まらずに写る(曲の流し直しは1度だけ)", ok && st.guest.errors.length == e0 && st.guest.extra.songAsks == 1 && st.guest.page == 1,
+                  "第二形態が写ったコマ" + (st.guest.extra.gFinale - t0) + "・曲を頼んだ回数" + st.guest.extra.songAsks + " " + desc() + " " + st.guest.errors.join(" | "));
+            cmd("host", { cmd:"finaleOff" }); cmd("guest", { cmd:"finaleOff" });
+            setTimeout(next, 500);
+        });
+    },
+    function(next){
+        //最終局面(Suno)：ゲストにも第二形態と曲の時刻が写り、迫ってくる改の突進をゲストのジャスト衝撃波で弾き返す
+        cmd("host", { cmd:"finale", t:97 });
+        waitFor(function(){ return st.guest.extra.gFinale > 30 && st.guest.extra.gParry > 0 && st.host.extra.fres; }, 30000, function(ok){
+            var r = st.host.extra.fres;
+            check("最終局面がゲストに写り、ゲストのジャスト衝撃波で改の突進を弾き返す", ok && (r == "perfect" || r == "just"),
+                  "写ったコマ" + st.guest.extra.gFinale + "・ゲストの衝撃波" + st.guest.extra.gParry + "・ホストの判定" + r + " ホストの改" + st.host.extra.kaiLog + " 倒れた所" + st.host.extra.kaiDead);
+            cmd("host", { cmd:"finaleOff" }); cmd("guest", { cmd:"finaleOff" });
+            setTimeout(next, 500);
+        });
+    },
+    function(next){
+        //通しの確認：ライバル(WAVE19の強さ)を、第一形態 → 第二形態 → 時の前借り → 時ノ奔流まで。ゲストで例外が出ず、止まらない
+        var e0 = st.guest.errors.length;
+        cmd("host", { cmd:"tour", kind:"rival", lv:3 });
+        var c0 = st.guest.extra.gClock || 0;
+        waitFor(function(){ return st.host.extra.tourKind == "rival" && st.host.extra.tourT >= 7000; }, 90000, function(ok){
+            var x = st.guest.extra;
+            check("通し：ライバルの全段階(時戻しで自分も巻き戻されるのも)を、ゲストも止まらずに写す", ok && st.guest.errors.length == e0 && x.gClock > c0 + 5000 && /over/.test(x.gModeList) && /awaken/.test(x.gModeList) && /rstop/.test(x.gModeList) && x.gPull > 0,
+                  "巻き戻された" + (x.gPull || 0) + "コマ 見えた動き" + x.gModes + "(" + x.gModeList + ") ゲストの進み" + (x.gClock - c0) + " " + st.guest.errors.slice(e0).join(" | ") + " ゲスト" + JSON.stringify(st.guest.dbg) + " ホスト" + JSON.stringify(st.host.dbg) + " ホストの進み" + st.host.extra.tourT);
+            cmd("host", { cmd:"tourOff" }); cmd("guest", { cmd:"tourOff" });
+            setTimeout(next, 500);
+        });
+    },
+    function(next){
+        //通しの確認：最終局面を曲の頭から最後の突進まで(区切りを飛ばし、体力の区切りのムービーも)。ゲストで例外が出ず、止まらない
+        var e0 = st.guest.errors.length;
+        cmd("host", { cmd:"finale", t:0 });
+        cmd("host", { cmd:"tour", kind:"finale" });
+        var c0 = st.guest.extra.gClock || 0;
+        waitFor(function(){ return st.host.extra.tourKind == "finale" && st.host.extra.tourT >= 5600; }, 90000, function(ok){
+            var x = st.guest.extra;
+            check("通し：最終局面の全区切りを、ゲストも止まらずに写す", ok && st.guest.errors.length == e0 && x.gClock > c0 + 4000 && /tr:dawn/.test(x.gModeList) && /tr:last/.test(x.gModeList) && /tr:cut/.test(x.gModeList),
+                  "見えた区切り(" + x.gModeList + ") ゲストの進み" + (x.gClock - c0) + " " + st.guest.errors.slice(e0).join(" | ") + " ゲスト" + JSON.stringify(st.guest.dbg) + " ホスト" + JSON.stringify(st.host.dbg) + " ホストの進み" + st.host.extra.tourT + " 改" + st.host.extra.kaiLog);
+            cmd("host", { cmd:"tourOff" }); cmd("guest", { cmd:"tourOff" });
+            setTimeout(next, 500);
         });
     },
     function(next){
@@ -230,6 +353,30 @@ var steps = [
                 var got = st.host.pr == pr0.host + 1 && st.guest.pr == pr0.guest + 1;
                 check("出撃先：クリアすると報酬をもらって、選んだWAVEの次へ進む", ok2 && got, desc() + " 報酬 " + pr0.host + "→" + st.host.pr + "/" + pr0.guest + "→" + st.guest.pr);
                 next();
+            });
+        });
+    },
+    function(next){
+        //最終決戦：WAVE20をクリアすると、ふたりの一騎打ち → 先に倒れた側は再構築して復活 → 決着 → エンディング
+        cmd("host", { cmd:"setWave", w:20 }); cmd("guest", { cmd:"setWave", w:20 });
+        cmd("host", { cmd:"arm", w:["gun","missile","tesla"], wl:4, lv:10 }); cmd("guest", { cmd:"arm", w:["laser","bug","fire"], wl:4, lv:10 });
+        setTimeout(function(){ cmd("host", { cmd:"winWave" }); }, 500);
+        waitFor(function(){ return both(function(s){ return s.page == 8 && s.duel.a; }); }, 30000, function(ok){
+            check("WAVE20クリアで、ふたりの一騎打ちになる", ok, desc());
+            waitFor(function(){ return both(function(s){ return s.duel.ph == "result"; }); }, 240000, function(ok2, ms){
+                var h = st.host.duel, g = st.guest.duel, pair = h.res + "/" + g.res;
+                check("一騎打ちの決着がつき、勝敗が食い違わない", ok2 && (pair == "win/lose" || pair == "lose/win" || pair == "draw/draw"), pair + " " + Math.round(ms/1000) + "秒 耐久" + Math.round(h.hp) + "/" + Math.round(g.hp) + " 戦い" + Math.round((st.host.extra.duelF || 0)/60) + "秒(最初に倒れるまで" + Math.round((st.host.extra.firstZero || 0)/60) + "秒)");
+                var rb = (st.host.extra.rebuilt || st.guest.extra.rebuilt) && (st.host.extra.otherRebuilt || st.guest.extra.otherRebuilt);
+                check("先に倒れた側が再構築して復活し、相手の画面にも見える", rb, "ホスト" + st.host.extra.rebuilt + "/" + st.host.extra.otherRebuilt + " ゲスト" + st.guest.extra.rebuilt + "/" + st.guest.extra.otherRebuilt);
+                waitFor(function(){ return both(function(s){ return s.page == 5; }); }, 15000, function(ok3){
+                    check("一騎打ちのあと、ふたりともエンディングへ", ok3, desc());
+                    //進み具合・能力はホストのひとり用の記録に書き、ゲストは何も書かない
+                    var hw = st.host.writes, gw = st.guest.writes;
+                    var gKeys = Object.keys(gw).filter(function(k){ return /^dronekun_(save|meta|best|cleared|coop)/.test(k); });
+                    check("記録：ホストはひとり用の記録に書き、ゲストは書かない", (hw.dronekun_meta || 0) > 0 && (hw.dronekun_save || 0) > 0 && !hw.dronekun_coop && gKeys.length == 0,
+                          "ホスト:" + JSON.stringify(hw) + " ゲスト:" + JSON.stringify(gw));
+                    next();
+                });
             });
         });
     },
@@ -302,6 +449,7 @@ var steps = [
         });
     },
     function(next){
+        check("送る状態の大きさが上限に収まる", st.host.extra.maxSize <= 12000*1.05, "いちばん大きいもの" + st.host.extra.maxSize + "バイト(うち写し" + st.host.extra.maxMirror + ")");
         var errs = st.host.errors.concat(st.guest.errors);
         check("スクリプトエラーなし", errs.length == 0, errs.join(" | "));
         next();

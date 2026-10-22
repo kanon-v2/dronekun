@@ -97,7 +97,7 @@ function toCanvasPos(e){
 function isTouchDrag(){
     //戦闘中・対戦の戦闘中・タイトル画面(設定の窓やデバッグのメニューを開いていないとき)はドラッグで動かす
     //時止めワープの移動先を選んでいる間は、触った場所をそのまま選ぶ(timeStop.js)
-    return inputMode == "touch" && ((page.number == 1 && !timeStop.picking()) || (page.number == 7 && versus.dragging())
+    return inputMode == "touch" && ((page.number == 1 && !timeStop.picking()) || (page.number == 7 && versus.dragging()) || (page.number == 8 && coopDuel.dragging())
         || (page.number == 0 && !startScreen.settings && !bossDebug.menu));
 }
 //タップ：その位置を押す。タイトル画面では、ドローン君の目標を覚えておき、押し終わったら戻す(目標がボタンへ飛ばないように)
@@ -138,7 +138,7 @@ canvas.addEventListener("pointerdown",function(e){
         //BGM/SEボタンと衝撃波ボタンはその場で処理。タイトル画面のボタンはタップとして押す。それ以外はドラッグ開始
         if(sound.tapButton(p.x,p.y)) return;
         if(page.number != 0 && mainScreen.touchBlastHit(p.x,p.y)){ Click = 1; return; }   //戦闘中・対戦の戦闘中
-        if(page.number == 1 && dodge.touchHit(p.x,p.y)){ dodge.press(); return; }    //回避ダッシュ(dodge.js)
+        if((page.number == 1 || page.number == 8) && dodge.touchHit(p.x,p.y)){ dodge.press(); return; }    //回避ダッシュ(dodge.js)
         if(page.number == 1 && shotLab.labPickAt(p.x,p.y)) return;     //デバッグの攻撃の試作：左の一覧で攻撃を選ぶ(shotLab.js)
         if(page.number == 0 && startScreen.touchUI(p.x,p.y)){ tapAt(p); return; }
         drag.id = e.pointerId;
@@ -340,7 +340,7 @@ const BUFFS = [
     { key:"plate", name:"予備装甲",   desc:"耐えられる被弾数+" + BUFF_PLATE,                cost:[40,70] },
     { key:"warp",  name:"時止めワープ", desc:"被弾を回避・" + BUFF_WARP_CD + "秒に1回",     cost:[90],
       info:["被弾する瞬間に自動で時が止まり、ダメージなしで、クリック・タップした場所へワープ",
-            "使うと" + BUFF_WARP_CD + "秒は使えません（WAVEの始めは使える）。協力プレイ・対戦では働きません"] }
+            "使うと" + BUFF_WARP_CD + "秒は使えません（WAVEの始めは使える）。協力プレイでは相方の時も止まります（対戦では働きません）"] }
 ];
 
 //------------------------------------------------------------------------------
@@ -440,9 +440,14 @@ game.reset();
 var save = {
     KEY:"dronekun_save",        //この周の進行状況(倒れる・クリアすると消える)
     META_KEY:"dronekun_meta",   //周をまたいで残るもの(パーツ・能力・見たストーリー・難易度ごとの進み具合・最後の装備)
-    COOP_META_KEY:"dronekun_coop",  //協力プレイ用の、周をまたいで残るもの(中身は META_KEY と同じ。ひとり用とは別に育てる)
+    //協力プレイ：ホストはひとり用と同じ記録を読み書きする(進み具合・能力・パーツは共通)。
+    //ゲストは自分の記録を読むだけで、何も書かない(参加中に集めたパーツ・強化は持ち帰らない)
     metaKey:function(){
-        return typeof coop != "undefined" && coop.active ? this.COOP_META_KEY : this.META_KEY;
+        return this.META_KEY;
+    },
+    //書き込まないか(協力プレイのゲスト)
+    readOnly:function(){
+        return typeof coop != "undefined" && coop.active && coop.role == "guest";
     },
     BEST_KEY:"dronekun_best",
     //今の進行状況を文字列にする(セーブと、協力プレイのコンティニューに使う)
@@ -458,13 +463,11 @@ var save = {
     },
     //この周の進行状況と、周をまたいで残るものを書く
     write:function(){
-        //協力プレイは、この周の進行状況はコンティニュー用にメモリにだけ覚え(ひとり用のセーブは上書きしない)、
-        //周をまたいで残るものは協力プレイ用に書く
+        //協力プレイは、この周の進行状況をコンティニュー用にメモリにも覚える。
+        //ホストはひとり用と同じく書き(つづきから・次の周に引き継ぐ)、ゲストは書かない
         if(typeof coop != "undefined" && coop.active){
             coop.checkpoint = this.data();
-            game.keepProgress();
-            this.writeMeta();
-            return;
+            if(this.readOnly()) return;
         }
         try{
             localStorage.setItem(this.KEY, this.data());
@@ -472,8 +475,9 @@ var save = {
         game.keepProgress();
         this.writeMeta();
     },
-    //周をまたいで残るものだけを書く(倒れたとき・クリアしたとき。この周で拾ったパーツも残す。協力プレイは協力プレイ用に)
+    //周をまたいで残るものだけを書く(倒れたとき・クリアしたとき。この周で拾ったパーツも残す。協力プレイのゲストは書かない)
     writeMeta:function(){
+        if(this.readOnly()) return;
         try{ localStorage.setItem(this.metaKey(), this.metaData()); }catch(e){}
     },
     exists:function(){
@@ -487,7 +491,7 @@ var save = {
             return true;
         }catch(e){ return false; }
     },
-    //周をまたいで残るものを読み込む(なければ、前の作りのセーブから作る。協力プレイは協力プレイ用を読む)
+    //周をまたいで残るものを読み込む(なければ、前の作りのセーブから作る)
     loadMeta:function(){
         var m = null;
         try{ m = JSON.parse(localStorage.getItem(this.metaKey())); }catch(e){}
@@ -499,7 +503,6 @@ var save = {
             game.kept = m.kept || null;
             return;
         }
-        if(this.metaKey() != this.META_KEY) return;     //協力プレイ用ははじめてなら空から(レベル1・パーツ0)
         //前の作り(能力はレベル5まで、パーツはこの周のもの)のセーブ：パーツ・見たストーリーを引き継ぎ、能力は近い強さのレベルに直す
         var old = null;
         try{ old = localStorage.getItem(this.KEY); }catch(e){}
@@ -556,18 +559,20 @@ var save = {
     },
     //この周の進行状況を消す(周をまたいで残るものは消さない)
     clear:function(){
+        if(this.readOnly()) return;
         try{ localStorage.removeItem(this.KEY); }catch(e){}
     },
     //すべてのデータを消す(テスト用)
     clearAll:function(){
         this.clear();
         try{ localStorage.removeItem(this.META_KEY); }catch(e){}
-        try{ localStorage.removeItem(this.COOP_META_KEY); }catch(e){}
+        try{ localStorage.removeItem("dronekun_coop"); }catch(e){}     //前の作りの協力プレイ用の記録
     },
     getBest:function(){
         try{ return Number(localStorage.getItem(this.BEST_KEY)) || 0; }catch(e){ return 0; }
     },
     setBest:function(_score){
+        if(this.readOnly()) return;
         try{ localStorage.setItem(this.BEST_KEY, _score); }catch(e){}
     }
 };
@@ -1247,7 +1252,7 @@ var drone = {
         this.preX = this.X;
         this.preY = this.Y;
         //回避ダッシュの間は、ポインタへ一気に飛ぶ(dodge.js)。ライバルの時戻しの間は、来た道を巻き戻される(rival.js)
-        var dashing = page.number == 1 && (dodge.steer(this) || rival.steer(this));
+        var dashing = (page.number == 1 && (dodge.steer(this) || rival.steer(this))) || (page.number == 8 && dodge.steer(this));    //一騎打ちも回避ダッシュ(coopDuel.js)
         //試作の場(風・鏡・クモの糸)が、目標と追従の遅れを変える(shotLab.js)
         if(!dashing){
             if(page.number == 1){
@@ -1382,7 +1387,7 @@ var viewOpt = {
     },
     //戦闘中か(戦闘画面と、対戦の戦闘中)
     inBattle:function(){
-        return page.number == 1 || (page.number == 7 && versus.dragging());
+        return page.number == 1 || (page.number == 7 && versus.dragging()) || (page.number == 8 && coopDuel.dragging());
     },
     showPointer:function(){
         return this.pointer || !this.inBattle();

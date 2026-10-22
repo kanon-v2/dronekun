@@ -81,7 +81,6 @@ const JUST_TEXT_TIME  = 90;     //「JUST!」の文字を出しておく時間(�
 const JUST_PERFECT    = 6;      //弾がこの時間(フレーム)のうちに当たるなら PERFECT
 const JUST_RAM_PERFECT = 9;     //突進・人間のドローンの PERFECT
 const JUST_GOOD = { slow:0.45, max:8, yaruki:10, guard:36 };   //JUST の見返り(ゆっくりの長さの割合・はね返す数・たまるやる気・無敵の時間)
-const JUST_COOP_SLOW  = 40;     //協力プレイで、敵と弾がゆっくりになる時間(ふたりの画面で同じ。ふつうの衝撃波は BLAST_SLOWMO)
 const JUST_COLOR      = "90,220,255";
 //ジャスト・カウンター：体当たりしてくる敵がぶつかる直前に衝撃波を出すとジャストになり、その敵を敵の群れへ弾き返す
 const COUNTER_TYPES   = ["dasher","mdrone","queen","kai","chrono","chronoClone"];    //弾き返せる敵(突進・人間のドローン・女王蜂とドローン君改・ライバルと分身の突進)
@@ -402,7 +401,9 @@ var mainScreen = {
     enter:function(){
         enemies = []; enemyShots = []; pickups = []; effects = []; popups = [];
         shotLab.clear();        //試作の攻撃(範囲攻撃・バケツ。shotLab.js)
-        this.down = false;      //協力プレイで倒れている(次のWAVEで復帰)
+        coopMirror.reset();     //協力プレイの写し(coopMirror.js)
+        this.down = false;      //協力プレイで倒れている(相方が生き残れば復活。次のWAVEでも復帰。coop.reviveStep)
+        this.downT = 0;         //倒れてから、相方が生き残っている時間(フレーム)
         if(coop.active){
             //WAVEごとにダメージの合計をリセット(敵の番号は通しなので混ざらない)
             coop.dmg = {}; coop.applied = {};
@@ -487,33 +488,12 @@ var mainScreen = {
         if(this.hitStop > 0){ this.hitStop--; return; }
         //時止めワープ(試作。timeStop.js)：時が止まっている間は、ワープの演出だけを進める
         if(timeStop.step()) return;
+        //協力プレイ：相方が時を止めている間は、自分も止まった時の中(相方だけが動ける。coop.js)
+        if(coop.partnerStopped()) return;
         //ライバル(rival.js)の登場の間も時が止まる：演出だけを進める
         if(rival.introStep()) return;
         //ジャスト衝撃波のあとは、画面のすべてをゆっくりにする(何フレームかに1回だけ進め、だんだん元の速さへ)
-        if(this.justSlow > 0){
-            this.justSlow--;
-            if(this.justT > 0) this.justT--;    //文字は実際の時間で消す
-            //閃光・画面の色も実際の時間で消す(方眼なしは公開版と同じく、ゆっくりの時間で数える。JUST_FX)
-            if(this.justFx().realTime){
-                if(this.flashT > 0) this.flashT--;
-                if(this.tint && --this.tint.life <= 0) this.tint = null;
-            }
-            //はじめはいちばんゆっくりのまま保ち、そのあと元の速さへ戻していく
-            var k = 1 - this.justSlow/JUST_SLOW_TIME;
-            var u = Math.max(0, (k - JUST_SLOW_HOLD)/(1 - JUST_SLOW_HOLD));
-            if(u > 0 && !this.slowBack){
-                this.slowBack = true;
-                sound.timeWarp(false);
-                sound.play("slowOut");
-            }
-            var rate = JUST_SLOW_RATE + (1 - JUST_SLOW_RATE)*u*u;
-            this.slowPow = (1 - rate)/(1 - JUST_SLOW_RATE);     //演出の強さ(1がいちばんゆっくり)
-            this.slowAcc += rate;
-            if(this.slowAcc < 1) return;
-            this.slowAcc -= 1;
-        }else{
-            this.slowPow = 0;
-        }
+        if(this.justSlowStep()) return;
         this.stateTime++;
         this.clock++;
         if(this.tint && --this.tint.life <= 0) this.tint = null;
@@ -566,7 +546,9 @@ var mainScreen = {
                     game.pendingReward = (game.pendingReward || 0) + 1;
                     //最終WAVEならエンディング、それ以外は強化画面へ(ストーリーは流さない)
                     if(cleared >= FINAL_WAVE){
-                        page.change(5);
+                        //協力プレイは、ふたりの一騎打ちのあとエンディングへ(coopDuel.js)
+                        if(coop.isHost() && coop.partner) coopDuel.begin();
+                        else page.change(5);
                     }else{
                         goUpgrade();
                     }
@@ -596,7 +578,7 @@ var mainScreen = {
             frozen = this.slowmo % 2 == 0;
         }
         //ジャスト回避の見切り：敵と弾だけがゆっくりになる(ドローン君と装備はふつうの速さ。dodge.js)
-        var seen = dodge.slowStep();
+        var seen = dodge.slowStep();    //(協力プレイでは、相方の見切りの間も：dodge.watchSlow)
         //ライバルが時を操る(rivalTime.js)：加速世界・時飛ばしの分だけ敵と弾を余分に動かし、ドローン君の時が遅い間は装備が遅れる
         var extra = rivalTime.frame();
         if(!frozen){
@@ -617,6 +599,46 @@ var mainScreen = {
         bossDebug.tick();
         if(this.rareMsgTime > 0) this.rareMsgTime--;
         this.tickTimers();
+    },
+    //ジャスト衝撃波のゆっくり：このコマを飛ばすなら true(何フレームかに1回だけ進め、だんだん元の速さへ)
+    //協力プレイでは、ホストもゲストもそれぞれの画面で呼ぶ(ホストの世界がゆっくり進むので、敵と弾はふたりとも同じ速さになる)
+    justSlowStep:function(){
+        if(this.justSlow <= 0){ this.slowPow = 0; return false; }
+        this.justSlow--;
+        if(this.justT > 0) this.justT--;    //文字は実際の時間で消す
+        //閃光・画面の色も実際の時間で消す(方眼なしは公開版と同じく、ゆっくりの時間で数える。JUST_FX)
+        if(this.justFx().realTime){
+            if(this.flashT > 0) this.flashT--;
+            if(this.tint && --this.tint.life <= 0) this.tint = null;
+        }
+        //はじめはいちばんゆっくりのまま保ち、そのあと元の速さへ戻していく
+        var k = 1 - this.justSlow/JUST_SLOW_TIME;
+        var u = Math.max(0, (k - JUST_SLOW_HOLD)/(1 - JUST_SLOW_HOLD));
+        if(u > 0 && !this.slowBack){
+            this.slowBack = true;
+            sound.timeWarp(false);
+            sound.play("slowOut");
+        }
+        var rate = JUST_SLOW_RATE + (1 - JUST_SLOW_RATE)*u*u;
+        this.slowPow = (1 - rate)/(1 - JUST_SLOW_RATE);     //演出の強さ(1がいちばんゆっくり)
+        this.slowAcc += rate;
+        if(this.slowAcc < 1) return true;
+        this.slowAcc -= 1;
+        return false;
+    },
+    //ジャスト衝撃波のゆっくりを始める(_good：JUST の段階なら短め)。協力プレイでは、相方のジャスト衝撃波でも始める(coop.readEvents)
+    startJustSlow:function(_good){
+        var len = _good ? Math.round(JUST_SLOW_TIME*JUST_GOOD.slow) : JUST_SLOW_TIME;
+        this.slowmo = 0;
+        if(this.justSlow > 0 && !this.slowBack){ this.justSlow = Math.max(this.justSlow, len); return; }   //もうゆっくりの中：長いほうに
+        this.justSlow = len;
+        this.slowPow = 1;
+        this.slowBack = false;
+        this.echoFresh = true;
+        //「ブゥゥン」：低くうなる音とともに、BGMがこもる(元の速さへ戻り始めると晴れる)
+        sound.timeWarp(true);
+        sound.play("slowIn");
+        this.slowAcc = 0;
     },
     //演出の時間を進める(登場の演出中も止めない分)
     tickTimers:function(){
@@ -966,22 +988,9 @@ var mainScreen = {
         this.addYaruki(this.justYaruki);
         drone.look.setFace("happy", FACE_JUST_TIME);
         this.guard = good ? JUST_GOOD.guard : JUST_GUARD;
-        //ひとり用は画面のすべてをゆっくりにする。協力プレイは画面のずれを防ぐため、敵と弾だけをゆっくりにする
-        //(敵と弾を動かしているのはホスト。ゲストのジャストは相方に知らせ、ホストがゆっくりにする。coop.readEvents)
-        if(coop.active){
-            this.slowmo = JUST_COOP_SLOW;
-            coop.onJust(drone.X,drone.Y);
-        }else{
-            this.slowmo = 0;
-            this.justSlow = good ? Math.round(JUST_SLOW_TIME*JUST_GOOD.slow) : JUST_SLOW_TIME;
-            this.slowPow = 1;
-            this.slowBack = false;
-            this.echoFresh = true;
-            //「ブゥゥン」：低くうなる音とともに、BGMがこもる(元の速さへ戻り始めると晴れる)
-            sound.timeWarp(true);
-            sound.play("slowIn");
-            this.slowAcc = 0;
-        }
+        //画面のすべてをゆっくりにする。協力プレイでは相方に知らせ、相方の画面も同じようにゆっくりになる(coop.readEvents)
+        this.startJustSlow(good);
+        coop.onJust(drone.X, drone.Y, good);
         this.justT = JUST_TEXT_TIME;
         this.zoomT = Math.round(ZOOM_TIME*0.7); this.zoomX = drone.X; this.zoomY = drone.Y;
         this.flashT = 4;
@@ -1120,7 +1129,7 @@ var mainScreen = {
     },
 
     canBeHit:function(){
-        if(!((this.state == "play" || this.state == "start") && this.invincible == 0 && this.guard == 0 && !this.down && !timeStop.active)) return false;
+        if(!((this.state == "play" || this.state == "start") && this.invincible == 0 && this.guard == 0 && !this.down && !timeStop.active && !coop.partnerStopped())) return false;
         //回避ダッシュの間はすり抜ける。飛んでいる間にすり抜けたらジャスト回避(dodge.js)
         return !dodge.evade();
     },
@@ -1144,9 +1153,10 @@ var mainScreen = {
         this.shake = 12;
         burst(drone.X,drone.Y,10,"#c33");
         if(this.hp <= 0 && coop.active){
-            //協力プレイ：倒れて次のWAVEまで休む。ふたりとも倒れたらゲームオーバー(coop.update)
+            //協力プレイ：倒れて、相方が10秒生き残れば復活する(coop.reviveStep)。ふたりとも倒れたらゲームオーバー(coop.update)
             this.hp = 0;
             this.down = true;
+            this.downT = 0;
             sound.play("destroyed");
             this.shake = 25;
             burst(drone.X,drone.Y,40,"#333");
@@ -1175,7 +1185,7 @@ var mainScreen = {
         //ショップのバフ(強化弾頭)とかすりコンボ。相方の攻撃は相方の画面でもうかけてある。かすりバーストの星は決まったダメージ
         if(_src != "partner" && _src != "skill" && _src != "pod") _dmg *= (1 + BUFF_POWER*game.buff("power")) * this.comboMul();
         //凍った敵：次の一撃が2倍で、氷が砕ける(冷凍。armsExtra.js。ゲストの攻撃はホストに届いてから数える)
-        if(_e.frozen > 0 && _src != "freeze" && !coop.isGuest()){
+        if(_e.frozen > 0 && _src != "freeze" && !coop.isGuest() && !_e.duel){     //一騎打ちの相手には効かない(ホストだけ2倍にならないように)
             _dmg *= 2;
             _e.frozen = 0;
             _e.wasFrozen = true;
@@ -1183,6 +1193,7 @@ var mainScreen = {
         }
         //対戦の相手：ダメージを数えて相手へ送るだけ(相手の耐久は相手の画面で減らす。versus.js)
         if(_e.rival){ versus.hit(_e,_dmg,_src); return; }
+        if(_e.duel){ coopDuel.hit(_e,_dmg,_src); return; }     //協力プレイの一騎打ちの相手(coopDuel.js)
         //ゲストの攻撃はダメージをホストへ送るだけ(敵を動かしているのはホスト)
         if(coop.isGuest()){ coop.guestHit(_e,_dmg,_src); return; }
         if(_e.dead) return;
@@ -1616,7 +1627,7 @@ var mainScreen = {
         if(showMe && !this.down && this.combo >= 2) this.drawComboAura();
         //ドローン(被弾後の無敵中は点滅、撃墜されたら消える)
         //協力プレイの相方
-        if(!this.cinematic()) coop.drawPartner();
+        if(!this.cinematic() && !coop.partnerStopped()) coop.drawPartner();
         if(showMe && !this.down && !timeStop.active) dodge.drawUnder();    //回避ダッシュの残像(dodge.js)
         if(timeStop.active) timeStop.draw();     //時止めワープの間は、周りの色を抜いて、ドローン君か粒子を描く
         else if(showMe && !this.down && Math.floor(this.invincible/4) % 2 == 0){
@@ -1625,6 +1636,7 @@ var mainScreen = {
             dodge.drawDrone();
             ctx.globalAlpha = 1;
         }
+        if(!this.cinematic() && coop.partnerStopped()) coop.drawStopped();     //相方が時を止めている：周りの色を抜いて、相方だけを描く
         //かすりの範囲(弾のふちがこの輪に入るとかすり。かすった瞬間は明るく光る。右下のボタンで隠せる)
         rivalTime.drawFront();  //ライバルが時を操る：枷のかかったドローン君・加速の筋・時飛ばしの閃光(rivalTime.js)
         rival.drawIntro();      //ライバルの登場：止まった世界の上に、集まる光とライバル(rival.js)
@@ -1670,7 +1682,8 @@ var mainScreen = {
             ctx.textBaseline = "middle";
             ctx.font = "bold 22px sans-serif";
             ctx.fillStyle = "rgba(200,40,40,0.9)";
-            ctx.fillText("ダウン中……次のWAVEで復帰します。相方をたのむ！",CW/2,CH/2 + 80);
+            var left = Math.ceil(Math.max(0, COOP_REVIVE_TIME - this.downT)/60);
+            ctx.fillText(coop.partnerAlive() ? "ダウン中……相方が" + left + "秒生き残れば復活！" : "ダウン中……",CW/2,CH/2 + 80);
             ctx.fillStyle = "#000";
         }
         special.drawBossBar();
@@ -1691,6 +1704,7 @@ var mainScreen = {
         rival.drawUi();         //ライバルの登場の名乗り(rival.js)
         bossDebug.drawTag();
         timeStop.drawUi();
+        coop.drawStopUi();
 
         if(this.paused){
             ctx.fillStyle = "rgba(255,255,255,0.75)";

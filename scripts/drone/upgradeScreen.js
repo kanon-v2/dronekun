@@ -479,7 +479,7 @@ var upgradeScreen = {
         if(coop.active){
             ctx.font = "12px sans-serif";
             ctx.textAlign = "center";
-            ctx.fillStyle = "rgb(" + P2_COLOR + ")";
+            ctx.fillStyle = "rgb(" + coop.partnerColor() + ")";
             var p = coop.partner;
             ctx.fillText("協力プレイ中（" + (coop.role == "host" ? "あなたはP1" : "あなたはP2") + "）　相方：" +
                          (!p ? "接続待ち" : (p.rd == game.wave ? "準備完了" : "強化中")),

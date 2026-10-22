@@ -16,6 +16,8 @@ const WARP_SCATTER = 42;        //ほどけた粒子が外へ散る距離(px)
 const WARP_END_TIME = 28;       //組み上がってから時が動き出すまで(フレーム)
 const WARP_GUARD = 60;          //時が動き出したあとの無敵(フレーム。点滅しない)
 const WARP_COLOR = "120,220,255";   //粒子の光の色
+const WARP_COOP_PICK = 300;     //協力プレイでは、この時間(フレーム)たっても選ばなければ、ポインタの所へ移る(止まった時の中で相方を待たせ続けないように)
+const WARP_PHASES = ["", "stop", "pick", "move", "end"];    //相方へ送る段階の番号(coop.js)
 
 var timeStop = {
     active:false,
@@ -35,13 +37,17 @@ var timeStop = {
     debugOn:function(){
         return bossDebug.active && bossDebug.warp;
     },
+    //相方へ送る段階の番号(0：止めていない。coop.js)
+    code:function(){
+        return this.active ? Math.max(0, WARP_PHASES.indexOf(this.phase)) : 0;
+    },
     //ショップで買ってあるか
     owned:function(){
         return game.buff("warp") > 0;
     },
-    //今使えるか(協力プレイ・対戦では使わない。時を止めると相方の画面とずれるため)
+    //今使えるか(対戦では使わない)。協力プレイでは、時を止めた人の相方も止まった時の中で動けなくなる(coop.partnerStopped)
     enabled:function(){
-        if(coop.active || versus.active) return false;
+        if(versus.active || page.number != 1) return false;   //一騎打ち(coopDuel.js)でも使わない
         return this.debugOn() || (this.owned() && this.cd <= 0);
     },
     //時が動いている間に1コマずつクールタイムを減らす(mainScreen.update から)
@@ -85,7 +91,7 @@ var timeStop = {
                 if(this.t >= WARP_STOP_TIME){ this.phase = "pick"; this.t = 0; }
                 break;
             case "pick":
-                if(Click == 1){
+                if(Click == 1 || (coop.active && this.t >= WARP_COOP_PICK)){
                     var p = this.target();
                     this.go(p.x, p.y);
                 }
@@ -314,8 +320,8 @@ var timeStop = {
     },
     //HUD：装備のアイコンの下に、使えるか・あと何秒かを出す(ショップで買ったときだけ)
     drawHud:function(){
-        if(!this.owned() || coop.active || versus.active) return;
-        var ready = this.cd <= 0, x = 14, y = 104, w = 84;
+        if(!this.owned() || versus.active) return;
+        var ready = this.cd <= 0, x = 14, y = coop.active ? 124 : 104, w = 84;    //協力プレイは相方の耐久の下
         ctx.save();
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
@@ -340,7 +346,7 @@ var timeStop = {
         ctx.fillRect(0, CH/2 - 150, CW, 40);
         ctx.font = "bold 20px sans-serif";
         ctx.fillStyle = "rgb(" + WARP_COLOR + ")";
-        var msg = this.phase == "pick" ? "時間停止 ― ワープ先を" + (inputMode == "touch" ? "タップ" : "クリック")
+        var msg = this.phase == "pick" ? "時間停止 ― ワープ先を" + (inputMode == "touch" ? "タップ" : "クリック") + (coop.active ? "（" + Math.ceil(Math.max(0, WARP_COOP_PICK - this.t)/60) + "）" : "")
                 : this.phase == "move" ? "ワープ中……" : this.phase == "end" ? "時は動き出す" : "時間停止";
         ctx.fillText(msg, CW/2, CH/2 - 130);
         ctx.restore();

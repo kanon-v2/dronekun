@@ -192,6 +192,13 @@ var finaleTri = {
     keepMusic:false,    //とどめのあと、曲を止めない(最後の和音まで鳴らす)
     result:null,    //テスト用：最後に弾き返したか("perfect"・"just"・"hit"・"dodge")
     finished:false, //とどめを決めた(曲はくり返しを抜けた)
+    //(以下は reset で作り直す。協力プレイのゲストは rebuild を通らないので、はじめから用意しておく)
+    log:[],         //再構築の記録の行
+    logF:0,         //記録の文字を出すためのフレーム数
+    bannerT:null,   //「再構築プロトコル 始動」の帯を出してからのフレーム数
+    forceN:null,
+    cut:null,       //体力の区切りのムービー
+    impact:null,    //突進が着いた瞬間
 
     on:function(){ return bgmTrial.finales[bgmTrial.finale].v == "triumph"; },
     pos:function(){ return this.fakeT != null ? this.fakeT : triumph.pos(); },
@@ -1010,15 +1017,18 @@ var finaleTri = {
     },
     //衝撃波を出した(shotLab.onBlast から)：迫っている間なら時刻を覚える。最後の突進で決まれば、曲をくり返しから抜く
     //早すぎる衝撃波は数えない(やる気は迫る間に戻す：approach)
-    onBlast:function(){
+    //_x,_y：衝撃波を出したドローン君の位置(省くと自分。協力プレイのゲストの分はホストへ届く。coopMirror.partnerBlast)
+    onBlast:function(_x,_y){
         var e = this.boss();
         if(!e || !e.trApproach || e.trBlastP != null) return;
+        var bx = _x != null ? _x : drone.X, by = _y != null ? _y : drone.Y;
         var p = this.pos(), left = e.trHit - p;
         //着いたあとに待っている間(step の trLate)：遅れた分を、待ったコマ数から決める(曲が頭へ戻っていても数えられるように)
         if(e.trLate != null){ left = -e.trLate/60; p = e.trHit - left; }
         if(left < -TR_LATE_SEC || left > TR_JUST_SEC) return;
         e.trBlastP = p;
-        var near = Math.hypot(drone.X - e.trTx, drone.Y - e.trTy);
+        e.trBX = bx; e.trBY = by;
+        var near = Math.hypot(bx - e.trTx, by - e.trTy);
         if(e.trMode == "last" && near < TR_RAM_R + TR_JUST_NEAR && e.hp <= e.maxHp*TR_FINISH + 1){
             //とどめが決まる：曲はくり返しを抜けて、最後の和音へ
             this.finished = true;
@@ -1030,6 +1040,9 @@ var finaleTri = {
         var M = mainScreen;
         var left = _e.trBlastP == null ? -1 : (_e.trHit || 0) - _e.trBlastP;
         var near = Math.hypot(drone.X - _e.trTx, drone.Y - _e.trTy);
+        //弾き返したかは、衝撃波を出したドローン君の位置で決める(協力プレイでは相方のこともある)
+        var nearB = _e.trBX != null ? Math.hypot(_e.trBX - _e.trTx, _e.trBY - _e.trTy) : near;
+        _e.trBX = null; _e.trBY = null;
         _e.x = _e.trTx; _e.y = _e.trTy;
         _e.harmless = false; _e.phased = false;
         this.impact = { x:_e.x, y:_e.y, p0:this.pos() };
@@ -1039,7 +1052,7 @@ var finaleTri = {
         battleBg.ripple(_e.x, _e.y, 70, 12, 110, TR_FIRE);
         battleBg.ripple(_e.x, _e.y, 50, 10, 90, TR_GLOW);
         fx.ring(_e.x, _e.y, 320, TR_GLOW, 30, 10);
-        var ok = (_e.trBlastP != null && left >= -TR_LATE_SEC && left <= TR_JUST_SEC && near < TR_RAM_R + TR_JUST_NEAR) || (_last && this.finished);
+        var ok = (_e.trBlastP != null && left >= -TR_LATE_SEC && left <= TR_JUST_SEC && nearB < TR_RAM_R + TR_JUST_NEAR) || (_last && this.finished);
         _e.trApproach = false;
         _e.trLate = null;
         if(ok){
@@ -2195,7 +2208,7 @@ var finaleTri = {
     //改へのダメージ：夜明けからは強く。体力の区切り(floor)より下へは減らない(その下で倒れないよう、いったん体力を足して計算する)
     mainScreen.hitEnemy = function(_e,_dmg,_src){
         if(_e.type != "kai" || !_e.trSong || _e.form != 2 || _src == "trFinish" || !T.on() || _e.dead) return hitEnemy.call(this,_e,_dmg,_src);
-        if(T.dawnK > 0) _dmg *= TR_DAWN_POW;
+        if(T.dawnK > 0 && _src != "partner") _dmg *= TR_DAWN_POW;    //相方の攻撃は、相方の画面で掛けてある
         var floor = T.floor(_e), lift = _e.maxHp*10;
         _e.hp += lift;
         hitEnemy.call(this,_e,_dmg,_src);
@@ -2203,7 +2216,10 @@ var finaleTri = {
     };
     shotLab.onBlast = function(){
         onBlast.call(this);
-        if(T.on()) T.onBlast();
+        if(!T.on()) return;
+        //協力プレイのゲスト：改を動かしているホストへ知らせる(弾き返したかはホストが決める。coopMirror.js)
+        if(coop.isGuest()){ var e = T.boss(); if(e && e.trApproach) coop.addEvent(7, drone.X, drone.Y); return; }
+        T.onBlast();
     };
     shotLab.step = function(b){
         var r = T.shotStep(b);

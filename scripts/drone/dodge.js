@@ -6,7 +6,9 @@
 //  ・飛んでいる間、体は進む向きへくるっと1回転する(DODGE_SPIN)。残像も回る途中の角度で残る
 //  ・飛ぶ距離はポインタまでの距離(DODGE_DIST_MIN～MAX)。ポインタがすぐそばなら、動いていた向きへ飛ぶ
 //  ・mainScreen.update から update()、drone.calcXY から steer()、mainScreen.canBeHit から evade() を呼ぶ
-//  ・協力プレイ・対戦では使わない(敵と弾を動かす画面とずれるため)
+//  ・協力プレイでも使える。見切りは相方にも知らせ(coop.onDodgeSlow)、相方の画面も同じ見切りの演出になって、敵と弾がふたりともゆっくりになる
+//    (相方は見ているだけ：watch。当たり判定が小さくなる・切り返し・解けるときに弾を消すのは、回避した本人だけ)。
+//    ゲストが消した・切り落とした弾は、ホストへ知らせてホストの画面でも消す(coop.clearShots)。対戦では使わない
 //  ・タッチ操作では、右下の「回避」ボタン(衝撃波ボタンの左。設定で左下にすると左右が入れ替わる：viewOpt.touchX)で、動いている向きへ決まった距離を飛ぶ。
 //    指で動かす目標も同じだけ動かす(着いたあと元の場所へ引き戻されないように)
 //------------------------------------------------------------------------------
@@ -68,6 +70,7 @@ var dodge = {
     count:0,        //このWAVEで飛んだ回数(テスト用)
     justCount:0,    //このWAVEのジャスト回避の回数
     slowT:0,        //見切りのゆっくりの残り
+    watch:false,    //協力プレイ：相方の見切りを見ている(演出とゆっくりだけ。watchSlow)
     slowAcc:0,      //ゆっくりの間、次の1コマを進めるまでのたまり具合
     slowPow:0,      //ゆっくりの強さ(1がいちばんゆっくり、0でふつう)
     slowMax:DODGE_SLOW_TIME,    //今の見切りの長さ(続けて切り返すと短くなる)
@@ -95,6 +98,7 @@ var dodge = {
         this.justCount = 0;
         if(this.slowT > 0) sound.timeWarp(false);
         this.slowT = 0;
+        this.watch = false;
         this.slowAcc = 0;
         this.slowPow = 0;
         this.slowMax = DODGE_SLOW_TIME;
@@ -114,7 +118,8 @@ var dodge = {
         this.slowT--;
         if(this.slowT == 0){
             this.slashOk = false;     //見切りが終わったら、もう切り返せない
-            this.clearAround(DODGE_CLEAR_R);
+            if(!this.watch) this.clearAround(DODGE_CLEAR_R);
+            this.watch = false;
         }
         var k = 1 - this.slowT/this.slowMax;
         var u = Math.max(0, (k - DODGE_SLOW_HOLD)/(1 - DODGE_SLOW_HOLD));
@@ -130,7 +135,7 @@ var dodge = {
         return false;
     },
     enabled:function(){
-        return !coop.active && !versus.active && page.number == 1;
+        return !versus.active && (page.number == 1 || (page.number == 8 && coopDuel.phase == "fight"));     //協力プレイの一騎打ちでも(coopDuel.js)
     },
     //右クリック(common.js)
     press:function(){
@@ -138,7 +143,19 @@ var dodge = {
     },
     active:function(){ return this.t >= 0; },
     //弾に対する当たり判定の大きさ(見切りの間は小さい。mainScreen.updateShots と当たり判定の表示から)
-    core:function(){ return this.slowT > 0 ? HIT_CORE*DODGE_SLOW_CORE : HIT_CORE; },
+    core:function(){ return this.slowT > 0 && !this.watch ? HIT_CORE*DODGE_SLOW_CORE : HIT_CORE; },
+    //協力プレイ：相方の見切りが始まった・続いた(coop.readEvents)。自分の画面も同じ見切りの演出になり、敵と弾がゆっくりになる
+    //(自分が見切りの最中なら、そのまま自分の見切りを続ける)
+    watchSlow:function(_len){
+        if(this.slowT > 0 && !this.watch) return;
+        if(this.slowT > 0 && this.slowT >= _len) return;
+        if(this.slowT <= 0 || this.slowBack) sound.timeWarp(true);
+        this.watch = true;
+        this.slowT = this.slowMax = _len;
+        this.slowAcc = 0;
+        this.slowBack = false;
+        this.slashOk = false;
+    },
     //まわりの弾を消す(見切りが解けるとき・切り返しで着いたとき)。外へ散る光で消えたのがわかるように
     clearAround:function(_R){
         var n = 0;
@@ -150,6 +167,7 @@ var dodge = {
             enemyShots.splice(i,1);
             n++;
         }
+        coop.clearShots(drone.X, drone.Y, drone.X, drone.Y, _R);   //協力プレイのゲスト：ホストの画面でも消す
         fx.ring(drone.X, drone.Y, _R, DODGE_COLOR, 14, 3);
         return n;
     },
@@ -310,6 +328,7 @@ var dodge = {
             fx.sparks(b.x, b.y, 3, DODGE_SLASH_COLOR, 3, 1.5);
             enemyShots.splice(i,1);
         }
+        coop.clearShots(_x1, _y1, _x2, _y2, DODGE_SLASH_W);    //協力プレイのゲスト：ホストの画面でも切り落とす
         this.trail.push({ x1:_x1, y1:_y1, x2:_x2, y2:_y2, life:DODGE_SLASH_TRAIL });
     },
     //着いて少ししてから：切った敵にまとめてダメージ。倒せたら見切りが続き、もう一度切り返せる
@@ -325,7 +344,7 @@ var dodge = {
             fx.line(e.x - Math.cos(a)*R, e.y - Math.sin(a)*R, e.x + Math.cos(a)*R, e.y + Math.sin(a)*R, "255,255,255", 4, 12);
             fx.flare(e.x, e.y, e.r*3, DODGE_SLASH_COLOR, 12);
             M.hitEnemy(e, dmg, "slash");
-            if(e.dead) kills++;
+            if(e.dead || (coop.isGuest() && e.hp <= dmg)) kills++;    //協力プレイのゲストは、倒れるのがホストから届く前に数える
         }
         fx.shake(kills > 0 ? 8 : 4);
         sound.play("dodgeCut");
@@ -338,6 +357,7 @@ var dodge = {
         if(len >= DODGE_SLASH_MIN_SLOW){
             this.chain++;
             this.slowT = this.slowMax = len;
+            coop.onDodgeSlow(len, false);
             this.slowAcc = 0;
             if(this.slowBack) sound.timeWarp(true);     //戻りかけた曲を、またこもらせる
             this.slowBack = false;
@@ -396,10 +416,12 @@ var dodge = {
         this.guard = Math.max(this.guard, DODGE_JUST_GUARD);
         M.hitStop = Math.max(M.hitStop, DODGE_JUST_STOP);
         //見切り：周りがゆっくりになり、曲がこもる
+        if(!(this.slowT > 0 && this.watch && !this.slowBack)) sound.timeWarp(true);
+        this.watch = false;     //相方の見切りを見ていても、自分の見切りに切り替える
         this.slowT = this.slowMax = DODGE_SLOW_TIME;
         this.slowAcc = 0;
         this.slowBack = false;
-        sound.timeWarp(true);
+        coop.onDodgeSlow(DODGE_SLOW_TIME, true);   //協力プレイ：相方に知らせる(ゲストの見切りはホストがゆっくりにする)
         this.slashOk = true;    //見切りの間にもう一度右クリックで切り返し
         this.chain = 0;
         this.label = "ジャスト回避！";

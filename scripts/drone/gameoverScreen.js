@@ -16,13 +16,14 @@ var gameoverScreen = {
         this.newRecord = game.score > best;
         if(this.newRecord) save.setBest(game.score);
         this.best = Math.max(best, game.score);
-        //ひとり用：この周は終わり。集めたパーツ・能力・装備は残して、次の周はいちばん先のWAVEから(協力プレイも同じく協力プレイ用に残す。ふたりともコンティニューを押すと、覚えておいた状態から)
+        //この周は終わり。集めたパーツ・能力・装備は残して、次の周はいちばん先のWAVEから
+        //(協力プレイのホストも同じくひとり用の記録に残す。ゲストは書かない。ふたりともコンティニューを押すと、覚えておいた状態から)
         this.coopMode = coop.active;
         coop.wantContinue = false;
-        //この周の最後の装備と進み具合・パーツを残す(次の周はここから。協力プレイは協力プレイ用に)
+        //この周の最後の装備と進み具合・パーツを残す(次の周はここから)
         game.keepProgress();
         save.writeMeta();
-        if(!this.coopMode) save.clear();
+        save.clear();       //協力プレイでコンティニューしたときは、強化画面でまた書く
     },
     update:function(){
         if(this.coopMode){
@@ -74,7 +75,7 @@ var gameoverScreen = {
             gameoverTitleButton.button("タイトルへ");
             //相方のようす
             ctx.font = "16px sans-serif";
-            ctx.fillStyle = "rgb(" + P2_COLOR + ")";
+            ctx.fillStyle = "rgb(" + coop.partnerColor() + ")";
             var other = coop.partnerWantsContinue();
             var msg = !coop.partner && coop.role == "host" ? "相方はいません。コンティニューするとひとりで続けます"
                     : coop.wantContinue ? (other ? "まもなく始まります…" : "相方がコンティニューを押すのを待っています…")
