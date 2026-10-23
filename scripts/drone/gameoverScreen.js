@@ -3,6 +3,7 @@
 //------------------------------------------------------------------------------
 var retryButton = new drawRect(CW/2,GS*11,GS*14,GS*2.4);
 var gameoverTitleButton = new drawRect(CW/2,GS*14,GS*14,GS*2.4);
+const GAMEOVER_INPUT_WAIT = 40;     //出てすぐはボタンを効かなくする(フレーム)。戦闘中の衝撃波のクリックで押してしまわないように
 
 //------------------------------------------------------------------------------
 //  ゲームオーバー画面処理
@@ -10,8 +11,10 @@ var gameoverTitleButton = new drawRect(CW/2,GS*14,GS*14,GS*2.4);
 var gameoverScreen = {
     best:0,
     newRecord:false,
+    t:0,
 
     enter:function(){
+        this.t = 0;
         var best = save.getBest();
         this.newRecord = game.score > best;
         if(this.newRecord) save.setBest(game.score);
@@ -26,6 +29,7 @@ var gameoverScreen = {
         save.clear();       //協力プレイでコンティニューしたときは、強化画面でまた書く
     },
     update:function(){
+        if(++this.t < GAMEOVER_INPUT_WAIT) return;
         if(this.coopMode){
             //コンティニュー(もう一度押すと取り消し)。ふたりとも押すと始まる(coop.update)
             if(retryButton.clicked()){

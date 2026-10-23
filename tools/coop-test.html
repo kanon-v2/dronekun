@@ -90,6 +90,8 @@ var steps = [
         cmd("host", { cmd:"auto", unarmed:true });   //ホストは武器なし：敵を倒せるのはゲストの攻撃だけにする
         cmd("guest", { cmd:"gear", w:["gun","gravity","tesla"] });   //重力弾の渦がホストの敵を吸い寄せるかも見る
         cmd("guest", { cmd:"auto" });
+        //ふたりとも耐久を満タンに保つ(耐久1のままだと、たまたま倒れた間は衝撃波などを出せず、確認がたまに落ちるため)。倒れる確認のときだけ外す
+        cmd("host", { cmd:"sturdy", on:true }); cmd("guest", { cmd:"sturdy", on:true });
         waitFor(function(){ return both(function(s){ return s.page == 1 && s.wave == 1; }); }, 20000, function(ok){
             check("強化画面 → ふたりとも準備完了で出撃", ok, desc()); next();
         });
@@ -172,6 +174,16 @@ var steps = [
         });
     },
     function(next){
+        //報酬カプセル：ゲストが拾うと、ホストも報酬を選ぶ回数が1回増える(パーツと同じく、片方が拾えばふたりとも)
+        var h0 = st.host.pr, g0 = st.guest.pr;
+        cmd("host", { cmd:"capsule" });
+        cmd("guest", { cmd:"grab" });
+        waitFor(function(){ return st.guest.pr > g0 && st.host.pr > h0; }, 5000, function(ok){
+            check("報酬カプセル：ゲストが拾うと、ふたりとも報酬+1", ok && st.guest.pr == g0 + 1 && st.host.pr == h0 + 1, "ホスト" + h0 + "→" + st.host.pr + "・ゲスト" + g0 + "→" + st.guest.pr);
+            next();
+        });
+    },
+    function(next){
         //ライバル(中ボス。rival.js)：ホストに出すと、ゲストにも見えて、ワープ(出発点・長さ)が届く
         cmd("host", { cmd:"rival" });
         waitFor(function(){ return st.guest.extra.rvSeen > 0 && st.guest.extra.rvWarp > 0; }, 12000, function(ok){
@@ -223,7 +235,7 @@ var steps = [
         cmd("host", { cmd:"just" });
         setTimeout(function(){ cmd("host", { cmd:"dodgeJust" }); }, 2500);
         waitFor(function(){ return st.guest.extra.justSlow > j0 && (st.guest.extra.gWatch || 0) > w0 + 10; }, 9000, function(ok){
-            check("ホストのジャスト衝撃波・ジャスト回避で、ゲストの画面も同じようにゆっくりの演出になる", ok, "ジャスト衝撃波" + (st.guest.extra.justSlow - j0) + "・見切りの演出" + ((st.guest.extra.gWatch || 0) - w0) + "コマ");
+            check("ホストのジャスト衝撃波・ジャスト回避で、ゲストの画面も同じようにゆっくりの演出になる", ok, "ジャスト衝撃波" + (st.guest.extra.justSlow - j0) + "・見切りの演出" + ((st.guest.extra.gWatch || 0) - w0) + "コマ ホストのジャスト" + st.host.just + " 出した時[" + (st.host.extra.jTry || "出していない") + "]" + " ホスト" + JSON.stringify(st.host.dbg).slice(0,200) + " ゲスト" + JSON.stringify(st.guest.dbg).slice(0,200));
             next();
         });
     },
@@ -311,32 +323,38 @@ var steps = [
         });
     },
     function(next){
+        cmd("host", { cmd:"sturdy", on:false }); cmd("guest", { cmd:"sturdy", on:false });
         cmd("host", { cmd:"die" }); cmd("guest", { cmd:"die" });
         waitFor(function(){ return both(function(s){ return s.page == 3; }); }, 15000, function(ok){
             check("ふたりとも撃墜でゲームオーバー", ok, desc()); next();
         });
     },
     function(next){
-        //やり直すWAVE2では、ゲストは追加の装備(燃やす・凍らせる・弾を防ぐ)を付ける
+        //やり直すWAVEでは、ゲストは追加の装備(燃やす・凍らせる・弾を防ぐ)を付ける
         cmd("guest", { cmd:"gear", w:["fire","freeze","barrier"] });
         //片方だけ押しても始まらない
         cmd("guest", { cmd:"continue" });
         setTimeout(function(){
             var waiting = both(function(s){ return s.page == 3; });
+            var parts0 = st.host.parts, w0 = st.host.wave;     //倒れたWAVE(ふつうは2。途中の確認の間に進んでいることもある)
             cmd("host", { cmd:"continue" });
-            waitFor(function(){ return both(function(s){ return s.page == 1 && s.wave == 2; }); }, 20000, function(ok){
-                check("コンティニュー：ふたりとも押すとWAVE2からやり直す", waiting && ok, (waiting ? "" : "片方だけで始まった ") + desc()); next();
+            waitFor(function(){ return both(function(s){ return s.page == 1 && s.wave == w0; }); }, 20000, function(ok){
+                check("コンティニュー：ふたりとも押すと倒れたWAVE" + w0 + "からやり直す", waiting && ok, (waiting ? "" : "片方だけで始まった ") + desc());
+                //倒れたWAVEで拾ったパーツも残る(ひとり用と同じ。ホストの記録のパーツが減らない)
+                check("コンティニュー：パーツは減らない", st.host.parts >= parts0, parts0 + "→" + st.host.parts);
+                cmd("host", { cmd:"sturdy", on:true }); cmd("guest", { cmd:"sturdy", on:true });
+                next();
             });
         }, 1000);
     },
     function(next){
-        var h0 = st.host.partnerHits;
+        var h0 = st.host.partnerHits, x0 = JSON.parse(JSON.stringify(st.host.extra));   //この確認の間に増えた分で見る
         cmd("host", { cmd:"shoot", on:true });   //よける自動プレイでもバリアに当たるよう、ホストがゲストのすぐそばから撃つ
-        waitFor(function(){ var x = st.host.extra; return x.burn > 0 && x.freeze > 0 && x.block > 0; }, 60000, function(ok, ms){
+        waitFor(function(){ var x = st.host.extra; return x.burn > x0.burn && x.freeze > x0.freeze && x.block > x0.block && st.host.partnerHits > h0; }, 60000, function(ok, ms){
             var x = st.host.extra;
             cmd("host", { cmd:"shoot", on:false });
             check("ゲストの火炎放射・冷凍・バリアがホストに届く", ok && st.host.partnerHits > h0,
-                  "燃やした" + x.burn + "・凍らせた" + x.freeze + "・バリアで消えた弾" + x.block + "(ゲストが防いだ" + st.guest.blocked + ")・当たった" + (st.host.partnerHits - h0) + "回 " + Math.round(ms/1000) + "秒");
+                  "燃やした" + (x.burn - x0.burn) + "・凍らせた" + (x.freeze - x0.freeze) + "・バリアで消えた弾" + (x.block - x0.block) + "(ゲストが防いだ" + st.guest.blocked + ")・当たった" + (st.host.partnerHits - h0) + "回 " + Math.round(ms/1000) + "秒");
             next();
         });
     },

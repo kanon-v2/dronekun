@@ -19,8 +19,8 @@ const TRIAL_MAX_ENEMIES = 25;       //画面にいる敵の上限(これより�
 const TRIAL_DPS_SEC = 5;            //戦闘中に出す「毎秒ダメージ」は直近この秒数の平均
 const TRIAL_COLS = 5;               //装備の一覧の列の数
 
-//URL に #debug が付いているか(タイトルに「DEBUG」ボタンを出す)
-function debugUrl(){ return /debug/.test(location.hash); }
+//URL に #debug が付いているか(タイトルに「DEBUG」ボタンを出す。開いた瞬間に決めたもの：errorLog.js の DEBUG_URL)
+function debugUrl(){ return DEBUG_URL || /debug/.test(location.hash); }
 var debugButton = new drawRect(CW - 196, 18, 104, 34);
 
 var bossDebug = {

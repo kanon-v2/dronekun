@@ -46,22 +46,31 @@ var fps = {
 };
 
 function draw(now){
+    //途中でエラーが起きても止まらずに続ける(エラーは書き留め、開発モードなら画面の左下に出す。errorLog.js)
+    try{ drawFrame(now); }catch(e){ errorLog.addError(e); Click = 0; }
+    try{ errorLog.draw(); }catch(e){}
+    window.requestAnimationFrame(draw);
+}
+function drawFrame(now){
     fps.tick(now);
     if(lastTime == 0) lastTime = now;
     acc += Math.min(now - lastTime, 100);
     lastTime = now;
     while(acc >= STEP){
+        acc -= STEP;
         //右下のBGM/SEボタンを押したクリックはゲームに渡さない
         if(Click == 1 && sound.handleClick()) Click = 0;
         //協力プレイ：相方の状態を読んで進行を合わせる
+        var pg = page.number;
         coop.update();
+        //相方に合わせて画面が切り替わったコマのクリック(戦闘中の衝撃波など)で、次の画面(ゲームオーバーなど)のボタンを押さないように
+        if(page.number != pg) Click = 0;
         screens[page.number].update();
         coop.send();
         Click = 0;
         endTap();   //タイトル画面でタップしてボタンを押したら、ドローン君の目標を元に戻す
         time++;
         if(time >= MAXTIME){time=0;}
-        acc -= STEP;
     }
 
     ctx.fillStyle = "white";
@@ -76,7 +85,6 @@ function draw(now){
     pointer.draw();
 
     if(DEBUG) test.mousePositionDisplay();
-    window.requestAnimationFrame(draw);
 }
 
 page.change(0);

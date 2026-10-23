@@ -709,6 +709,7 @@ var mainScreen = {
 
     //クリック：やる気を使って周りの敵をまとめて攻撃し、敵の弾を消す
     blast:function(){
+        if(this.down) return;              //協力プレイで倒れている間は出せない(装備・回避ダッシュと同じ)
         if(special.holdFire()) return;     //ドローン君改が第二形態へ復活している間は出せない
         if(this.yaruki < YARUKI_COST){
             this.yarukiMsg = 60;
@@ -1135,6 +1136,9 @@ var mainScreen = {
     },
 
     damage:function(){
+        //倒れている間(協力プレイ)・ゲームオーバーの間は受けない。当たるかを見ずに呼ぶ攻撃もあり、倒れた所に当たると
+        //倒れ直して、復活までの時間(coop.reviveStep)が数え直しになってしまうため
+        if(this.down || this.state == "over") return;
         //時止めワープ(試作。デバッグでオンにしたときだけ)：ダメージを受けずに時を止め、選んだ場所へ移る
         if(timeStop.trigger()) return;
         this.breakCombo(true);     //被弾するとかすりコンボは途切れる

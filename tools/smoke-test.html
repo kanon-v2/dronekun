@@ -20,6 +20,7 @@ window.addEventListener("error", function(e){ errors.push(e.message + " @" + (e.
     };
 })();
 </script>
+<script src="scripts/drone/errorLog.js"></script>
 <script src="scripts/drone/common.js"></script>
 <script src="scripts/drone/sound.js"></script>
 <script src="scripts/drone/bgmTrial.js"></script>
@@ -799,8 +800,12 @@ try{
     page.change(2); var runSaved = save.exists();
     page.change(3); draw1();
     var overKeeps = !save.exists() && JSON.parse(localStorage.getItem("dronekun_meta")).parts == 40;
+    //出てすぐのクリックは効かない(戦闘中の衝撃波のクリックで押さないように)
     MouseX = retryButton.X + 10; MouseY = retryButton.Y + 10; Click = 1; gameoverScreen.update(); Click = 0;
-    var rerun = page.number == 2 && game.wave == 4 && game.diff == 3 && game.level.armor == 6 && game.parts == 40 && game.owned.gun == 2 && game.runParts == 0;
+    var overWait = page.number == 3;
+    for(var i=0; i<GAMEOVER_INPUT_WAIT; i++) gameoverScreen.update();
+    Click = 1; gameoverScreen.update(); Click = 0;
+    var rerun = overWait && page.number == 2 && game.wave == 4 && game.diff == 3 && game.level.armor == 6 && game.parts == 40 && game.owned.gun == 2 && game.runParts == 0;
     // 出撃先：ひとり用は、難易度ごとにクリア済みのWAVEの次まで選べる(先は押せない)。低い難易度は WAVE1 から
     function clickUp(_r){ MouseX = _r.X + _r.width/2; MouseY = _r.Y + _r.height/2; Click = 1; upgradeScreen.update(); Click = 0; }
     upgradeScreen.state = "main"; game.pendingReward = 0;
@@ -2608,6 +2613,25 @@ function finish2(){
         runD(DUEL_RESULT_AUTO + 2);
         check("一騎打ち：決着のあとエンディングへ進み、結果を出す", page.number == 5 && coopDuel.result == "win" && /P1（あなた）/.test(coopDuel.resultText()) && errors.length == dErr, "page" + page.number + " " + coopDuel.resultText() + " " + errors.slice(dErr).join("/"));
         coop.active = false; coop.role = null; coop.partner = null; coopDuel.active = false; coopDuel.result = ""; coop.paint();
+        //協力プレイで倒れている間は、衝撃波を出せない(やる気も減らない)
+        var yk0 = mainScreen.yaruki, dn0 = mainScreen.down;
+        mainScreen.down = true; mainScreen.yaruki = YARUKI_MAX;
+        mainScreen.blast();
+        var noBlastDown = mainScreen.yaruki == YARUKI_MAX;
+        mainScreen.down = dn0; mainScreen.yaruki = yk0;
+        check("協力プレイで倒れている間は衝撃波を出せない", noBlastDown, "やる気" + YARUKI_MAX);
+        //エラーの記録(errorLog.js)：同じエラーは1行にまとめて数え、起きたときの状況も覚える。開発モードの招待リンクには &debug を付ける
+        var el0 = errorLog.list.slice(), dbg0 = DEBUG_URL;
+        errorLog.list = [];
+        for(var i=0; i<2; i++){ try{ null.x; }catch(e){ errorLog.addError(e); } }
+        var elOne = errorLog.list.length == 1 && errorLog.list[0].n == 2 && /smoke-test\.html|\.js:\d+|\?/.test(errorLog.list[0].at) && /ひとり W\d+ 画面\d/.test(errorLog.list[0].where);
+        DEBUG_URL = true; coop.code = "abcd";
+        var elDraw = true; try{ errorLog.draw(); }catch(e){ elDraw = false; }
+        var elLink = /#join=abcd&debug$/.test(coop.inviteLink()) && debugUrl();
+        DEBUG_URL = false;
+        var elOff = /debug/.test(location.hash) || (!/debug/.test(coop.inviteLink()) && !debugUrl());
+        DEBUG_URL = dbg0; errorLog.list = el0; coop.code = null;
+        check("開発モード：エラーを状況と一緒に書き留めて画面に出し、招待リンクで相方も開発モードになる", elOne && elDraw && elLink && elOff, [elOne, elDraw, elLink, elOff].join("") + " " + JSON.stringify(errorLog.list[0] || {}));
         page.change(0);
     }catch(e){ fails++; L("NG   例外 " + e.stack); coop.active = false; coop.role = null; coop.partner = null; }
     //テスト前の見た目の設定を戻す

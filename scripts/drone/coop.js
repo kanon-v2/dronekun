@@ -92,6 +92,9 @@ var coop = {
     //拾ったパーツはふたりとも受け取る(拾った数の合計を送り合い、増えた分を足す)
     partsGot:0,         //自分が拾ったパーツの数(合計)
     partnerParts:0,     //相方が拾ったパーツのうち、自分にも足した数
+    //報酬カプセルも同じく、片方が拾えばふたりとも報酬を選ぶ回数が1回増える
+    capsGot:0,          //自分が拾った報酬カプセルの数(合計)
+    partnerCaps:0,      //相方が拾った報酬カプセルのうち、自分にも足した数
     //コンティニュー(ふたりとも撃墜されたら、そのWAVEの強化画面からやり直す)
     checkpoint:null,    //強化画面で最後に覚えた進行状況(save.write が入れる)
     wantContinue:false, //自分がコンティニューを押した
@@ -121,9 +124,9 @@ var coop = {
     isGuest:function(){ return this.active && this.role == "guest"; },
     hpMul:function(){ return this.active ? COOP_HP_MUL : 1; },
 
-    //招待リンク(このページのアドレスに #join=コード を付けたもの)
+    //招待リンク(このページのアドレスに #join=コード を付けたもの)。開発モードなら、相方も開発モードにする(&debug)
     inviteLink:function(){
-        return location.href.split("#")[0] + "#join=" + this.code;
+        return location.href.split("#")[0] + "#join=" + this.code + (debugUrl() ? "&debug" : "");
     },
 
     //部屋を作る：コードをPeerJSのIDにして、相方からつないでくるのを待つ
@@ -348,7 +351,7 @@ var coop = {
     resetExchange:function(){
         this.playWave = 0;
         this.dmg = {}; this.got = []; this.blast = [0,0,0];
-        this.partsGot = 0; this.partnerParts = 0;
+        this.partsGot = 0; this.partnerParts = 0; this.capsGot = 0; this.partnerCaps = 0;
         this.checkpoint = null; this.wantContinue = false; this.hostCn = false;
         this.applied = {}; this.gotDone = {}; this.blastDone = 0; this.blockDone = 0;
         this.clears = [0]; this.clearDone = 0;
@@ -401,7 +404,7 @@ var coop = {
         if(this.active){ game.keepProgress(); save.writeMeta(); }     //協力プレイ用の能力・パーツ・装備・進み具合を書く(戦闘の途中で抜けても、そこまでの分を)
         this.closePeer();
         this.checkpoint = null; this.wantContinue = false; this.hostCn = false;
-        this.partsGot = 0; this.partnerParts = 0;
+        this.partsGot = 0; this.partnerParts = 0; this.capsGot = 0; this.partnerCaps = 0;
         versus.active = false;
         coopDuel.active = false;
         this.inRoom = false;
@@ -587,7 +590,7 @@ var coop = {
 
     //------------------------------------------------------------ ホスト→ゲスト
     buildHost:function(){
-        var s = { q:++this.sendQ, ac:this.active ? 1 : 0, ph:this.phase(), w:game.wave, sc:game.score, ev:this.events, rd:this.localReady ? game.wave : 0, pc:this.partsGot, cn:this.wantContinue ? 1 : 0, d:this.diff, pw:this.playWave };
+        var s = { q:++this.sendQ, ac:this.active ? 1 : 0, ph:this.phase(), w:game.wave, sc:game.score, ev:this.events, rd:this.localReady ? game.wave : 0, pc:this.partsGot, kc:this.capsGot, cn:this.wantContinue ? 1 : 0, d:this.diff, pw:this.playWave };
         if(!this.active) return s;
         var M = mainScreen;
         var r = Math.round;
@@ -691,7 +694,7 @@ var coop = {
             q:++this.sendQ,
             x:r(drone.X), y:r(drone.Y), d:drone.look.shown, hp:M.hp, mh:M.maxHp, dn:M.down ? 1 : 0, dt:M.down ? M.downT : 0, ts:timeStop.code(),
             pg:page.number, rd:this.localReady ? game.wave : 0,
-            dm:this.dmg, got:this.got.slice(-30), bl:this.blast, ev:this.events, pc:this.partsGot, cn:this.wantContinue ? 1 : 0,
+            dm:this.dmg, got:this.got.slice(-30), bl:this.blast, ev:this.events, pc:this.partsGot, kc:this.capsGot, cn:this.wantContinue ? 1 : 0,
             br:arms.blockLog,   //バリアで防いだ数と、最近防いだ位置(ホストで弾を消してもらう)
             cl:this.clears      //回避で消した・切り落とした弾(dodge.js)
         };
@@ -711,6 +714,7 @@ var coop = {
         this.readStop(P, _g.ts);
         P.page = _g.pg; P.rd = _g.rd; P.arms = _g.a || null;
         this.shareParts(_g.pc);
+        this.shareCaps(_g.kc);
         P.cn = !!_g.cn;
         if(page.number == 8) coopDuel.read(_g.du);
         if(page.number != 1 || !this.active) return;
@@ -815,6 +819,7 @@ var coop = {
         }
         game.score = _s.sc;
         this.shareParts(_s.pc);
+        this.shareCaps(_s.kc);
         if(page.number == 8) coopDuel.read(_s.du);
         this.hostCn = !!_s.cn;
         //ホストがコンティニューして強化画面へ戻った：自分も押していれば一緒に戻る
@@ -918,13 +923,18 @@ var coop = {
     onCollect:function(_p){
         if(this.isGuest() && _p.id) this.got.push(_p.id);
         if(this.active && _p.kind == "part") this.partsGot++;
+        if(this.active && _p.kind == "capsule") this.capsGot++;
     },
-    //コンティニュー：強化画面で覚えた状態に戻して、そのWAVEの強化画面からやり直す
+    //コンティニュー：出撃したWAVEの強化画面からやり直す。戻すのはWAVEとスコアだけで、
+    //パーツ・能力・装備・報酬は今のまま(ひとり用で倒れたときと同じく、倒れたWAVEで拾ったものも残る。
+    //ゲームオーバー画面でひとり用の記録に書いたあとなので、前の状態に戻すとホストの記録のパーツが減ってしまう)
     continueGame:function(){
         this.wantContinue = false;
         this.localReady = false;
         this.playWave = 0;     //倒れたWAVEから(覚えておいた状態は出撃したWAVE。beginBattle)
-        if(this.checkpoint) save.restore(this.checkpoint);
+        var d = null;
+        try{ d = JSON.parse(this.checkpoint); }catch(e){}
+        if(d){ game.wave = d.wave; game.score = d.score; }
         goUpgrade();
     },
     //------------------------------------------------------------ 出撃先
@@ -954,6 +964,21 @@ var coop = {
         this.partnerParts = _total;
         game.gainParts(n);
         if(page.number == 1 && this.partner) popup(this.partner.pos.X, this.partner.pos.Y - 24, "パーツ+" + n, "rgb(" + this.partnerColor() + ")");
+    },
+    //相方が拾った報酬カプセル(合計 _total)のうち、まだ足していない分を、自分の報酬を選ぶ回数にも足す
+    shareCaps:function(_total){
+        if(!this.active || !(_total > this.partnerCaps)) return;
+        var n = _total - this.partnerCaps;
+        this.partnerCaps = _total;
+        game.pendingReward = (game.pendingReward || 0) + n;
+        if(page.number == 1 && this.partner) popup(this.partner.pos.X, this.partner.pos.Y - 40, "報酬カプセル！ 報酬+" + n, "#b8860b");
+        //強化画面に入ったあとで届いたとき(WAVEの終わりぎわに相方が拾った)は、すぐ選べるようにする。
+        //準備完了は取り消す(選んでいる途中で相方だけ先に出撃しないように。選び終えたらもう一度押す)
+        if(page.number == 2 && upgradeScreen.state == "main"){
+            upgradeScreen.makeOffers();
+            upgradeScreen.state = "reward";
+            this.localReady = false;
+        }
     },
     //ゲストの攻撃が当たった(ダメージはホストへ送る)
     guestHit:function(_e,_dmg,_src){
