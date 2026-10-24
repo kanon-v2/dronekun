@@ -7,8 +7,10 @@
 //  ・そのあと、どちらかの耐久が0になったら決着(2番目に0になった側の負け)。終わるとふたりともエンディングへ
 //  ・回避ダッシュは使える。時止めワープは使わない。通信は協力プレイの状態(coop.buildHost・buildGuest の du)に載せる
 //------------------------------------------------------------------------------
-const DUEL_HP_BASE = 300;       //耐久のもと(対戦 VS_HP と同じ)。WAVE20の敵の体力の伸びと難易度を掛ける(装備が育っている分)
-const DUEL_HP_K = 10;           //耐久の調整(自動プレイで測った。WAVE20ほどの装備(Lv4・能力Lv10)で、最初に倒れるまで約35秒・決着まで約1分)
+const DUEL_HP = 300;            //ふたりの耐久(おまけなので短く。対戦 VS_HP と同じ)。装備Lv3を3つ(毎秒約15～20のダメージ)で、最初に倒れるまで約15～20秒。
+                                //(装備のダメージは WAVE・難易度で変わらないので、耐久にも掛けない。前は WAVE20の敵の体力の伸びと難易度を掛けて、ノーマルで約2万5千あり、何分もかかっていた)
+const DUEL_SURGE_AT = 20;       //戦い始めてこの秒数をすぎると、ふたりとも与えるダメージがだんだん上がる(装備が弱くても長引かないように)
+const DUEL_SURGE_SEC = 8;       //ダメージの倍率が1上がるまでの秒数
 const DUEL_INTRO = 330;         //名乗りの長さ(フレーム)。この間は動けるが攻撃しない
 const DUEL_LINE = "本物は一機しかいらない";
 const DUEL_LINE_AT = [50, 150]; //P1・P2 がせりふを言い出すとき(フレーム)
@@ -41,6 +43,7 @@ var coopDuel = {
     hurtCd:0,
     rbSeen:0,           //相方の再構築を見た(演出の音を1回だけ)
     otherRbT:0,         //相方の再構築の演出の経過
+    ft:0,               //攻撃できた時間(フレーム。ダメージの倍率 surge に使う)
 
     //WAVE20をクリアしたら(ホストは mainScreen、ゲストは coop.readHost から)
     begin:function(){
@@ -48,10 +51,8 @@ var coopDuel = {
         this.result = "";
         page.change(8);
     },
-    //ふたりの耐久(装備が育っている分、WAVE20の敵の体力の伸びを掛ける)
-    maxHp:function(){
-        return Math.round(DUEL_HP_BASE*DUEL_HP_K*(1 + (FINAL_WAVE - 1)*ENEMY_HP_GROW)*difficulty().hp);
-    },
+    //ふたりの耐久
+    maxHp:function(){ return DUEL_HP; },
     me:function(){ return coop.role == "guest" ? "P2" : "P1"; },
     them:function(){ return coop.role == "guest" ? "P1" : "P2"; },
 
@@ -87,6 +88,7 @@ var coopDuel = {
         this.result = "";
         this.blasts = 0; this.blastSeen = 0;
         this.hurtCd = 0; this.rbSeen = 0; this.otherRbT = 0;
+        this.ft = 0;
         this.other = null;
         this.phase = "intro";
         this.t = 0;
@@ -107,9 +109,13 @@ var coopDuel = {
     //------------------------------------------------------------ 攻撃(mainScreen.hitEnemy から)
     hit:function(_e,_dmg,_src){
         if(!this.live()) return;
-        this.dealt += Math.round(_dmg*(VS_DAMAGE_MUL[_src] || 1)*this.pow*10);
+        this.dealt += Math.round(_dmg*(VS_DAMAGE_MUL[_src] || 1)*this.pow*this.surge()*10);
         _e.flash = 6;
         sound.play("hit");
+    },
+    //ダメージの倍率：戦いが長引くと上がる(攻撃できた時間で数えるので、ふたりともほぼ同じ)
+    surge:function(){
+        return 1 + Math.max(0, this.ft/60 - DUEL_SURGE_AT)/DUEL_SURGE_SEC;
     },
     //クリック：円い衝撃波。範囲内にいる相手にダメージ。出した直後は無敵
     blast:function(){
@@ -221,6 +227,7 @@ var coopDuel = {
         if(M.guard > 0) M.guard--;
         if(M.shake > 0) M.shake--;
         if(M.yarukiMsg > 0) M.yarukiMsg--;
+        if(this.live()) this.ft++;
         this.updateFoe(o);
         //相方の再構築(見ているだけ)
         if(o && o.rb == 1){ this.otherRbT++; if(!this.rbSeen){ this.rbSeen = 1; sound.play("glitch"); sound.play("kaiBoot"); } }
@@ -492,6 +499,14 @@ var coopDuel = {
         ctx.strokeRect(50.5, 52.5, 150, 10);
         ctx.fillStyle = M.yaruki >= YARUKI_COST ? "#e07020" : "#bbb";
         ctx.fillRect(51, 53, 149*M.yaruki/YARUKI_MAX, 9);
+        //長引いてダメージが上がっているとき
+        var sg = this.surge();
+        if(sg > 1 && this.phase == "fight"){
+            ctx.textAlign = "center";
+            ctx.font = "bold 15px sans-serif";
+            ctx.fillStyle = "rgba(200,40,40," + (0.75 + 0.25*Math.sin(this.ft*0.15)) + ")";
+            ctx.fillText("出力上昇　ダメージ×" + sg.toFixed(1), CW/2, 34);
+        }
         ctx.fillStyle = "#000";
     },
     //耐久のバー(_s：その人の状態 build の形。再構築したら金色の印)

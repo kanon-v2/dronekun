@@ -56,6 +56,7 @@ const TR_CUT_FADE   = 0.12;     //曲を飛ばすときのつなぎ目(秒。閃
 const TR_CUT_BAR    = 56;       //ムービーの上下の黒い帯の高さ(px)
 const TR_CUT_STOP   = 16;       //ムービーの始めに止まる時間(フレーム)
 const TR_CUT_HOME   = [CW/2, 170];  //ムービーの間に改が戻っていく所(px。次の区切りがここから始まる)
+const TR_CUT_CATCH  = 8;        //ムービーの改の動きが曲の時刻に遅れたとき、1コマで追いつく上限(コマ)
 const TR_HP_MUL     = 7;        //体力(ふだんの第二形態の何倍か。曲がふだんの第二形態よりずっと長いので。標準の装備で、とどめの前に TR_FINISH を少し切るくらい)
 const TR_FINISH     = 0.2;      //最後の突進を弾いて倒せる体力(割合。TR_BREAKS の最後と同じ)。これより多ければ大きなダメージだけ(TR_LAST_DMG)
 const TR_LAST_DMG   = 0.15;     //最後の突進を弾いたが、倒しきれないときのダメージ(第二形態の体力の割合)
@@ -575,7 +576,13 @@ var finaleTri = {
         if(_e.trR0 == null){ _e.trR0 = _e.r; _e.trScale = 1; _e.trPulse = 0; _e.trCycle = 0; _e.trFlap = _e.trFlap || 0; _e.trFold = 0; _e.trFire = 0; }
         //体力の区切りのムービー：その間は改をムービーで動かす。終わったら(曲が区切りの頭に着いたら)、ふだんどおり区切りへ入る
         if(this.cut){
-            if(p < this.cut.end && p > this.cut.end - TR_CUT_SEC - 1){ this.cutStep(_e, p); return true; }
+            if(p < this.cut.end && p > this.cut.end - TR_CUT_SEC - 1){
+                //改の動きは曲の時刻で進める(帯と文は曲の時刻で出るので、世界がゆっくり(相方の見切り・ジャスト衝撃波)の間や、
+                //重くてコマが落ちたときに、改の動きだけ遅れて途中で打ち切られないように)
+                var n = Math.min(TR_CUT_CATCH, Math.floor((p - this.cut.p0)*60) - this.cut.f);
+                for(var i=0; i<n; i++) this.cutStep(_e, p);
+                return true;
+            }
             this.cut = null;
             _e.mode = "idle"; _e.harmless = false; _e.phased = false;
         }else if(this.cutDue(_e, p)) return true;
@@ -692,12 +699,13 @@ var finaleTri = {
         _e.vx = dx/d*TR_FLING*0.6; _e.vy = dy/d*TR_FLING*0.6 - 2;
         _e.flash = 14;
         _e.look.setFace("hurt", 90);
-        this.cut = { text:_B.text, to:_B.to, end:_to.from, f:0 };
+        this.cut = { text:_B.text, to:_B.to, end:_to.from, f:0, p0:p + TR_CUT_STOP/60 };     //p0：改が動き出す曲の時刻(始めに止まる分のあと)
         if(this.fakeT != null) this.fakeT = p;
         else triumph.jump(p, TR_CUT_FADE);
         this.queue = []; this.pillars = [];
         _e.trBeatN = null;
         M.hitStop = Math.max(M.hitStop, TR_CUT_STOP);
+        M.slowmo = 0;
         this.impact = { x:_e.x, y:_e.y, p0:p };     //閃光は曲の時刻で進める(画面全体の閃光 flashT は、止まっている間も消えないので使わない)
         M.zoomT = ZOOM_TIME; M.zoomX = _e.x; M.zoomY = _e.y;
         M.guard = Math.max(M.guard, TR_CUT_SEC*60 + 30);
@@ -2164,6 +2172,23 @@ var finaleTri = {
     special.kaiAwakeFx = function(_e){
         if(T.on() && _e.trSong){ T.awake(_e); return; }
         kaiAwakeFx.call(this,_e);
+    };
+    //体力の区切りのムービーの間は、ゆっくり(ジャスト衝撃波・見切り。協力プレイでは相方の分も)を解く。
+    //ムービーは曲の時刻で進むので、世界がゆっくりのままだと改の動きが遅れて、途中で打ち切られたように見えるため
+    var justSlowStep = mainScreen.justSlowStep, dodgeSlow = dodge.slowStep;
+    mainScreen.justSlowStep = function(){
+        if(T.cut && T.boss() && this.justSlow > 0){
+            this.justSlow = 0; this.slowPow = 0; this.justT = 0;
+            if(!this.slowBack){ this.slowBack = true; sound.timeWarp(false); }
+        }
+        return justSlowStep.call(this);
+    };
+    dodge.slowStep = function(){
+        if(T.cut && T.boss() && this.slowT > 0){
+            this.slowT = 0; this.slowPow = 0; this.watch = false; this.slashOk = false;
+            if(!this.slowBack){ this.slowBack = true; sound.timeWarp(false); }
+        }
+        return dodgeSlow.call(this);
     };
     //体力の区切りのムービーの間は、ドローン君の装備と衝撃波を止める
     special.holdFire = function(){
